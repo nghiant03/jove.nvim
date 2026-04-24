@@ -49,14 +49,14 @@ buffer  buftype=acwrite, filetype=python
 
 | Command | Action |
 |---|---|
-| `:IpynbRunCell` | Run cell under cursor via molten |
-| `:IpynbRunAbove` | Run all cells from top to cursor |
-| `:IpynbRunAll` | Run every cell |
-| `:IpynbNextCell` / `:IpynbPrevCell` | Jump between cells |
-| `:IpynbInitKernel` | Start molten kernel for this notebook |
-| `:IpynbImportOutputs` | Re-display outputs stored in the `.ipynb` JSON |
-| `:IpynbExportOutputs` | Merge current molten outputs into `.ipynb` on disk |
-| `:checkhealth ipynb` | Verify deps, versions, and conflicts |
+| `:JoveRunCell` | Run cell under cursor via molten |
+| `:JoveRunAbove` | Run all cells from top to cursor |
+| `:JoveRunAll` | Run every cell |
+| `:JoveNextCell` / `:JovePrevCell` | Jump between cells |
+| `:JoveInitKernel` | Start molten kernel for this notebook |
+| `:JoveImportOutputs` | Re-display outputs stored in the `.ipynb` JSON |
+| `:JoveExportOutputs` | Merge current molten outputs into `.ipynb` on disk |
+| `:checkhealth jove` | Verify deps, versions, and conflicts |
 
 ## Comparison
 

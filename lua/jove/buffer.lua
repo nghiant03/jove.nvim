@@ -1,7 +1,7 @@
 -- buffer.lua: BufReadCmd / BufWriteCmd handlers.
-local convert = require("ipynb.convert")
-local outputs = require("ipynb.outputs")
-local kernel = require("ipynb.kernel")
+local convert = require("jove.convert")
+local outputs = require("jove.outputs")
+local kernel = require("jove.kernel")
 
 local M = {}
 
@@ -42,7 +42,7 @@ end
 ---@param buf integer
 ---@param path string
 function M.read(buf, path)
-  local cfg = require("ipynb").config
+  local cfg = require("jove").config
 
   if not vim.uv.fs_stat(path) then
     -- New file: empty py:percent buffer, defer JSON creation to first write.
@@ -55,7 +55,7 @@ function M.read(buf, path)
 
   local lines, err = convert.read(path)
   if not lines then
-    vim.notify("[ipynb] read failed: " .. (err or "?"), vim.log.levels.ERROR)
+    vim.notify("[jove] read failed: " .. (err or "?"), vim.log.levels.ERROR)
     return
   end
 
@@ -68,8 +68,8 @@ function M.read(buf, path)
   vim.bo[buf].modified = false
 
   -- Stash the parsed JSON for outputs.lua to reuse without re-reading disk.
-  vim.b[buf].ipynb_json = json
-  vim.b[buf].ipynb_path = path
+  vim.b[buf].jove_json = json
+  vim.b[buf].jove_path = path
 
   -- Schedule kernel + output import after BufRead* autocmds settle.
   if cfg.auto_kernel then
@@ -88,18 +88,18 @@ end
 ---@param buf integer
 ---@param path string
 function M.write(buf, path)
-  local cfg = require("ipynb").config
+  local cfg = require("jove").config
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 
   local bytes, err = convert.write(path, lines)
   if not bytes then
-    vim.notify("[ipynb] write failed: " .. (err or "?"), vim.log.levels.ERROR)
+    vim.notify("[jove] write failed: " .. (err or "?"), vim.log.levels.ERROR)
     return
   end
 
   local fd, ferr = io.open(path, "wb")
   if not fd then
-    vim.notify("[ipynb] cannot write " .. path .. ": " .. (ferr or "?"), vim.log.levels.ERROR)
+    vim.notify("[jove] cannot write " .. path .. ": " .. (ferr or "?"), vim.log.levels.ERROR)
     return
   end
   fd:write(bytes)
@@ -109,7 +109,7 @@ function M.write(buf, path)
 
   -- Refresh cached JSON for downstream consumers.
   local json = vim.json.decode(bytes)
-  vim.b[buf].ipynb_json = json
+  vim.b[buf].jove_json = json
 
   vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
 

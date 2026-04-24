@@ -58,7 +58,7 @@ end
 ---Visually select the cell containing the cursor and call MoltenEvaluateVisual.
 function M.run_cell()
   if vim.fn.exists(":MoltenEvaluateVisual") ~= 2 then
-    vim.notify("[ipynb] molten not loaded", vim.log.levels.WARN)
+    vim.notify("[jove] molten not loaded", vim.log.levels.WARN)
     return
   end
   local buf = vim.api.nvim_get_current_buf()
@@ -79,7 +79,7 @@ end
 ---Run every cell from the top of the buffer up to (and including) the cursor.
 function M.run_above()
   if vim.fn.exists(":MoltenEvaluateVisual") ~= 2 then
-    vim.notify("[ipynb] molten not loaded", vim.log.levels.WARN)
+    vim.notify("[jove] molten not loaded", vim.log.levels.WARN)
     return
   end
   local buf = vim.api.nvim_get_current_buf()
@@ -97,7 +97,7 @@ end
 ---Run every cell in the buffer.
 function M.run_all()
   if vim.fn.exists(":MoltenEvaluateVisual") ~= 2 then
-    vim.notify("[ipynb] molten not loaded", vim.log.levels.WARN)
+    vim.notify("[jove] molten not loaded", vim.log.levels.WARN)
     return
   end
   local buf = vim.api.nvim_get_current_buf()
@@ -126,16 +126,16 @@ function M.apply(keymap)
     vim.api.nvim_create_autocmd("FileType", {
       pattern = { "python", "julia", "r" },
       callback = function(ev)
-        if vim.b[ev.buf].ipynb_path then
+        if vim.b[ev.buf].jove_path then
           vim.keymap.set("n", lhs, rhs, vim.tbl_extend("force", opts, { buffer = ev.buf }))
         end
       end,
     })
   end
 
-  map(keymap.run_cell, M.run_cell, "ipynb: run cell")
-  map(keymap.next_cell, M.next_cell, "ipynb: next cell")
-  map(keymap.prev_cell, M.prev_cell, "ipynb: prev cell")
+  map(keymap.run_cell, M.run_cell, "jove: run cell")
+  map(keymap.next_cell, M.next_cell, "jove: next cell")
+  map(keymap.prev_cell, M.prev_cell, "jove: prev cell")
 end
 
 return M

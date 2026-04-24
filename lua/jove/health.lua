@@ -1,10 +1,10 @@
--- health.lua: :checkhealth ipynb
+-- health.lua: :checkhealth jove
 local M = {}
 
 local h = vim.health
 
 function M.check()
-  h.start("ipynb")
+  h.start("jove")
 
   if vim.fn.has("nvim-0.10") ~= 1 then
     h.error("Neovim >= 0.10 required (vim.system with stdio).")
@@ -12,7 +12,7 @@ function M.check()
     h.ok("Neovim " .. tostring(vim.version()))
   end
 
-  local convert = require("ipynb.convert")
+  local convert = require("jove.convert")
   local ver = convert.version()
   if ver then
     h.ok("jupytext: " .. ver)

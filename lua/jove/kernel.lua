@@ -9,7 +9,7 @@ end
 ---@param buf integer
 ---@return string?
 local function kernelspec_name(buf)
-  local json = vim.b[buf].ipynb_json
+  local json = vim.b[buf].jove_json
   if type(json) ~= "table" then
     return nil
   end
@@ -105,7 +105,7 @@ function M.init(buf)
         return
       else
         vim.notify(
-          ("[ipynb] MoltenInit %s failed: %s"):format(name, tostring(err)),
+          ("[jove] MoltenInit %s failed: %s"):format(name, tostring(err)),
           vim.log.levels.WARN
         )
       end

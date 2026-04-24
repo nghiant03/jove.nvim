@@ -2,7 +2,7 @@
 local M = {}
 
 local function jupytext_bin()
-  local cfg = require("ipynb").config
+  local cfg = require("jove").config
   return cfg.jupytext or "jupytext"
 end
 

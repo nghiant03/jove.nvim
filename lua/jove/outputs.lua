@@ -34,7 +34,7 @@ function M.import(buf)
   end
   local ok, err = pcall(vim.cmd, "MoltenImportOutput")
   if not ok then
-    vim.notify("[ipynb] MoltenImportOutput failed: " .. tostring(err), vim.log.levels.WARN)
+    vim.notify("[jove] MoltenImportOutput failed: " .. tostring(err), vim.log.levels.WARN)
   end
 end
 
@@ -48,7 +48,7 @@ function M.export(buf)
   -- The ! variant overwrites without prompting.
   local ok, err = pcall(vim.cmd, "MoltenExportOutput!")
   if not ok then
-    vim.notify("[ipynb] MoltenExportOutput failed: " .. tostring(err), vim.log.levels.WARN)
+    vim.notify("[jove] MoltenExportOutput failed: " .. tostring(err), vim.log.levels.WARN)
   end
 end
 

@@ -1,14 +1,14 @@
--- ipynb: native .ipynb editing for Neovim, backed by jupytext + molten.
+-- jove: native .ipynb editing for Neovim, backed by jupytext + molten.
 local M = {}
 
----@class ipynb.Config
+---@class jove.Config
 ---@field jupytext string                Path to the jupytext binary.
 ---@field auto_kernel boolean            Auto-run MoltenInit on open.
 ---@field auto_import_outputs boolean    Auto-run MoltenImportOutput after kernel init.
 ---@field auto_export_outputs boolean    Auto-run MoltenExportOutput! after save.
 ---@field keymap table<string, string|false>
 
----@type ipynb.Config
+---@type jove.Config
 M.config = {
   jupytext = "jupytext",
   auto_kernel = true,
@@ -21,10 +21,10 @@ M.config = {
   },
 }
 
----@param opts ipynb.Config?
+---@param opts jove.Config?
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  require("ipynb.keymaps").apply(M.config.keymap)
+  require("jove.keymaps").apply(M.config.keymap)
 end
 
 return M
