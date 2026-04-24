@@ -29,8 +29,8 @@ buffer  buftype=acwrite, filetype=python
 
 ```lua
 {
-  "your-user/jove.nvim",
-  ft = "python",                       -- jove handles .ipynb via BufReadCmd
+  "nghiant03/jove.nvim",
+  lazy = false,                        -- BufReadCmd must be registered before .ipynb is opened
   dependencies = { "benlubas/molten-nvim" },
   opts = {
     auto_kernel = true,                -- MoltenInit from kernelspec on open
@@ -44,6 +44,80 @@ buffer  buftype=acwrite, filetype=python
   },
 }
 ```
+
+> `opts = {}` (or `config = true`) is **required** — without it lazy.nvim
+> never calls `require("jove").setup(...)`, and the keymaps under `keymap = {}`
+> are not registered. The `BufReadCmd`/`BufWriteCmd` handlers are installed
+> from `plugin/jove.lua` at startup either way, but you'll lose the cell
+> motions and `run_cell` binding.
+
+## Setup
+
+### 1. Install `jupytext`
+
+```sh
+pip install jupytext      # or: pipx install jupytext / conda install jupytext
+jupytext --version        # must be on $PATH for the nvim process
+```
+
+If you launch Neovim from a conda env that doesn't have `jupytext`, prepend
+the env's `bin/` to `vim.env.PATH` early in your `init.lua`, or set
+`opts.jupytext = "/abs/path/to/jupytext"`.
+
+### 2. Install `molten-nvim` (recommended)
+
+Molten provides the kernel and inline outputs. Without it jove still edits
+notebooks, but `:JoveRunCell` and outputs do nothing. Minimal lazy spec:
+
+```lua
+{
+  "benlubas/molten-nvim",
+  build = ":UpdateRemotePlugins",
+  init = function()
+    vim.g.molten_image_provider       = "image.nvim" -- or "snacks.nvim"
+    vim.g.molten_auto_open_output     = false
+    vim.g.molten_virt_text_output     = true
+    vim.g.molten_virt_lines_off_by_1  = true         -- correct for `# %%` cells
+    vim.g.molten_wrap_output          = true
+  end,
+}
+```
+
+You also need a Jupyter kernel that matches your notebook's
+`metadata.kernelspec.name` — typically `python3` from `ipykernel`:
+
+```sh
+pip install ipykernel
+python -m ipykernel install --user --name python3
+```
+
+Verify inside nvim with `:lua =vim.fn.MoltenAvailableKernels()`.
+
+### 3. Avoid conflicts
+
+- **Do not load `jupytext.nvim`** alongside jove — both register `BufReadCmd`
+  on `*.ipynb`. Jove will hard-refuse and warn on startup; remove one.
+- **Do not duplicate molten's auto-init autocmds.** If you copied the
+  `BufAdd *.ipynb` → `MoltenInit` + `MoltenImportOutput` snippet from
+  molten's README, delete it: jove already does this when
+  `auto_kernel = true` and `auto_import_outputs = true`. Otherwise molten
+  initializes twice and logs errors.
+
+### 4. Verify
+
+```vim
+:checkhealth jove
+```
+
+Expect green checks for: Neovim ≥ 0.10, `jupytext` binary found, molten
+detected, no `jupytext.nvim` conflict. Then open any `.ipynb`:
+
+```sh
+nvim notebook.ipynb
+```
+
+You should land in a Python buffer split into `# %%` cells, with kernel
+status visible via molten and outputs rendered as virtual text.
 
 ## Commands
 

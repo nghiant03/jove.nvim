@@ -28,7 +28,7 @@ function M.read(path)
   fd:close()
 
   local res = run(
-    { "--from", "ipynb", "--to", "py:percent", "--output", "-", "-" },
+    { "--from", "ipynb", "--to", "py:percent", "--output", "-" },
     data
   )
   if res.code ~= 0 then
@@ -62,10 +62,9 @@ function M.write(path, lines)
       path,
       "--output",
       "-",
-      "-",
     }
   else
-    args = { "--from", "py:percent", "--to", "ipynb", "--output", "-", "-" }
+    args = { "--from", "py:percent", "--to", "ipynb", "--output", "-" }
   end
 
   local res = run(args, stdin)
