@@ -100,7 +100,9 @@ function M.init(buf)
 
   for _, name in ipairs(candidates) do
     if has(name) then
-      local ok, err = pcall(vim.cmd, ("MoltenInit %s"):format(name))
+      local ok, err = pcall(vim.api.nvim_buf_call, buf, function()
+        vim.cmd(("MoltenInit %s"):format(name))
+      end)
       if ok then
         return
       else

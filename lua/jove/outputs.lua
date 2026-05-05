@@ -57,7 +57,9 @@ function M.export(buf)
     return
   end
   -- The ! variant overwrites without prompting.
-  local ok, err = pcall(vim.cmd, "MoltenExportOutput!")
+  local ok, err = pcall(vim.api.nvim_buf_call, buf, function()
+    vim.cmd("MoltenExportOutput!")
+  end)
   if not ok then
     vim.notify("[jove] MoltenExportOutput failed: " .. tostring(err), vim.log.levels.WARN)
   end
