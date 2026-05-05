@@ -36,7 +36,9 @@ function M.import(buf)
   if not molten_initialized(buf) then
     return
   end
-  local ok, err = pcall(vim.cmd, "MoltenImportOutput")
+  local ok, err = pcall(vim.api.nvim_buf_call, buf, function()
+    vim.cmd("MoltenImportOutput " .. vim.fn.fnameescape(path))
+  end)
   if not ok then
     vim.notify("[jove] MoltenImportOutput failed: " .. tostring(err), vim.log.levels.WARN)
   end
