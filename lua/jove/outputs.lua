@@ -25,10 +25,14 @@ local function molten_initialized(buf)
 end
 
 ---Restore outputs from .ipynb JSON into molten cells.
----No-op if molten isn't initialized.
+---No-op if molten isn't initialized or the notebook does not exist on disk.
 ---@param buf integer
 function M.import(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
+  local path = vim.b[buf].jove_path or vim.api.nvim_buf_get_name(buf)
+  if path == "" or not vim.uv.fs_stat(path) then
+    return
+  end
   if not molten_initialized(buf) then
     return
   end
