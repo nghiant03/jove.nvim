@@ -7,21 +7,27 @@ local function molten_loaded()
   return vim.fn.exists(":MoltenInit") == 2
 end
 
+---Return this buffer's molten kernel ids.
+---@param buf integer
+---@return string[]
+local function buffer_kernels(buf)
+  if not molten_loaded() or not vim.api.nvim_buf_is_valid(buf) then
+    return {}
+  end
+  local ok, kernels = pcall(vim.api.nvim_buf_call, buf, function()
+    return vim.fn.MoltenRunningKernels(true)
+  end)
+  if not ok or type(kernels) ~= "table" then
+    return {}
+  end
+  return kernels
+end
+
 ---Has molten been initialized in this buffer?
 ---@param buf integer
 ---@return boolean
 local function molten_initialized(buf)
-  if not molten_loaded() then
-    return false
-  end
-  -- MoltenRunningKernels is the documented Lua-callable accessor.
-  local ok, kernels = pcall(vim.fn.MoltenRunningKernels, true)
-  if not ok or type(kernels) ~= "table" or #kernels == 0 then
-    return false
-  end
-  -- Molten attaches kernels per-buffer; if any kernel is running we assume the
-  -- caller has already targeted the right buffer (single-kernel-per-buffer model).
-  return true
+  return #buffer_kernels(buf) > 0
 end
 
 ---Restore outputs from .ipynb JSON into molten cells.
@@ -33,11 +39,7 @@ function M.import(buf)
   if path == "" or not vim.uv.fs_stat(path) then
     return
   end
-  if not molten_initialized(buf) then
-    return
-  end
-  local kernels = vim.fn.MoltenRunningKernels(true)
-  local kernel = type(kernels) == "table" and kernels[1]
+  local kernel = buffer_kernels(buf)[1]
   if type(kernel) ~= "string" or kernel == "" then
     return
   end

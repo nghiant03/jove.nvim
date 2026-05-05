@@ -51,14 +51,16 @@ end
 ---@param buf integer
 ---@return boolean
 local function already_initialized(buf)
-  if not molten_loaded() then
+  if not molten_loaded() or not vim.api.nvim_buf_is_valid(buf) then
     return false
   end
-  local ok, kernels = pcall(vim.fn.MoltenRunningKernels, true)
+  local ok, kernels = pcall(vim.api.nvim_buf_call, buf, function()
+    return vim.fn.MoltenRunningKernels(true)
+  end)
   if not ok or type(kernels) ~= "table" then
     return false
   end
-  return #kernels > 0 and vim.api.nvim_get_current_buf() == buf
+  return #kernels > 0
 end
 
 ---Initialize molten for the given buffer using the best-matching kernel.
