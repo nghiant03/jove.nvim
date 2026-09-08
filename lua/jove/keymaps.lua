@@ -69,11 +69,13 @@ function M.run_cell()
   if body_start > e then
     return
   end
-  vim.api.nvim_win_set_cursor(0, { body_start, 0 })
-  vim.cmd(("normal! V%dG"):format(e))
+  -- Set the '< / '> marks directly instead of faking a visual selection via
+  -- `normal! V...G`: scripted visual-mode selections don't finalize the marks
+  -- until visual mode is actually exited, so MoltenEvaluateVisual (which reads
+  -- the marks via getpos) would always see the *previous* call's range.
+  vim.fn.setpos("'<", { 0, body_start, 1, 0 })
+  vim.fn.setpos("'>", { 0, e, 2147483647, 0 })
   vim.cmd("MoltenEvaluateVisual")
-  local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
-  vim.api.nvim_feedkeys(esc, "nx", false)
 end
 
 ---Run every cell from the top of the buffer up to (and including) the cursor.
