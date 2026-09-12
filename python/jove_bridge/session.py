@@ -23,6 +23,13 @@ from .kernel import KernelController, KernelError
 # poll thread (e.g. execute waits for the shell-channel execute_reply).
 DEFERRED = object()
 
+# How long an answered execute's msg_id stays resolvable for late iopub
+# messages. ZMQ gives no cross-socket ordering guarantee, so a cell's last
+# iopub outputs (stream/error) can be delivered *after* the shell
+# execute_reply was processed and the pending entry popped; within this
+# window they are still tagged to the originating cell instead of dropped.
+LATE_IOPUB_GRACE = 10.0
+
 
 class _Pending:
     """An in-flight shell request awaiting its reply."""
@@ -48,6 +55,10 @@ class BridgeSession:
         # msg_id -> _Pending, shared between the main thread (insert) and the
         # poll thread (pop); guard mutations with the lock.
         self.pending: dict = {}
+        # msg_id -> (cell, expiry): answered executes whose late iopub
+        # messages (delivered after the shell reply) are still tagged to
+        # their cell; see LATE_IOPUB_GRACE.
+        self._recent: dict = {}
         self._lock = threading.Lock()
         # libzmq sockets are not thread-safe and jupyter_client's
         # ZMQSocketChannel has no locking of its own: serialize every
@@ -261,11 +272,21 @@ class BridgeSession:
                 self.conn.send_event("kernel_status", {"status": state})
             return
         parent = (msg.get("parent_header") or {}).get("msg_id")
+        cell = None
         with self._lock:
             pending = self.pending.get(parent)
-        if pending is None or pending.kind != "execute":
+            if pending is not None and pending.kind == "execute":
+                cell = pending.cell
+            else:
+                entry = self._recent.get(parent)
+                if entry is not None:
+                    entry_cell, expiry = entry
+                    if time.monotonic() <= expiry:
+                        cell = entry_cell
+                    else:
+                        del self._recent[parent]
+        if cell is None:
             return
-        cell = pending.cell
         if msg_type == "stream":
             self.conn.send_event(
                 "output",
@@ -318,6 +339,16 @@ class BridgeSession:
             pending = self.pending.pop(parent, None)
         if pending is None:
             return
+        # Keep the answered execute's msg_id resolvable for late iopub
+        # messages (see LATE_IOPUB_GRACE) before dropping the pending entry.
+        if pending.kind == "execute" and pending.cell is not None:
+            now = time.monotonic()
+            with self._lock:
+                self._recent[parent] = (pending.cell, now + LATE_IOPUB_GRACE)
+                for msg_id in [
+                    m for m, (_, expiry) in self._recent.items() if expiry < now
+                ]:
+                    del self._recent[msg_id]
         if pending.kind == "ready_probe":
             # Kernel answered the readiness probe: it is up and our iopub
             # subscription is registered — announce idle.
@@ -334,7 +365,7 @@ class BridgeSession:
                 ename = content.get("ename", "")
                 evalue = content.get("evalue", "")
                 tb_lines = [str(line) for line in content.get("traceback") or []]
-                if status in ("abort", "aborted"):
+                if status in ("abort", "aborted") and pending.cell is not None:
                     # An interrupt with queued execute requests aborts them:
                     # the reply carries no ename/evalue/traceback and *no*
                     # iopub error message is published. PROTOCOL.md makes an

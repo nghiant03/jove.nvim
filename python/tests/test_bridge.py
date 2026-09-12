@@ -529,6 +529,69 @@ def test_execute_on_dead_kernel_raises_without_double_response():
     assert conn.responses(42) == []
 
 
+def test_late_iopub_after_execute_reply_still_tagged():
+    """Regression (macOS CI): ZMQ has no cross-socket ordering, so a cell's
+    last iopub outputs can be delivered after the shell execute_reply was
+    processed. The pending entry is already popped at that point; the late
+    outputs must still be tagged to the originating cell, not dropped."""
+    from jove_bridge.session import _Pending
+
+    conn = _FakeConn()
+    session = BridgeSession(conn)
+    with session._lock:
+        session.pending["m-late"] = _Pending("execute", 7, "c-late")
+
+    # Shell reply first: pops the pending entry and answers ok.
+    session._handle_shell(
+        {
+            "parent_header": {"msg_id": "m-late"},
+            "msg_type": "execute_reply",
+            "content": {"status": "ok"},
+        }
+    )
+    assert conn.responses(7) == [{"id": 7, "result": {"status": "ok"}}]
+
+    # Then the iopub stream arrives late — still tagged to "c-late".
+    session._handle_iopub(
+        {
+            "parent_header": {"msg_id": "m-late"},
+            "msg_type": "stream",
+            "content": {"name": "stdout", "text": "second-done\n"},
+        }
+    )
+    outputs = [m["params"] for m in conn.msgs if m.get("event") == "output"]
+    assert any(
+        p["cell"] == "c-late"
+        and p["kind"] == "stream"
+        and p["mime"]["text/plain"] == "second-done\n"
+        for p in outputs
+    ), conn.msgs
+
+    # Late error outputs are tagged too (interrupt traceback race).
+    session._handle_iopub(
+        {
+            "parent_header": {"msg_id": "m-late"},
+            "msg_type": "error",
+            "content": {"ename": "KeyboardInterrupt", "evalue": "", "traceback": []},
+        }
+    )
+    outputs = [m["params"] for m in conn.msgs if m.get("event") == "output"]
+    assert any(
+        p["cell"] == "c-late" and p["kind"] == "error" for p in outputs
+    ), conn.msgs
+
+    # Unknown parents and expired grace entries are still dropped.
+    session._handle_iopub(
+        {
+            "parent_header": {"msg_id": "never-sent"},
+            "msg_type": "stream",
+            "content": {"name": "stdout", "text": "x"},
+        }
+    )
+    outputs = [m["params"] for m in conn.msgs if m.get("event") == "output"]
+    assert all(p["cell"] != "never-sent" for p in outputs)
+
+
 def test_version_matches_pyproject() -> None:
     """__version__ must track pyproject.toml so the `ready` event can't drift."""
     import re
