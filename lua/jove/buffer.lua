@@ -263,22 +263,37 @@ function M.write(buf, path)
   start_write(buf, path, tick, lines)
 end
 
----FileChangedShell logic (plan bug P11).
----Decides whether a file-change event for a jove buffer is our own write.
----Callers keep the built-in behavior when this returns nil (the mere
----existence of a FileChangedShell handler already suppresses Neovim's own
----warning; v:fcs_choice stays empty, so no default reload happens either).
+---Compare two paths for same-file identity, tolerating symlink resolution
+---differences (e.g. macOS temp dirs: /var -> /private/var). Neovim resolves
+---some autocmd matches through symlinks but not others, so a raw string
+---compare can miss our own buffer.
+---@param a string
+---@param b string
+---@return boolean
+local function same_file(a, b)
+  local ra, rb = vim.uv.fs_realpath(a), vim.uv.fs_realpath(b)
+  if ra and rb then
+    return ra == rb
+  end
+  return vim.fn.fnamemodify(a, ":p") == vim.fn.fnamemodify(b, ":p")
+end
+
+---FileChangedShell decision for jove-managed buffers (see plugin/jove.lua):
+---
+--- - true: the change echoes our own last write -> caller suppresses silently;
+--- - false: a foreign change with `auto_reload` on -> a reload is scheduled
+---   (caller suppresses the default handler while ours is in flight);
+--- - nil: not jove-managed / not our file -> caller falls back to warn-notify
+---   (v:fcs_choice stays empty, so no default reload happens either).
 ---@param buf integer
 ---@param path string
----@return boolean?  -- true: own write, suppress silently; false: auto-reload
----    scheduled (suppress default handling); nil: not jove-managed, caller
----    falls back to warn-notify
+---@return boolean?
 function M.changed_shell(buf, path)
   local st = state.peek(buf)
   if not st or not st.path then
     return nil
   end
-  if vim.fn.fnamemodify(st.path, ":p") ~= vim.fn.fnamemodify(path, ":p") then
+  if not same_file(st.path, path) then
     return nil
   end
 

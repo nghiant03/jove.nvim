@@ -326,22 +326,46 @@ def test_overlapping_executes(kernel):
     assert r1["result"] == {"status": "ok"}
     assert r2["result"] == {"status": "ok"}
 
-    streams: dict = {}
-    for params in kernel.outputs_since(since):
-        if params.get("kind") == "stream":
-            streams[params["cell"]] = (
-                streams.get(params["cell"], "") + params["mime"]["text/plain"]
-            )
-    assert "first-done" in streams.get("c1", "")
-    assert "second-done" in streams.get("c2", "")
+    # A cell's final iopub output can be emitted after its execute_reply
+    # (ZMQ gives no cross-socket ordering; the bridge re-tags late outputs to
+    # the originating cell). Wait for the stream events instead of
+    # snapshotting whatever has arrived right after the replies.
+    ev1 = kernel.wait_event(
+        "output",
+        since=since,
+        pred=lambda p: p.get("cell") == "c1" and p.get("kind") == "stream",
+    )
+    ev2 = kernel.wait_event(
+        "output",
+        since=since,
+        pred=lambda p: p.get("cell") == "c2" and p.get("kind") == "stream",
+    )
+    assert "first-done" in ev1["params"]["mime"]["text/plain"]
+    assert "second-done" in ev2["params"]["mime"]["text/plain"]
+
+
+def _interruptable_sleep():
+    """Sleep code that provably enters the cell before sleeping.
+
+    ipykernel installs its SIGINT handler only around handler execution
+    (SIG_IGN otherwise, set at startup). Interrupting right after seeing the
+    "busy" status races the pre-handler window, and on loaded runners
+    (macOS CI) the SIGINT can be swallowed, letting the sleep run to
+    completion. The cell prints "started" from inside the handler, so waiting
+    for that output proves the kernel is executing user code and the
+    interrupt must land.
+    """
+    return "print('started'); import time; time.sleep(30)"
 
 
 def test_interrupt(kernel):
     since = kernel.cursor()
     rid = kernel.send_request(
-        "execute", {"code": "import time\ntime.sleep(30)", "cell": "slow"}
+        "execute", {"code": _interruptable_sleep(), "cell": "slow"}
     )
-    kernel.wait_status("busy", since=since)
+    kernel.wait_event(
+        "output", since=since, pred=lambda p: p.get("cell") == "slow"
+    )
     msg = kernel.request("interrupt")
     assert msg["result"] == {}
 
@@ -370,12 +394,14 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
     """
     since = kernel.cursor()
     rid_sleep = kernel.send_request(
-        "execute", {"code": "import time\ntime.sleep(30)", "cell": "sleep"}
+        "execute", {"code": _interruptable_sleep(), "cell": "sleep"}
+    )
+    kernel.wait_event(
+        "output", since=since, pred=lambda p: p.get("cell") == "sleep"
     )
     rid_quick = kernel.send_request(
         "execute", {"code": "print('quick-done')", "cell": "quick"}
     )
-    kernel.wait_status("busy", since=since)
     msg = kernel.request("interrupt")
     assert msg["result"] == {}
 
@@ -387,7 +413,12 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
     assert quick_reply["result"]["status"] == "error"
 
     # Exactly one error-kind output per error result: the sleeper's arrives
-    # via iopub, the aborted request's is synthesized by the bridge.
+    # via iopub, the aborted request's is synthesized by the bridge. The
+    # sleeper's iopub error can be emitted after its execute_reply (no
+    # cross-socket ZMQ ordering), but it always precedes the idle status on
+    # the wire, and the bridge emits iopub events in wire order — so wait
+    # for idle before counting.
+    kernel.wait_status("idle", since=since)
     outputs = kernel.outputs_since(since)
     for cell in ("sleep", "quick"):
         errs = [
@@ -399,7 +430,6 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
         assert errs[0]["mime"]["text/plain"]
 
     # Kernel recovered and answers again.
-    kernel.wait_status("idle", since=since)
     msg = kernel.request("execute", {"code": "print('alive')", "cell": "after"})
     assert msg["result"] == {"status": "ok"}
 

@@ -23,6 +23,15 @@ local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
 end
 
+---Assert two paths name the same file, tolerating symlink resolution
+---(macOS temp dirs live under /var, which Neovim resolves to /private/var
+---in BufReadCmd's match, so st.path can differ textually from the test's path).
+---@param a string
+---@param b string
+local function expect_same_path(a, b)
+  MiniTest.expect.equality(vim.uv.fs_realpath(a), vim.uv.fs_realpath(b))
+end
+
 local FIXTURE = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "smoke.ipynb")
 
 ---Copy the fixture into a fresh temp dir; never touches the repo.
@@ -91,7 +100,7 @@ T["read via BufReadCmd"]["opens with acwrite buftype and py:percent lines"] = fu
   expect_truthy(has_marker)
 
   local st = state.get(buf)
-  MiniTest.expect.equality(st.path, path)
+  expect_same_path(st.path, path)
   expect_truthy(type(st.json) == "table")
   MiniTest.expect.equality(#st.json.cells, 3)
 
@@ -111,7 +120,7 @@ T["read via BufReadCmd"]["new file: empty py:percent buffer, JSON deferred to wr
   MiniTest.expect.equality(vim.bo[buf].modified, false)
 
   local st = state.get(buf)
-  MiniTest.expect.equality(st.path, path)
+  expect_same_path(st.path, path)
   MiniTest.expect.equality(st.json, nil)
 
   close_notebook(buf)
