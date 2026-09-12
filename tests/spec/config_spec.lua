@@ -10,7 +10,14 @@ local function reset_config()
   jove.config = vim.deepcopy(defaults)
 end
 
-T = MiniTest.new_set({ hooks = { pre_case = reset_config } })
+T = MiniTest.new_set({
+  hooks = {
+    pre_case = function()
+      reset_config()
+      jove._reset_shim_state()
+    end,
+  },
+})
 
 T["setup"] = MiniTest.new_set()
 
@@ -31,6 +38,84 @@ T["setup"]["accepts no opts"] = function()
   jove.setup()
   MiniTest.expect.equality(jove.config.jupytext, defaults.jupytext)
   MiniTest.expect.equality(jove.config.bridge_python, defaults.bridge_python)
+end
+
+T["setup"]["shim: warns on unknown top-level option (molten-era or typo)"] = function()
+  local notes = {}
+  local orig = vim.notify
+  vim.notify = function(msg, level)
+    notes[#notes + 1] = { msg = msg, level = level }
+  end
+  jove.setup({ molten = {} })
+  vim.notify = orig
+
+  MiniTest.expect.equality(#notes, 1)
+  MiniTest.expect.equality(notes[1].level, vim.log.levels.WARN)
+  MiniTest.expect.equality(
+    notes[1].msg,
+    "[jove] unknown option 'molten' (molten-era or typo?) — check :h jove-config"
+  )
+  -- Permissive: the option still merges, nothing errors.
+  MiniTest.expect.equality(jove.config.molten, {})
+end
+
+T["setup"]["shim: warns on unknown keymap member; validates known ones still"] = function()
+  local notes = {}
+  local orig = vim.notify
+  vim.notify = function(msg, level)
+    notes[#notes + 1] = { msg = msg, level = level }
+  end
+  jove.setup({ keymap = { bogus = "x" } })
+  vim.notify = orig
+
+  MiniTest.expect.equality(#notes, 1)
+  MiniTest.expect.equality(
+    notes[1].msg,
+    "[jove] unknown option 'keymap.bogus' (molten-era or typo?) — check :h jove-config"
+  )
+  MiniTest.expect.equality(jove.config.keymap.bogus, "x")
+  -- Known keymap members are still validated: a bad type still errors.
+  MiniTest.expect.error(function()
+    jove.setup({ keymap = { run_cell = 42 } })
+  end)
+end
+
+T["setup"]["shim: silent for a fully-valid setup; warns once per key"] = function()
+  local notes = {}
+  local orig = vim.notify
+  vim.notify = function(msg, level)
+    notes[#notes + 1] = { msg = msg, level = level }
+  end
+  jove.setup({
+    jupytext = "/x/jupytext",
+    signs = { queued = "…" },
+    keymap = { run_cell = "<cr>" },
+  })
+  MiniTest.expect.equality(#notes, 0)
+
+  -- Second setup with the same unknown key: warns only once per key.
+  jove.setup({ molten = {} })
+  jove.setup({ molten = {} })
+  vim.notify = orig
+  MiniTest.expect.equality(#notes, 1)
+end
+
+-- Structural pin: the DEFAULTS table must be fully covered by the shim's
+-- allowlists (KNOWN_KEYS + KNOWN_KEYMAP_KEYS). Feeding the defaults back as
+-- opts must produce ZERO warnings — a future key added to config without
+-- updating the allowlists fails here instead of shipping a false warning.
+T["setup"]["shim: defaults table itself raises zero warnings"] = function()
+  local notes = {}
+  local orig = vim.notify
+  vim.notify = function(msg, level)
+    notes[#notes + 1] = { msg = msg, level = level }
+  end
+  jove.setup(vim.deepcopy(jove.config))
+  MiniTest.expect.equality(#notes, 0)
+  -- The documented keymap.run_selection is allowlisted too (README example).
+  jove.setup({ keymap = { run_selection = "<leader>rs" } })
+  MiniTest.expect.equality(#notes, 0)
+  vim.notify = orig
 end
 
 T["setup"]["bridge_python: string type check"] = function()

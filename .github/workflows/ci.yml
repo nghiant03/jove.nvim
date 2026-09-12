@@ -51,8 +51,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jupytext
-        run: pip install jupytext
+      - name: Install jupytext + bridge deps
+        # jupyter_client/ipykernel enable the real-sidecar e2e spec
+        # (bridge_e2e_spec.lua) which self-skips without them.
+        run: pip install jupytext jupyter_client ipykernel
 
       - name: Fetch mini.test
         run: |

@@ -527,3 +527,16 @@ def test_execute_on_dead_kernel_raises_without_double_response():
     assert excinfo.value.code == "kernel_not_running"
     assert session.pending == {}
     assert conn.responses(42) == []
+
+
+def test_version_matches_pyproject() -> None:
+    """__version__ must track pyproject.toml so the `ready` event can't drift."""
+    import re
+    from pathlib import Path
+
+    import jove_bridge
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(), re.MULTILINE)
+    assert match, "pyproject.toml has no version field"
+    assert jove_bridge.__version__ == match.group(1)

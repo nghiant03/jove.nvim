@@ -615,17 +615,67 @@ T["end-to-end (real jupytext)"]["session-persisted then cleared -> tombstoned la
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end (real jupytext)"]["pure open->save: no merged rewrite, counts intact"] = function()
+T["end-to-end (real jupytext)"]["clear -> save -> save again: second save is a no-op"] = function()
   local path = tmp_copy_fixture()
+  local buf = open_notebook(path)
+  local hashes = code_hashes(state.get(buf).json)
 
-  -- Spy on the export path (buffer.lua resolves persist.export per call).
+  require("jove.output").clear(buf, hashes[2])
+  vim.cmd("write")
+  wait_disk_cond(buf, path, function(nb)
+    return #nb.cells[2].outputs == 0
+  end)
+
+  -- Second save: the tombstoned hash was pruned from the seen-set (and
+  -- from_disk entries are skipped) — nothing to merge, no rewrite.
+  -- Touch the buffer first (same-content set_lines bumps changedtick) so
+  -- the buffer is modified and the settle below can only pass once this
+  -- write flow's callback has actually run.
+  local first_line = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+  vim.api.nvim_buf_set_lines(buf, 0, 1, false, { first_line })
+  expect_truthy(vim.bo[buf].modified)
+
   local export_results = {}
   local orig_export = persist.export
   persist.export = function(b, bytes)
+    if b ~= buf then
+      return orig_export(b, bytes) -- another buffer's flow: passthrough
+    end
     export_results[#export_results + 1] = orig_export(b, bytes)
-    export_results[#export_results] = export_results[#export_results] or false
   end
+  vim.cmd("write")
+  wait_write_settled(buf, path)
+  persist.export = orig_export
+
+  MiniTest.expect.equality(#export_results, 1)
+  MiniTest.expect.equality(export_results[1], false)
+  -- Tombstone still on disk after the no-op save.
+  local nb = vim.json.decode(read_disk(path))
+  MiniTest.expect.equality(#nb.cells[2].outputs, 0)
+
+  vim.api.nvim_buf_delete(buf, { force = true })
+end
+
+T["end-to-end (real jupytext)"]["pure open->save: no merged rewrite, counts intact"] = function()
+  local path = tmp_copy_fixture()
   local buf = open_notebook(path)
+
+  -- Spy on the export path (buffer.lua resolves persist.export per call).
+  -- Installed AFTER open: earlier specs' async write flows may still be
+  -- settling and must not count here.
+  local export_results = {}
+  local orig_export = persist.export
+  persist.export = function(b, bytes)
+    if b ~= buf then
+      return orig_export(b, bytes) -- another buffer's flow: passthrough
+    end
+    export_results[#export_results + 1] = orig_export(b, bytes)
+  end
+
+  -- Touch the buffer (same-content set_lines bumps changedtick) so the
+  -- settle below can only pass once this write's callback has run.
+  local first_line = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+  vim.api.nvim_buf_set_lines(buf, 0, 1, false, { first_line })
   vim.cmd("write")
   wait_write_settled(buf, path)
   persist.export = orig_export

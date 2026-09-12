@@ -6,8 +6,8 @@ if vim.g.loaded_jove == 1 then
 end
 vim.g.loaded_jove = 1
 
-if vim.fn.has("nvim-0.10") ~= 1 then
-  vim.notify("[jove] requires Neovim >= 0.10", vim.log.levels.ERROR)
+if vim.fn.has("nvim-0.11") ~= 1 then
+  vim.notify("[jove] requires Neovim >= 0.11", vim.log.levels.ERROR)
   return
 end
 

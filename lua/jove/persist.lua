@@ -310,6 +310,18 @@ function M.export(buf, bytes)
 
   st.json = nb
   st.last_write = vim.fn.sha256(encoded)
+
+  -- Tombstones were persisted: forget hashes that have no store entry left,
+  -- so steady-state saves after a clear become true no-ops (a later re-run
+  -- re-adds the hash via the normal export path). Hashes with live session
+  -- outputs stay seen — clearing THEM later must still tombstone.
+  if buf_seen then
+    for hash in pairs(buf_seen) do
+      if not (st.outputs and st.outputs[hash]) then
+        buf_seen[hash] = nil
+      end
+    end
+  end
   return true
 end
 

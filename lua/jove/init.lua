@@ -49,6 +49,63 @@ local function is_keymap_lhs(v)
   return type(v) == "string" or v == false
 end
 
+-- Known config keys for the unknown-option shim. Nested tables (signs/output)
+-- are opaque; `keymap` members are checked individually.
+local KNOWN_KEYS = {
+  jupytext = true,
+  bridge_python = true,
+  auto_kernel = true,
+  auto_import_outputs = true,
+  auto_export_outputs = true,
+  auto_reload = true,
+  cell_motions = true,
+  signs = true,
+  output = true,
+  keymap = true,
+}
+local KNOWN_KEYMAP_KEYS = {
+  run_cell = true,
+  run_and_advance = true,
+  run_selection = true,
+  next_cell = true,
+  prev_cell = true,
+}
+
+local warned = {}
+
+---Reset the shim's warn-once state (test seam; also useful for reloads).
+function M._reset_shim_state()
+  warned = {}
+end
+
+---Warn once per unknown option key (top-level unknown keys and unknown
+---`keymap.*` members — molten-era leftovers or typos). Strictly permissive:
+---warnings only, the option still merges and validation still runs.
+---@param opts table?
+local function warn_unknown_opts(opts)
+  for k, v in pairs(opts or {}) do
+    local keys_to_check = {}
+    if not KNOWN_KEYS[k] then
+      keys_to_check[1] = tostring(k)
+    elseif k == "keymap" and type(v) == "table" then
+      for kk in pairs(v) do
+        if not KNOWN_KEYMAP_KEYS[kk] then
+          keys_to_check[#keys_to_check + 1] = ("keymap.%s"):format(tostring(kk))
+        end
+      end
+    end
+    for _, key in ipairs(keys_to_check) do
+      if not warned[key] then
+        warned[key] = true
+        vim.notify(
+          ("[jove] unknown option '%s' (molten-era or typo?) — check :h jove-config"):format(key),
+          vim.log.levels.WARN
+        )
+      end
+    end
+  end
+end
+
 ---Validate a (fully merged) config table; raises via vim.validate on bad types.
 ---@param cfg jove.Config
 local function validate_config(cfg)
@@ -75,6 +132,10 @@ end
 ---@param opts jove.Config?
 function M.setup(opts)
   vim.validate("opts", opts, "table", true)
+
+  -- Deprecation shim: warn (once per key) about unknown options BEFORE the
+  -- merge; setup stays permissive (no error, validation unchanged).
+  warn_unknown_opts(opts)
 
   -- Validate the merged config so defaults and user opts are both covered.
   local merged = vim.tbl_deep_extend("force", M.config, opts or {})

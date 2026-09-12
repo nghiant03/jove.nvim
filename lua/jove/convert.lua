@@ -148,11 +148,12 @@ function M.write(path, lines, cb)
 end
 
 ---Return jupytext --version string, or nil.
----Synchronous by design: only used by :checkhealth.
+---Synchronous by design: only used by :checkhealth. Timeout-bounded so a
+---wedged jupytext binary cannot hang the health check.
 ---@return string?
 function M.version()
   local ok, res = pcall(function()
-    return vim.system({ jupytext_bin(), "--version" }, { text = true }):wait()
+    return vim.system({ jupytext_bin(), "--version" }, { text = true, timeout = 5000 }):wait()
   end)
   if not ok or res.code ~= 0 then
     return nil
