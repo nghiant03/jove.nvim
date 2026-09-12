@@ -1,17 +1,20 @@
--- jove: native .ipynb editing for Neovim, backed by jupytext + molten.
+-- jove: native .ipynb editing for Neovim, backed by jupytext and a
+-- first-party Python kernel bridge (see PROTOCOL.md).
 local M = {}
 
 ---@class jove.Config
 ---@field jupytext string                Path to the jupytext binary.
----@field auto_kernel boolean            Auto-run MoltenInit on open.
----@field auto_import_outputs boolean    Auto-run MoltenImportOutput after kernel init.
----@field auto_export_outputs boolean    Auto-run MoltenExportOutput! after save.
+---@field bridge_python string           Python interpreter for the kernel bridge. An active $CONDA_PREFIX or $VIRTUAL_ENV interpreter takes precedence at use time; this is the fallback.
+---@field auto_kernel boolean            Start a bridge + kernel on open (kernelspec from notebook metadata, env, or picker).
+---@field auto_import_outputs boolean    Kept for config compatibility; outputs are now persisted automatically (Phase 6).
+---@field auto_export_outputs boolean    Kept for config compatibility; outputs are now persisted automatically (Phase 6).
 ---@field auto_reload boolean           Auto-reload buffer when the .ipynb changes on disk (our own writes are suppressed).
 ---@field keymap table<string, string|false>
 
 ---@type jove.Config
 M.config = {
   jupytext = "jupytext",
+  bridge_python = "python3",
   auto_kernel = true,
   auto_import_outputs = true,
   auto_export_outputs = true,
@@ -34,6 +37,7 @@ end
 ---@param cfg jove.Config
 local function validate_config(cfg)
   vim.validate("jupytext", cfg.jupytext, "string")
+  vim.validate("bridge_python", cfg.bridge_python, "string")
   vim.validate("auto_kernel", cfg.auto_kernel, "boolean")
   vim.validate("auto_import_outputs", cfg.auto_import_outputs, "boolean")
   vim.validate("auto_export_outputs", cfg.auto_export_outputs, "boolean")

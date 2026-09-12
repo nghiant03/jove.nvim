@@ -30,11 +30,35 @@ end
 T["setup"]["accepts no opts"] = function()
   jove.setup()
   MiniTest.expect.equality(jove.config.jupytext, defaults.jupytext)
+  MiniTest.expect.equality(jove.config.bridge_python, defaults.bridge_python)
+end
+
+T["setup"]["bridge_python: string type check"] = function()
+  MiniTest.expect.error(function()
+    jove.setup({ bridge_python = 123 })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ bridge_python = true })
+  end)
+  -- Failed setup must not corrupt the stored default.
+  MiniTest.expect.equality(jove.config.bridge_python, defaults.bridge_python)
+end
+
+T["setup"]["bridge_python: merge behavior"] = function()
+  jove.setup({ bridge_python = "/opt/venv/bin/python" })
+  MiniTest.expect.equality(jove.config.bridge_python, "/opt/venv/bin/python")
+  -- A later setup() without the key keeps the previously merged value.
+  jove.setup({ jupytext = "/other/jupytext" })
+  MiniTest.expect.equality(jove.config.bridge_python, "/opt/venv/bin/python")
+  MiniTest.expect.equality(jove.config.jupytext, "/other/jupytext")
 end
 
 T["setup"]["raises on invalid opt types"] = function()
   MiniTest.expect.error(function()
     jove.setup({ jupytext = 123 })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ bridge_python = 123 })
   end)
   MiniTest.expect.error(function()
     jove.setup({ auto_kernel = "yes" })

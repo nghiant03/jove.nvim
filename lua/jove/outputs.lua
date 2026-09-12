@@ -1,75 +1,28 @@
--- outputs.lua: bridge molten <-> .ipynb JSON outputs.
-local state = require("jove.state")
-
+-- outputs.lua: output persistence stub.
+-- Molten is gone; outputs are merged into the .ipynb automatically on write
+-- in a later phase (PLAN.md Phase 6). These shims keep the buffer.lua call
+-- sites (`M.import` / `M.export`) working as silent no-ops.
 local M = {}
 
----Has molten been loaded into Neovim?
----@return boolean
-local function molten_loaded()
-  return vim.fn.exists(":MoltenInit") == 2
-end
+local export_notified = false
 
----Return this buffer's molten kernel ids.
----@param buf integer
----@return string[]
-local function buffer_kernels(buf)
-  if not molten_loaded() or not vim.api.nvim_buf_is_valid(buf) then
-    return {}
-  end
-  local ok, kernels = pcall(vim.api.nvim_buf_call, buf, function()
-    return vim.fn.MoltenRunningKernels(true)
-  end)
-  if not ok or type(kernels) ~= "table" then
-    return {}
-  end
-  return kernels
-end
-
----Has molten been initialized in this buffer?
+---Import outputs from .ipynb JSON (stub: real import lands in Phase 6).
 ---@param buf integer
 ---@return boolean
-local function molten_initialized(buf)
-  return #buffer_kernels(buf) > 0
+function M.import(_buf)
+  return true
 end
 
----Restore outputs from .ipynb JSON into molten cells.
----No-op if molten isn't initialized or the notebook does not exist on disk.
+---Export outputs to the .ipynb on disk (stub: real persistence lands in
+---Phase 6; outputs are merged automatically on save).
 ---@param buf integer
-function M.import(buf)
-  buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
-  local entry = state.peek(buf)
-  local path = (entry and entry.path) or vim.api.nvim_buf_get_name(buf)
-  if path == "" or not vim.uv.fs_stat(path) then
-    return
+---@return boolean
+function M.export(_buf)
+  if not export_notified then
+    export_notified = true
+    vim.notify("jove: outputs are now persisted automatically on save", vim.log.levels.INFO)
   end
-  local kernel = buffer_kernels(buf)[1]
-  if type(kernel) ~= "string" or kernel == "" then
-    return
-  end
-  local ok, err = pcall(vim.api.nvim_buf_call, buf, function()
-    vim.cmd(
-      ("MoltenImportOutput %s %s"):format(vim.fn.fnameescape(path), vim.fn.fnameescape(kernel))
-    )
-  end)
-  if not ok then
-    vim.notify("[jove] MoltenImportOutput failed: " .. tostring(err), vim.log.levels.WARN)
-  end
-end
-
----Merge molten's in-session outputs back into the .ipynb on disk.
----@param buf integer
-function M.export(buf)
-  buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
-  if not molten_initialized(buf) then
-    return
-  end
-  -- The ! variant overwrites without prompting.
-  local ok, err = pcall(vim.api.nvim_buf_call, buf, function()
-    vim.cmd("MoltenExportOutput!")
-  end)
-  if not ok then
-    vim.notify("[jove] MoltenExportOutput failed: " .. tostring(err), vim.log.levels.WARN)
-  end
+  return true
 end
 
 return M
