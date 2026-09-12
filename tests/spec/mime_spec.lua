@@ -1,0 +1,217 @@
+-- mime_spec.lua: mime bundle normalization into renderable chunk lists.
+local MiniTest = require("mini.test")
+local mime = require("jove.mime")
+
+local T = MiniTest.new_set()
+
+---mini.test has no truthy expectation; assert identity against true.
+---@param cond any
+local function expect_truthy(cond)
+  MiniTest.expect.equality(cond == true, true)
+end
+
+---First chunk of a given kind, or nil.
+---@param chunks table[]
+---@param kind string
+---@return table?
+local function first_of_kind(chunks, kind)
+  for _, c in ipairs(chunks) do
+    if c.kind == kind then
+      return c
+    end
+  end
+  return nil
+end
+
+T["strip_ansi"] = MiniTest.new_set()
+
+T["strip_ansi"]["removes CSI color sequences"] = function()
+  MiniTest.expect.equality(mime.strip_ansi("\27[0;31mred\27[0m"), "red")
+end
+
+T["strip_ansi"]["removes bold/underline and combined sequences"] = function()
+  MiniTest.expect.equality(
+    mime.strip_ansi("\27[1mbold\27[22m and \27[4munder\27[24m"),
+    "bold and under"
+  )
+end
+
+T["strip_ansi"]["removes cursor sequences and lone ESC"] = function()
+  MiniTest.expect.equality(mime.strip_ansi("a\27[2Kb\27c"), "abc")
+end
+
+T["strip_ansi"]["removes BEL-terminated OSC sequences"] = function()
+  MiniTest.expect.equality(mime.strip_ansi("\27]0;window title\7hello"), "hello")
+end
+
+T["strip_ansi"]["removes ST-terminated OSC sequences"] = function()
+  MiniTest.expect.equality(mime.strip_ansi("\27]2;window title\27\\rest"), "rest")
+end
+
+T["strip_ansi"]["removes OSC alongside CSI sequences"] = function()
+  MiniTest.expect.equality(mime.strip_ansi("\27]0;t\7\27[31mred\27[0m"), "red")
+end
+
+T["strip_ansi"]["leaves plain text untouched"] = function()
+  MiniTest.expect.equality(
+    mime.strip_ansi("Traceback (most recent call last)"),
+    "Traceback (most recent call last)"
+  )
+end
+
+T["strip_ansi"]["passes through non-strings"] = function()
+  MiniTest.expect.equality(mime.strip_ansi(nil), nil)
+  MiniTest.expect.equality(mime.strip_ansi(5), 5)
+end
+
+T["ordering"] = MiniTest.new_set()
+
+T["ordering"]["text/plain first, images last, unsupported noted"] = function()
+  local chunks = mime.render({
+    kind = "display_data",
+    mime = {
+      ["image/gif"] = "GIF8",
+      ["image/png"] = "cG5n",
+      ["text/html"] = "<b>hi</b>",
+      ["application/json"] = '{"a":1}',
+      ["text/plain"] = "plain",
+    },
+  })
+  local order = vim
+    .iter(chunks)
+    :map(function(c)
+      return (c.kind == "text" or c.kind == "note") and c.mime or c.kind
+    end)
+    :totable()
+  MiniTest.expect.equality(order, {
+    "text/plain",
+    "text/html",
+    "application/json",
+    "image",
+    "image/gif", -- unsupported → note chunk carrying its mime
+  })
+end
+
+T["ordering"]["sorts multiple text/* mimes alphabetically"] = function()
+  local chunks = mime.render({
+    kind = "display_data",
+    mime = { ["text/html"] = "h", ["text/latex"] = "l", ["text/plain"] = "p" },
+  })
+  local mimes = vim
+    .iter(chunks)
+    :map(function(c)
+      return c.mime
+    end)
+    :totable()
+  MiniTest.expect.equality(mimes, { "text/plain", "text/html", "text/latex" })
+end
+
+T["ordering"]["text/html falls back to tag-stripped plain text"] = function()
+  local chunks =
+    mime.render({ kind = "display_data", mime = { ["text/html"] = "<b>bold</b><br/>x &amp; y" } })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1].kind, "text")
+  MiniTest.expect.equality(chunks[1].mime, "text/html")
+  MiniTest.expect.equality(chunks[1].text, "bold\nx & y")
+end
+
+T["ordering"]["image/png|jpeg become image chunks with base64 data preserved"] = function()
+  local chunks = mime.render({
+    kind = "execute_result",
+    mime = { ["image/png"] = "iVBORw0KGgo=", ["image/jpeg"] = "/9j/4AAQ" },
+  })
+  MiniTest.expect.equality(#chunks, 2)
+  MiniTest.expect.equality(chunks[1], { kind = "image", mime = "image/png", data = "iVBORw0KGgo=" })
+  MiniTest.expect.equality(chunks[2], { kind = "image", mime = "image/jpeg", data = "/9j/4AAQ" })
+end
+
+T["ordering"]["image/svg+xml becomes a text note (no direct svg support)"] = function()
+  local chunks = mime.render({ kind = "display_data", mime = { ["image/svg+xml"] = "<svg/>" } })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1].kind, "note")
+  expect_truthy(chunks[1].text:find("svg", 1, true) ~= nil)
+end
+
+T["ordering"]["unknown mimes become an unsupported note"] = function()
+  local chunks = mime.render({ kind = "display_data", mime = { ["application/x-foo"] = "bar" } })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1].kind, "note")
+  MiniTest.expect.equality(chunks[1].text, "[unsupported mime application/x-foo]")
+end
+
+T["ordering"]["non-string payloads become a note instead of erroring"] = function()
+  local chunks = mime.render({ kind = "display_data", mime = { ["application/json"] = { a = 1 } } })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1].kind, "note")
+end
+
+T["stream"] = MiniTest.new_set()
+
+T["stream"]["renders the text/plain payload raw"] = function()
+  local chunks =
+    mime.render({ kind = "stream", name = "stdout", mime = { ["text/plain"] = "1\n2\n" } })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1].kind, "text")
+  MiniTest.expect.equality(chunks[1].text, "1\n2\n")
+  MiniTest.expect.equality(chunks[1].hl_group, nil)
+end
+
+T["error"] = MiniTest.new_set()
+
+T["error"]["ename: evalue chunk first, stripped traceback after, ErrorMsg hl"] = function()
+  local chunks = mime.render({
+    kind = "error",
+    ename = "ValueError",
+    evalue = "bad input",
+    traceback = {
+      "\27[0;31m---------------------------------------------------------------------------\27[0m",
+      "\27[0;31mValueError\27[0m                                 Traceback (most recent call last)",
+      "somewhere in the cell",
+    },
+  })
+  MiniTest.expect.equality(#chunks, 2)
+  MiniTest.expect.equality(chunks[1].text, "ValueError: bad input")
+  MiniTest.expect.equality(chunks[1].hl_group, "ErrorMsg")
+  MiniTest.expect.equality(chunks[2].hl_group, "ErrorMsg")
+  MiniTest.expect.equality(
+    chunks[2].text,
+    "---------------------------------------------------------------------------\n"
+      .. "ValueError                                 Traceback (most recent call last)\n"
+      .. "somewhere in the cell"
+  )
+  expect_truthy(chunks[2].text:find("\27", 1, true) == nil) -- fully stripped
+end
+
+T["error"]["falls back to mime text/plain when no traceback"] = function()
+  local chunks = mime.render({
+    kind = "error",
+    ename = "ZeroDivisionError",
+    evalue = "division by zero",
+    mime = { ["text/plain"] = "\27[31mzero division detail\27[0m" },
+  })
+  MiniTest.expect.equality(#chunks, 2)
+  local tb = chunks[2]
+  MiniTest.expect.equality(tb.text, "zero division detail")
+end
+
+T["error"]["renders a note when there are no details at all"] = function()
+  local chunks = mime.render({ kind = "error" })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1].kind, "note")
+  MiniTest.expect.equality(chunks[1].hl_group, "ErrorMsg")
+end
+
+T["misc"] = MiniTest.new_set()
+
+T["misc"]["unknown kinds render generically from the mime bundle"] = function()
+  local chunks = mime.render({ kind = "mystery", mime = { ["text/plain"] = "x" } })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(first_of_kind(chunks, "text").text, "x")
+end
+
+T["misc"]["empty params render to no chunks"] = function()
+  MiniTest.expect.equality(mime.render({}), {})
+  MiniTest.expect.equality(mime.render(nil), {})
+end
+
+return T

@@ -53,6 +53,35 @@ T["setup"]["bridge_python: merge behavior"] = function()
   MiniTest.expect.equality(jove.config.jupytext, "/other/jupytext")
 end
 
+T["setup"]["cell_motions: boolean type check"] = function()
+  MiniTest.expect.error(function()
+    jove.setup({ cell_motions = "yes" })
+  end)
+  MiniTest.expect.equality(jove.config.cell_motions, defaults.cell_motions)
+end
+
+T["setup"]["signs: char type checks"] = function()
+  MiniTest.expect.error(function()
+    jove.setup({ signs = { running = 5 } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ signs = "▶" })
+  end)
+  MiniTest.expect.equality(jove.config.signs.running, defaults.signs.running)
+end
+
+T["setup"]["output: nested validation and partial merge"] = function()
+  MiniTest.expect.error(function()
+    jove.setup({ output = { max_lines = "lots" } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ output = { images = "sure" } })
+  end)
+  jove.setup({ output = { max_lines = 10 } })
+  MiniTest.expect.equality(jove.config.output.max_lines, 10)
+  MiniTest.expect.equality(jove.config.output.images, defaults.output.images)
+end
+
 T["setup"]["raises on invalid opt types"] = function()
   MiniTest.expect.error(function()
     jove.setup({ jupytext = 123 })

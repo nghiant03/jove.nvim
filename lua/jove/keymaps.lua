@@ -1,7 +1,10 @@
--- keymaps.lua: cell navigation + run helpers wrapping molten.
+-- keymaps.lua: cell navigation + run entry points over lua/jove/execute.lua.
 -- Navigation and run ranges come from the cached cell model in lua/jove/cell.lua
 -- (one parse per buffer version, no per-cell full-buffer line fetches).
+-- Execution itself is the per-buffer FIFO queue in execute.lua (no molten,
+-- no visual-mode hack).
 local cell = require("jove.cell")
+local execute = require("jove.execute")
 local state = require("jove.state")
 
 local M = {}
@@ -30,59 +33,29 @@ function M.prev_cell()
   jump(-1)
 end
 
----Visually select the cell containing the cursor and call MoltenEvaluateVisual.
+---Run the cell containing the cursor (direct code send via execute.lua).
 function M.run_cell()
-  if vim.fn.exists(":MoltenEvaluateVisual") ~= 2 then
-    vim.notify("[jove] molten not loaded", vim.log.levels.WARN)
-    return
-  end
-  local buf = vim.api.nvim_get_current_buf()
-  local cur = vim.api.nvim_win_get_cursor(0)[1]
-  local c = cell.at(buf, cur)
-  if not c then
-    return
-  end
-  -- Skip the `# %%` header line when selecting code body.
-  local body_start = c.header and c.header + 1 or c.start_lnum
-  if body_start > c.end_lnum then
-    return
-  end
-  vim.api.nvim_win_set_cursor(0, { body_start, 0 })
-  vim.cmd(("normal! V%dG"):format(c.end_lnum))
-  vim.cmd("MoltenEvaluateVisual")
-  local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
-  vim.api.nvim_feedkeys(esc, "nx", false)
+  execute.run_cell(vim.api.nvim_get_current_buf())
 end
 
----Run every cell from the top of the buffer up to (and including) the cursor.
+---Run every code cell from the top of the buffer up to the cursor.
 function M.run_above()
-  if vim.fn.exists(":MoltenEvaluateVisual") ~= 2 then
-    vim.notify("[jove] molten not loaded", vim.log.levels.WARN)
-    return
-  end
-  local buf = vim.api.nvim_get_current_buf()
-  local cur = vim.api.nvim_win_get_cursor(0)[1]
-  for _, c in ipairs(cell.all(buf)) do
-    if c.header and c.header <= cur then
-      vim.api.nvim_win_set_cursor(0, { c.header, 0 })
-      M.run_cell()
-    end
-  end
+  execute.run_above(vim.api.nvim_get_current_buf())
 end
 
----Run every cell in the buffer.
+---Run every code cell in the buffer.
 function M.run_all()
-  if vim.fn.exists(":MoltenEvaluateVisual") ~= 2 then
-    vim.notify("[jove] molten not loaded", vim.log.levels.WARN)
-    return
-  end
-  local buf = vim.api.nvim_get_current_buf()
-  for _, c in ipairs(cell.all(buf)) do
-    if c.header then
-      vim.api.nvim_win_set_cursor(0, { c.header, 0 })
-      M.run_cell()
-    end
-  end
+  execute.run_all(vim.api.nvim_get_current_buf())
+end
+
+---Run the visual selection as one unit (x-mode mapping).
+function M.run_selection()
+  execute.run_selection(vim.api.nvim_get_current_buf())
+end
+
+---Run the cursor cell, then jump to the next cell header.
+function M.run_cell_and_advance()
+  execute.run_cell_and_advance(vim.api.nvim_get_current_buf())
 end
 
 ---Apply user-configured keymaps. Called from setup().
@@ -97,7 +70,7 @@ function M.apply(keymap)
   local opts = { silent = true }
   local patterns = { "python", "julia", "r", "javascript" }
 
-  local function map(lhs, rhs, desc)
+  local function map(lhs, rhs, desc, mode)
     if not lhs then
       return
     end
@@ -108,18 +81,19 @@ function M.apply(keymap)
       callback = function(ev)
         local entry = state.peek(ev.buf)
         if entry and entry.path then
-          vim.keymap.set("n", lhs, rhs, vim.tbl_extend("force", opts, { buffer = ev.buf }))
+          vim.keymap.set(mode or "n", lhs, rhs, vim.tbl_extend("force", opts, { buffer = ev.buf }))
         end
       end,
     })
   end
 
-  -- Built-in `ic`/`ac` cell text-objects: always on for jove buffers (not
-  -- config-gated), registered alongside the user keymaps below.
+  -- Built-in per-buffer setup: `ic`/`ac` cell text-objects, `[c`/`]c` cell
+  -- motions (cfg.cell_motions), run_and_advance + run_selection mappings.
+  -- Registered as ONE FileType autocmd alongside the user keymaps below.
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
     pattern = patterns,
-    desc = "jove: built-in cell text-objects (ic/ac)",
+    desc = "jove: built-in cell text-objects, motions, run extras",
     callback = function(ev)
       local entry = state.peek(ev.buf)
       if entry and entry.path then
@@ -139,6 +113,37 @@ function M.apply(keymap)
             )
           end
         end
+
+        local cfg = require("jove").config
+        if cfg.cell_motions then
+          vim.keymap.set("n", "]c", M.next_cell, {
+            buffer = ev.buf,
+            silent = true,
+            desc = "jove: next cell",
+          })
+          vim.keymap.set("n", "[c", M.prev_cell, {
+            buffer = ev.buf,
+            silent = true,
+            desc = "jove: prev cell",
+          })
+        end
+        if cfg.keymap.run_and_advance then
+          vim.keymap.set("n", cfg.keymap.run_and_advance, M.run_cell_and_advance, {
+            buffer = ev.buf,
+            silent = true,
+            desc = "jove: run cell and advance",
+          })
+        end
+        if cfg.keymap.run_selection then
+          vim.keymap.set("x", cfg.keymap.run_selection, M.run_selection, {
+            buffer = ev.buf,
+            silent = true,
+            desc = "jove: run selection",
+          })
+        end
+
+        -- Status rendering (gutter signs + spinner) for this buffer.
+        require("jove.ui").attach(ev.buf)
       end
     end,
   })

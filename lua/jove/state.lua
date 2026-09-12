@@ -8,9 +8,11 @@ local M = {}
 ---@field json table?         Parsed .ipynb JSON, refreshed on read and write.
 ---@field last_write string?  Checksum of the bytes we last wrote (single-flight guard, Phase 1).
 -- Reserved slots for future phases (populated by later modules, documented here):
---   cells   -- lua/jove/cell.lua    cell parse cache (Phase 2)
---   kernel  -- lua/jove/kernel.lua  bridge/kernel handle (Phase 3)
---   outputs -- lua/jove/output.lua   per-cell output store (Phase 5)
+--   cells   -- lua/jove/cell.lua      cell parse cache (Phase 2)
+--   kernel  -- lua/jove/kernel.lua    bridge/kernel handle (Phase 3)
+--   exec    -- lua/jove/execute.lua   { queue, running, status, status_cbs,
+--                                        attached, unsubs } (Phase 4)
+--   outputs -- lua/jove/output.lua    per-cell output store (Phase 5)
 
 ---@type table<integer, jove.BufferState>
 local registry = {}

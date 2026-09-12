@@ -1,4 +1,4 @@
--- jove.nvim: native .ipynb editing via jupytext + molten.
+-- jove.nvim: native .ipynb editing via jupytext + a first-party kernel bridge.
 -- This file only registers autocmds; configuration lives in lua/jove/init.lua.
 
 if vim.g.loaded_jove == 1 then
@@ -58,7 +58,7 @@ vim.api.nvim_create_autocmd({ "FileChangedShell" }, {
 
 vim.api.nvim_create_user_command("JoveRunCell", function()
   require("jove.keymaps").run_cell()
-end, { desc = "Run current notebook cell via molten" })
+end, { desc = "Run current notebook cell" })
 
 vim.api.nvim_create_user_command("JoveRunAbove", function()
   require("jove.keymaps").run_above()
@@ -78,15 +78,58 @@ end, { desc = "Jump to previous notebook cell" })
 
 vim.api.nvim_create_user_command("JoveInitKernel", function()
   require("jove.kernel").init(0)
-end, { desc = "Initialize molten kernel for current notebook" })
+end, { desc = "Start a kernel for the current notebook" })
+
+vim.api.nvim_create_user_command("JoveSelectKernel", function()
+  require("jove.kernel").select(0)
+end, { desc = "Pick a kernelspec for the current notebook (replaces running kernel)" })
+
+vim.api.nvim_create_user_command("JoveInterrupt", function()
+  require("jove.execute").interrupt(0)
+end, { desc = "Interrupt the running execution" })
+
+vim.api.nvim_create_user_command("JoveRestartKernel", function()
+  require("jove.kernel").restart(0)
+end, { desc = "Restart the current notebook kernel" })
+
+vim.api.nvim_create_user_command("JoveShutdownKernel", function()
+  require("jove.kernel").shutdown(0)
+end, { desc = "Shut down the current notebook kernel and bridge" })
+
+vim.api.nvim_create_user_command("JoveRunSelection", function()
+  require("jove.execute").run_selection(0)
+end, { desc = "Run the visual selection as one unit" })
+
+vim.api.nvim_create_user_command("JoveRunCellAndAdvance", function()
+  require("jove.execute").run_cell_and_advance(0)
+end, { desc = "Run the current cell and jump to the next" })
+
+vim.api.nvim_create_user_command("JoveToggleOutput", function()
+  require("jove.output").toggle(0)
+end, { desc = "Show/hide rendered outputs of the current cell" })
+
+vim.api.nvim_create_user_command("JoveOpenOutput", function()
+  require("jove.output").open_float(0)
+end, { desc = "Open the current cell's outputs in a float" })
+
+vim.api.nvim_create_user_command("JoveClearOutput", function()
+  local c = require("jove.cell").at(0, vim.fn.line("."))
+  if c then
+    require("jove.output").clear(0, c.hash)
+  end
+end, { desc = "Clear outputs of the current cell" })
+
+vim.api.nvim_create_user_command("JoveClearOutputs", function()
+  require("jove.output").clear(0)
+end, { desc = "Clear all rendered outputs in this buffer" })
 
 vim.api.nvim_create_user_command("JoveImportOutputs", function()
   require("jove.outputs").import(0)
-end, { desc = "Import existing outputs from .ipynb JSON into molten" })
+end, { desc = "No-op: outputs load automatically on open (kept for compatibility)" })
 
 vim.api.nvim_create_user_command("JoveExportOutputs", function()
   require("jove.outputs").export(0)
-end, { desc = "Export molten outputs back into the .ipynb on disk" })
+end, { desc = "No-op: outputs persist automatically on save (kept for compatibility)" })
 
 vim.api.nvim_create_user_command("JoveReload", function()
   require("jove.buffer").reload(0)

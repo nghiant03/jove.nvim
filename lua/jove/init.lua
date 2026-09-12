@@ -8,7 +8,10 @@ local M = {}
 ---@field auto_kernel boolean            Start a bridge + kernel on open (kernelspec from notebook metadata, env, or picker).
 ---@field auto_import_outputs boolean    Kept for config compatibility; outputs are now persisted automatically (Phase 6).
 ---@field auto_export_outputs boolean    Kept for config compatibility; outputs are now persisted automatically (Phase 6).
----@field auto_reload boolean           Auto-reload buffer when the .ipynb changes on disk (our own writes are suppressed).
+---@field auto_reload boolean            Auto-reload buffer when the .ipynb changes on disk (our own writes are suppressed).
+---@field cell_motions boolean           Map [c / ]c cell motions on jove buffers.
+---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.
+---@field output table                   Output rendering options: { max_lines, images }.
 ---@field keymap table<string, string|false>
 
 ---@type jove.Config
@@ -19,8 +22,21 @@ M.config = {
   auto_import_outputs = true,
   auto_export_outputs = true,
   auto_reload = false,
+  cell_motions = true,
+  signs = {
+    queued = "…",
+    running = "▶",
+    ok = "✓",
+    error = "✗",
+  },
+  output = {
+    max_lines = 50,
+    images = true,
+  },
   keymap = {
     run_cell = false,
+    run_and_advance = false,
+    run_selection = false,
     next_cell = false,
     prev_cell = false,
   },
@@ -42,6 +58,14 @@ local function validate_config(cfg)
   vim.validate("auto_import_outputs", cfg.auto_import_outputs, "boolean")
   vim.validate("auto_export_outputs", cfg.auto_export_outputs, "boolean")
   vim.validate("auto_reload", cfg.auto_reload, "boolean")
+  vim.validate("cell_motions", cfg.cell_motions, "boolean")
+  vim.validate("signs", cfg.signs, "table")
+  for _, k in ipairs({ "queued", "running", "ok", "error" }) do
+    vim.validate(("signs.%s"):format(k), cfg.signs[k], "string")
+  end
+  vim.validate("output", cfg.output, "table")
+  vim.validate("output.max_lines", cfg.output.max_lines, "number")
+  vim.validate("output.images", cfg.output.images, "boolean")
   vim.validate("keymap", cfg.keymap, "table")
   for k, v in pairs(cfg.keymap) do
     vim.validate(("keymap.%s"):format(k), v, is_keymap_lhs)
