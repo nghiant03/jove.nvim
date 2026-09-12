@@ -1,4 +1,6 @@
 -- kernel.lua: auto-init molten from notebook metadata or active venv.
+local state = require("jove.state")
+
 local M = {}
 
 local function molten_loaded()
@@ -9,7 +11,8 @@ end
 ---@param buf integer
 ---@return string?
 local function kernelspec_name(buf)
-  local json = vim.b[buf].jove_json
+  local entry = state.peek(buf)
+  local json = entry and entry.json
   if type(json) ~= "table" then
     return nil
   end

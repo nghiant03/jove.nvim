@@ -43,8 +43,14 @@ vim.api.nvim_create_autocmd({ "FileChangedShell" }, {
   group = group,
   pattern = { "*.ipynb" },
   callback = function(ev)
+    -- true: the change is our own last write -> suppress silently.
+    -- false: config.auto_reload is on and a reload was scheduled -> nothing
+    -- else to do (v:fcs_choice stays empty, so the default handler no-ops).
+    if require("jove.buffer").changed_shell(ev.buf, ev.match) ~= nil then
+      return
+    end
     vim.notify(
-      ("[jove] %s changed on disk; reload with :e to pick up changes."):format(ev.match),
+      ("[jove] %s changed on disk; reload with :JoveReload to pick up changes."):format(ev.match),
       vim.log.levels.WARN
     )
   end,
@@ -81,3 +87,7 @@ end, { desc = "Import existing outputs from .ipynb JSON into molten" })
 vim.api.nvim_create_user_command("JoveExportOutputs", function()
   require("jove.outputs").export(0)
 end, { desc = "Export molten outputs back into the .ipynb on disk" })
+
+vim.api.nvim_create_user_command("JoveReload", function()
+  require("jove.buffer").reload(0)
+end, { desc = "Reload the current notebook buffer from disk" })

@@ -1,0 +1,3 @@
+std = "neovim"
+
+exclude = [".testdeps/*"]

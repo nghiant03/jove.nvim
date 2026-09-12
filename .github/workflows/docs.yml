@@ -1,0 +1,29 @@
+name: Docs
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  vimdoc:
+    name: Generate vimdoc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate doc/jove.txt from README.md
+        uses: kdheepak/panvimdoc@main
+        with:
+          vimdoc: jove
+          description: Native .ipynb editing for Neovim via jupytext
+          pandoc: README.md
+
+      - name: Commit generated vimdoc
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: generate doc/jove.txt via panvimdoc"
+          file_pattern: doc/jove.txt

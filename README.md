@@ -22,8 +22,8 @@ buffer  buftype=acwrite, filetype=python
 - [`jupytext`](https://github.com/mwouts/jupytext) on `$PATH`
 - [`molten-nvim`](https://github.com/benlubas/molten-nvim) — optional but
   required for kernel execution and rich outputs
-- [`nvim-various-textobjs`](https://github.com/chrisgrieser/nvim-various-textobjs)
-  — optional, for `ic`/`ac` cell text-objects
+- `ic`/`ac` cell text-objects are built in — enabled by default for jove
+  buffers, no extra plugin needed
 
 ## Install (lazy.nvim)
 

@@ -1,49 +1,24 @@
 -- keymaps.lua: cell navigation + run helpers wrapping molten.
+-- Navigation and run ranges come from the cached cell model in lua/jove/cell.lua
+-- (one parse per buffer version, no per-cell full-buffer line fetches).
+local cell = require("jove.cell")
+local state = require("jove.state")
+
 local M = {}
-
-local CELL_PAT = "^# %%%%"
-
----Find the [start, end] line range (1-based, inclusive) of the cell at `lnum`.
----@param buf integer
----@param lnum integer  1-based
----@return integer, integer
-local function cell_range(buf, lnum)
-  local total = vim.api.nvim_buf_line_count(buf)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, total, false)
-
-  local start = 1
-  for i = lnum, 1, -1 do
-    if lines[i] and lines[i]:match(CELL_PAT) then
-      start = i
-      break
-    end
-  end
-
-  local stop = total
-  for i = start + 1, total do
-    if lines[i]:match(CELL_PAT) then
-      stop = i - 1
-      break
-    end
-  end
-  return start, stop
-end
 
 ---Jump to the next/previous cell header from the cursor.
 ---@param dir 1|-1
 local function jump(dir)
   local buf = vim.api.nvim_get_current_buf()
   local cur = vim.api.nvim_win_get_cursor(0)[1]
-  local total = vim.api.nvim_buf_line_count(buf)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, total, false)
-
-  local i = cur + dir
-  while i >= 1 and i <= total do
-    if lines[i]:match(CELL_PAT) then
-      vim.api.nvim_win_set_cursor(0, { i, 0 })
-      return
-    end
-    i = i + dir
+  local target
+  if dir == 1 then
+    target = cell.next(buf, cur)
+  else
+    target = cell.prev(buf, cur)
+  end
+  if target then
+    vim.api.nvim_win_set_cursor(0, { target, 0 })
   end
 end
 
@@ -63,14 +38,17 @@ function M.run_cell()
   end
   local buf = vim.api.nvim_get_current_buf()
   local cur = vim.api.nvim_win_get_cursor(0)[1]
-  local s, e = cell_range(buf, cur)
+  local c = cell.at(buf, cur)
+  if not c then
+    return
+  end
   -- Skip the `# %%` header line when selecting code body.
-  local body_start = s + 1
-  if body_start > e then
+  local body_start = c.header and c.header + 1 or c.start_lnum
+  if body_start > c.end_lnum then
     return
   end
   vim.api.nvim_win_set_cursor(0, { body_start, 0 })
-  vim.cmd(("normal! V%dG"):format(e))
+  vim.cmd(("normal! V%dG"):format(c.end_lnum))
   vim.cmd("MoltenEvaluateVisual")
   local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
   vim.api.nvim_feedkeys(esc, "nx", false)
@@ -84,11 +62,9 @@ function M.run_above()
   end
   local buf = vim.api.nvim_get_current_buf()
   local cur = vim.api.nvim_win_get_cursor(0)[1]
-  local total = vim.api.nvim_buf_line_count(buf)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, total, false)
-  for i = 1, cur do
-    if lines[i]:match(CELL_PAT) then
-      vim.api.nvim_win_set_cursor(0, { i, 0 })
+  for _, c in ipairs(cell.all(buf)) do
+    if c.header and c.header <= cur then
+      vim.api.nvim_win_set_cursor(0, { c.header, 0 })
       M.run_cell()
     end
   end
@@ -101,37 +77,71 @@ function M.run_all()
     return
   end
   local buf = vim.api.nvim_get_current_buf()
-  local total = vim.api.nvim_buf_line_count(buf)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, total, false)
-  for i = 1, total do
-    if lines[i]:match(CELL_PAT) then
-      vim.api.nvim_win_set_cursor(0, { i, 0 })
+  for _, c in ipairs(cell.all(buf)) do
+    if c.header then
+      vim.api.nvim_win_set_cursor(0, { c.header, 0 })
       M.run_cell()
     end
   end
 end
 
 ---Apply user-configured keymaps. Called from setup().
+---Idempotent: the augroup is created with clear=true so repeated setup() calls
+---replace the previous autocmds instead of stacking duplicates.
 ---@param keymap table<string, string|false>
 function M.apply(keymap)
   if not keymap then
     return
   end
-  local opts = { silent = true, desc = nil }
+  local group = vim.api.nvim_create_augroup("jove_keymaps", { clear = true })
+  local opts = { silent = true }
+  local patterns = { "python", "julia", "r", "javascript" }
+
   local function map(lhs, rhs, desc)
     if not lhs then
       return
     end
-    opts.desc = desc
     vim.api.nvim_create_autocmd("FileType", {
-      pattern = { "python", "julia", "r" },
+      group = group,
+      pattern = patterns,
+      desc = desc,
       callback = function(ev)
-        if vim.b[ev.buf].jove_path then
+        local entry = state.peek(ev.buf)
+        if entry and entry.path then
           vim.keymap.set("n", lhs, rhs, vim.tbl_extend("force", opts, { buffer = ev.buf }))
         end
       end,
     })
   end
+
+  -- Built-in `ic`/`ac` cell text-objects: always on for jove buffers (not
+  -- config-gated), registered alongside the user keymaps below.
+  vim.api.nvim_create_autocmd("FileType", {
+    group = group,
+    pattern = patterns,
+    desc = "jove: built-in cell text-objects (ic/ac)",
+    callback = function(ev)
+      local entry = state.peek(ev.buf)
+      if entry and entry.path then
+        for _, obj in ipairs({ { "ic", "i" }, { "ac", "a" } }) do
+          local lhs, kind = obj[1], obj[2]
+          for _, mode in ipairs({ "x", "o" }) do
+            vim.keymap.set(
+              mode,
+              lhs,
+              function()
+                cell.textobj(kind)
+              end,
+              vim.tbl_extend("force", opts, {
+                buffer = ev.buf,
+                desc = "jove: select cell " .. (kind == "i" and "body" or "whole"),
+              })
+            )
+          end
+        end
+      end
+    end,
+  })
 
   map(keymap.run_cell, M.run_cell, "jove: run cell")
   map(keymap.next_cell, M.next_cell, "jove: next cell")

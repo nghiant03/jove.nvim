@@ -1,4 +1,6 @@
 -- outputs.lua: bridge molten <-> .ipynb JSON outputs.
+local state = require("jove.state")
+
 local M = {}
 
 ---Has molten been loaded into Neovim?
@@ -35,7 +37,8 @@ end
 ---@param buf integer
 function M.import(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
-  local path = vim.b[buf].jove_path or vim.api.nvim_buf_get_name(buf)
+  local entry = state.peek(buf)
+  local path = (entry and entry.path) or vim.api.nvim_buf_get_name(buf)
   if path == "" or not vim.uv.fs_stat(path) then
     return
   end
@@ -44,7 +47,9 @@ function M.import(buf)
     return
   end
   local ok, err = pcall(vim.api.nvim_buf_call, buf, function()
-    vim.cmd(("MoltenImportOutput %s %s"):format(vim.fn.fnameescape(path), vim.fn.fnameescape(kernel)))
+    vim.cmd(
+      ("MoltenImportOutput %s %s"):format(vim.fn.fnameescape(path), vim.fn.fnameescape(kernel))
+    )
   end)
   if not ok then
     vim.notify("[jove] MoltenImportOutput failed: " .. tostring(err), vim.log.levels.WARN)
