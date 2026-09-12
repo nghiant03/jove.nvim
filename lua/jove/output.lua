@@ -66,9 +66,8 @@ local function get_entry(st, cell_hash)
   return entry, store
 end
 
----Render chunks to virt_lines. Image chunks render as a placeholder line (or a
----placeholder text line; their index
----within `lines` is returned alongside for the image layer.
+---Render chunks to virt_lines. Image chunks render as a placeholder text
+---line; their index within `lines` is returned alongside for the image layer.
 ---@param chunks table[]
 ---@return table[] lines    virt_lines entries: { { text, hl_group? } }
 ---@return table[] images    { { chunk = <image chunk>, index = <int> } }
@@ -172,6 +171,9 @@ function M.push(buf, cell_hash, params)
       return -- not a jove-managed buffer
     end
     local entry = get_entry(st, cell_hash)
+    -- A session event means the cell actually ran: any disk provenance ends
+    -- here (persist.merge_into may now rewrite this cell's outputs).
+    entry.from_disk = nil
     entry.raw[#entry.raw + 1] = params
     vim.list_extend(entry.chunks, mime.render(params))
     render_cell(buf, cell_hash)
@@ -324,6 +326,10 @@ function M.import(buf, outputs_by_hash)
     end
     for hash, events in pairs(outputs_by_hash or {}) do
       local entry = get_entry(st, hash)
+      -- Provenance: entries created here hold DISK content transiting the
+      -- store (persist.import), not session results — persist.merge_into
+      -- must not rewrite them or null their execution_count.
+      entry.from_disk = true
       for _, params in ipairs(events or {}) do
         entry.raw[#entry.raw + 1] = params
         vim.list_extend(entry.chunks, mime.render(params))

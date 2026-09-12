@@ -123,14 +123,6 @@ vim.api.nvim_create_user_command("JoveClearOutputs", function()
   require("jove.output").clear(0)
 end, { desc = "Clear all rendered outputs in this buffer" })
 
-vim.api.nvim_create_user_command("JoveImportOutputs", function()
-  require("jove.outputs").import(0)
-end, { desc = "No-op: outputs load automatically on open (kept for compatibility)" })
-
-vim.api.nvim_create_user_command("JoveExportOutputs", function()
-  require("jove.outputs").export(0)
-end, { desc = "No-op: outputs persist automatically on save (kept for compatibility)" })
-
 vim.api.nvim_create_user_command("JoveReload", function()
   require("jove.buffer").reload(0)
 end, { desc = "Reload the current notebook buffer from disk" })

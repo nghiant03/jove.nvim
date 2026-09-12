@@ -104,6 +104,26 @@ local function parse_cells(lines)
   return cells
 end
 
+---Content hash for a cell source taken from .ipynb JSON (string or list of
+---lines), using the same normalize+sha256 logic as parsing. Public because
+---persist.lua matches .ipynb JSON cells to session outputs by hash: when
+---jupytext round-trips the source verbatim, this hash equals the `hash` the
+---buffer's parsed cells carry (and the bridge cell keys execute.lua sends).
+---@param source string|string[]?
+---@return string
+function M.hash_source(source)
+  local lines
+  if type(source) == "table" then
+    lines = {}
+    for _, l in ipairs(source) do
+      lines[#lines + 1] = type(l) == "string" and l or tostring(l)
+    end
+  else
+    lines = vim.split(tostring(source), "\n", { plain = true, trimempty = false })
+  end
+  return vim.fn.sha256(normalize_body(lines))
+end
+
 ---All cells for a buffer, from cache or freshly parsed.
 ---The returned list is the cached table; treat it as read-only.
 ---@param buf integer

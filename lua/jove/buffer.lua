@@ -2,7 +2,7 @@
 -- Conversion runs async via jove.convert; state bookkeeping happens on
 -- completion callbacks (scheduled onto the main loop).
 local convert = require("jove.convert")
-local outputs = require("jove.outputs")
+local persist = require("jove.persist")
 local state = require("jove.state")
 local kernel = require("jove.kernel")
 
@@ -132,14 +132,20 @@ function M.read(buf, path, opts)
         restore_cursor(buf, cursor, lines)
       end
 
-      -- Schedule kernel + output import after BufRead* autocmds settle.
+      -- Schedule kernel init + output import after BufRead* autocmds settle.
+      -- Output import is NOT gated on auto_kernel: importing persisted
+      -- outputs works (and is wanted) without a running kernel too.
       if cfg.auto_kernel then
         vim.schedule(function()
           if vim.api.nvim_buf_is_valid(buf) then
             kernel.init(buf)
-            if cfg.auto_import_outputs then
-              outputs.import(buf)
-            end
+          end
+        end)
+      end
+      if cfg.auto_import_outputs then
+        vim.schedule(function()
+          if vim.api.nvim_buf_is_valid(buf) then
+            persist.import(buf)
           end
         end)
       end
@@ -196,14 +202,23 @@ local function start_write(buf, path, tick, lines)
         vim.bo[buf].modified = false
       end
 
+      -- NOTE: user BufWritePost autocmds observe the jupytext-written file
+      -- BEFORE the outputs merge — persist.export below runs synchronously
+      -- in this same callback, after this event has fired.
       vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
 
-      if cfg.auto_export_outputs then
-        vim.schedule(function()
-          if vim.api.nvim_buf_is_valid(buf) then
-            outputs.export(buf)
-          end
-        end)
+      if cfg.auto_export_outputs and not flight.dirty then
+        -- Merge session outputs into the fresh JSON on disk, matched by cell
+        -- content hash (P3). persist.export atomically writes the merged
+        -- bytes and refreshes st.json + st.last_write to them, so our own
+        -- merged write still suppresses FileChangedShell below. Synchronous
+        -- on purpose: we are already on the main loop inside the write
+        -- callback, and the checksum must be updated before this callback
+        -- yields.
+        -- Final flight only: when a coalesced write is pending
+        -- (flight.dirty), this flight's merged file would be overwritten by
+        -- the replay anyway — the replayed (final) flight exports instead.
+        persist.export(buf, bytes)
       end
 
       -- Replay the latest request captured while this flight was running.

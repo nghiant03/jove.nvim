@@ -6,8 +6,8 @@ local M = {}
 ---@field jupytext string                Path to the jupytext binary.
 ---@field bridge_python string           Python interpreter for the kernel bridge. An active $CONDA_PREFIX or $VIRTUAL_ENV interpreter takes precedence at use time; this is the fallback.
 ---@field auto_kernel boolean            Start a bridge + kernel on open (kernelspec from notebook metadata, env, or picker).
----@field auto_import_outputs boolean    Kept for config compatibility; outputs are now persisted automatically (Phase 6).
----@field auto_export_outputs boolean    Kept for config compatibility; outputs are now persisted automatically (Phase 6).
+---@field auto_import_outputs boolean    Import persisted outputs from the .ipynb on open/reload (gates persist.import).
+---@field auto_export_outputs boolean    Merge session outputs into the .ipynb on save (gates persist.export).
 ---@field auto_reload boolean            Auto-reload buffer when the .ipynb changes on disk (our own writes are suppressed).
 ---@field cell_motions boolean           Map [c / ]c cell motions on jove buffers.
 ---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.

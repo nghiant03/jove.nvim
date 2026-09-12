@@ -115,8 +115,10 @@ local function ensure_attached(buf)
     -- also fail with kernel_not_running; the status transition is idempotent
     -- because the pump slot is already empty).
     if type(params) == "table" and params.status == "dead" then
-      local st2 = state.get(buf)
-      local exec2 = st2.exec
+      -- Peek (not get): a dead-event dispatch racing BufWipeout must not
+      -- resurrect a phantom registry entry for a wiped buffer.
+      local st2 = state.peek(buf)
+      local exec2 = st2 and st2.exec
       if exec2 and exec2.running then
         local item = exec2.running
         exec2.running = nil
