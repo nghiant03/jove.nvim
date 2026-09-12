@@ -33,6 +33,7 @@ jobs:
 
   test:
     name: test (nvim ${{ matrix.nvim }} on ${{ matrix.os }})
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
