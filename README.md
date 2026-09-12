@@ -1,35 +1,49 @@
 # jove.nvim
 
+[![CI](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Edit Jupyter `.ipynb` notebooks in Neovim as if they were native Python
 buffers — real LSP/copilot/treesitter, a first-party kernel client, inline
 cell outputs, and proper round-tripping to disk. No otter, no quarto, no
 molten, no temp files, no lost outputs.
 
+## Contents
+
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Install (lazy.nvim)](#install-lazynvim)
+- [Commands](#commands)
+- [Keymaps and motions](#keymaps-and-motions)
+- [Configuration](#configuration)
+- [Execution and status](#execution-and-status)
+- [Output rendering](#output-rendering)
+- [Output persistence](#output-persistence)
+- [Comparison](#comparison)
+- [Migrating from 0.1 (molten-based)](#migrating-from-01-molten-based)
+- [Non-goals](#non-goals)
+- [License](#license)
+
 ## How it works
 
 ```
 .ipynb on disk (JSON)
-   │  BufReadCmd ── jupytext CLI (async, via stdio, no temp files) ──▶
-buffer  buftype=acwrite, filetype=python
-   │  pyright / ruff / copilot / treesitter attach natively
-   │  per-buffer bridge: python -m jove_bridge (JSON lines over stdio)
-   │      └─ jupyter_client kernel: execute, streams outputs back as events
-   │  cell status signs + inline virtual-line outputs
-   │  BufWriteCmd ── jupytext --update, then session outputs merged ──▶
-.ipynb on disk (JSON, outputs persisted)
+   │  open ── jupytext ─▶  normal buffer, filetype=python
+   │                        pyright / ruff / copilot / treesitter attach natively
+   │                        run cells via a background Jupyter kernel
+   │                        cell status signs + inline cell outputs
+   │  save ── jupytext ─▶  .ipynb on disk (outputs persisted in the JSON)
 ```
 
-The kernel client is first-party: jove spawns one Python sidecar process per
-buffer that needs a kernel (`python -m jove_bridge`, newline-delimited JSON
-over stdio — the wire contract is specified in
-[PROTOCOL.md](PROTOCOL.md)). The sidecar wraps `jupyter_client` and manages
-exactly one kernel: start, interrupt, restart, shutdown. If the bridge process
-dies unexpectedly it is respawned automatically (up to 3 attempts with
-increasing backoff) and restarts the last kernelspec.
-
-The kernelspec is resolved from the notebook's `metadata.kernelspec.name`,
-falling back to the active environment's name, and finally to a `vim.ui.select`
-picker of installed kernelspecs.
+- Notebooks open as ordinary Python buffers — LSP, completion, formatting,
+  and git tooling all work on them like any other file.
+- On save, the outputs you produced this session are merged back into the
+  `.ipynb`, so they survive to disk and reappear when you reopen the notebook.
+- Kernel execution runs through a small Python helper that jove starts and
+  supervises per notebook; if it dies, it is restarted automatically and the
+  kernel comes back with it.
+- The kernel is chosen from the notebook's own metadata, then the active
+  Python environment, then an interactive picker of installed kernels.
 
 ## Requirements
 
@@ -48,10 +62,9 @@ picker of installed kernelspecs.
   render as text placeholders.
 
 Run `:checkhealth jove` to verify all of the above: the Neovim version, the
-`jupytext` binary, the Python interpreter and its dependencies, a bridge
-sidecar import probe, the optional `snacks.image` integration, and a conflict
-check against `jupytext.nvim` (it also warns if it detects molten, which jove
-no longer uses).
+`jupytext` binary, the Python interpreter and its dependencies, the optional
+`snacks.image` integration, and a conflict check against `jupytext.nvim`
+(it also warns if it detects molten, which jove no longer uses).
 
 ## Install (lazy.nvim)
 
@@ -82,8 +95,8 @@ warning; remove one of the two plugins.
 
 ### Python environment
 
-The bridge needs a Python interpreter that can `import jupyter_client` and
-`ipykernel`. Jove picks it per spawn, in this order:
+The kernel needs a Python interpreter that can `import jupyter_client` and
+`ipykernel`. Jove picks one automatically, in this order:
 
 1. `$CONDA_PREFIX/bin/python` (active conda env)
 2. `$VIRTUAL_ENV/bin/python` (active virtualenv)
@@ -155,24 +168,24 @@ Full option list with defaults:
 
 ```lua
 require("jove").setup({
-  jupytext = "jupytext",           -- path to the jupytext binary
-  bridge_python = "python3",       -- fallback interpreter for the bridge
-                                   -- (see "Python environment" above for the
-                                   -- conda/venv precedence)
-  auto_kernel = true,              -- start bridge + kernel on open
-  auto_import_outputs = true,      -- render persisted outputs on open/reload
-  auto_export_outputs = true,      -- merge session outputs into the .ipynb on save
-  auto_reload = false,             -- auto-reload when the .ipynb changes on disk
-  cell_motions = true,             -- map [c / ]c cell motions
+  jupytext = "jupytext",        -- path to the jupytext binary
+  bridge_python = "python3",    -- fallback Python for the kernel helper
+                                -- (see "Python environment" above for the
+                                -- conda/venv precedence)
+  auto_kernel = true,           -- start kernel automatically on open
+  auto_import_outputs = true,   -- render persisted outputs on open/reload
+  auto_export_outputs = true,   -- merge session outputs into the .ipynb on save
+  auto_reload = false,          -- auto-reload when the .ipynb changes on disk
+  cell_motions = true,          -- map [c / ]c cell motions
   signs = {
-    queued = "…",                  -- gutter sign: queued for execution
-    running = "▶",                 -- gutter sign: currently running
-    ok = "✓",                      -- gutter sign: finished successfully
-    error = "✗",                   -- gutter sign: finished with an error
+    queued = "…",               -- gutter sign: queued for execution
+    running = "▶",              -- gutter sign: currently running
+    ok = "✓",                   -- gutter sign: finished successfully
+    error = "✗",                -- gutter sign: finished with an error
   },
   output = {
-    max_lines = 50,                -- inline output truncation limit
-    images = true,                 -- render images via snacks.image when available
+    max_lines = 50,             -- inline output truncation limit
+    images = true,              -- render images via snacks.image when available
   },
   keymap = {
     run_cell = false,
@@ -186,10 +199,10 @@ require("jove").setup({
 
 ## Execution and status
 
-Cells run through a per-buffer serial queue over the buffer's kernel: a
-queued cell gets the `queued` sign, then `running` (with a spinner on the
-cell), then `ok` or `error`. Errors keep the `✗` sign and render the
-traceback (ANSI-stripped). `:JoveInterrupt` stops the running execution.
+Cells run one at a time per notebook: a queued cell gets the `queued` sign,
+then `running` (with a spinner on the cell), then `ok` or `error`. Errors
+keep the `✗` sign and render the traceback. `:JoveInterrupt` stops the
+running execution.
 
 Add a kernel status component to your statusline:
 
@@ -209,7 +222,7 @@ Outputs render inline as virtual lines below each cell:
   (close with `q` or `<Esc>`).
 - Output longer than `output.max_lines` is truncated inline, with a trailer
   pointing at `:JoveOpenOutput` for the full view.
-- Error tracebacks are shown with ANSI escapes stripped.
+- Error tracebacks are shown as plain text.
 - Image outputs (PNG/JPEG) render inline via `snacks.image` when available;
   otherwise a text placeholder is shown.
 
@@ -217,8 +230,7 @@ Outputs render inline as virtual lines below each cell:
 
 jove persists outputs natively in the `.ipynb` — no import/export step. On
 save, session outputs are merged into the notebook JSON, matched to cells by
-content hash (jupytext's `py:percent` round-trip drops cell ids, so a hash of
-the normalized cell source is the stable identity).
+their content.
 
 The exact semantics:
 
@@ -252,9 +264,9 @@ to differentiate them.
 | Browser required | no | no | no | yes |
 | Scope | small | small | wide (`.qmd`) | wide |
 
-## Migrating from v1 (molten-based)
+## Migrating from 0.1 (molten-based)
 
-jove v2 replaced molten with a first-party kernel bridge:
+jove 0.2 replaced molten with a first-party kernel bridge:
 
 - Remove `benlubas/molten-nvim` from your plugin dependencies and delete any
   `Molten*` autocmds or keymaps you copied from molten's README (e.g.
@@ -276,4 +288,4 @@ jove v2 replaced molten with a first-party kernel bridge:
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
