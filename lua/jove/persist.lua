@@ -172,21 +172,29 @@ end
 ---the null. A cell with a meta entry but no session outputs/seen entry (e.g.
 ---`x = 1`: run metadata, no output) still gets its count written. Without
 ---meta counts stay `vim.NIL` (unchanged behavior).
+---`persist_counts` (default true) gates ALL count writing: when false the
+---count lookup is skipped and execute_result outputs have their
+---execution_count forced to null (opting out must not leak the bridge count
+---into result outputs).
 ---@param nb table?
 ---@param store table?  -- state.outputs: hash → {raw = {...}, from_disk?}
 ---@param seen_hashes table?  -- hash → true, "had outputs this session"
 ---@param meta table?  -- hash → { count?: integer, elapsed_ms?: number }
+---@param persist_counts boolean?  -- write execution counts (default true)
 ---@return integer merged  -- number of cells replaced, tombstoned, or counted
-function M.merge_into(nb, store, seen_hashes, meta)
+function M.merge_into(nb, store, seen_hashes, meta, persist_counts)
   if type(nb) ~= "table" or type(nb.cells) ~= "table" then
     return 0
+  end
+  if persist_counts == nil then
+    persist_counts = true
   end
   local merged = 0
   for _, c in ipairs(nb.cells) do
     if c.cell_type == "code" and c.source ~= nil then
       local hash = cell.hash_source(c.source)
       local entry = store and store[hash]
-      local m = meta and meta[hash]
+      local m = persist_counts and meta and meta[hash] or nil
       local count = m and type(m.count) == "number" and m.count or nil
       -- Disk content transiting the store (output.import tags entries
       -- from_disk) is skipped entirely: its outputs are already on disk,
@@ -198,21 +206,28 @@ function M.merge_into(nb, store, seen_hashes, meta)
         for _, params in ipairs(entry.raw) do
           local out = M.to_nbformat(params)
           if out then
-            -- Attribute the session count to the result output too.
-            if count ~= nil and out.output_type == "execute_result" then
-              out.execution_count = count
+            if out.output_type == "execute_result" then
+              -- Attribute the session count to the result output too; when
+              -- counts are opted out, force null rather than the bridge count.
+              if persist_counts then
+                if count ~= nil then
+                  out.execution_count = count
+                end
+              else
+                out.execution_count = vim.NIL
+              end
             end
             outs[#outs + 1] = out
           end
         end
         c.outputs = outs
-        c.execution_count = count or vim.NIL
+        c.execution_count = persist_counts and (count or vim.NIL) or vim.NIL
         merged = merged + 1
       elseif not from_disk and seen_hashes and seen_hashes[hash] then
         -- Session cleared this cell's outputs: persist the deletion
         -- (`outputs` is an array, so an empty Lua table encodes correctly).
         c.outputs = {}
-        c.execution_count = count or vim.NIL
+        c.execution_count = persist_counts and (count or vim.NIL) or vim.NIL
         merged = merged + 1
       elseif count ~= nil and c.execution_count ~= count then
         -- Meta-only cell (ran, produced no outputs): persist just the count.
@@ -272,7 +287,8 @@ function M.export(buf, bytes)
     return false -- not a jove-managed buffer
   end
   local buf_seen = seen[buf]
-  local meta = require("jove").config.persist_exec_counts and st.exec and st.exec.meta or nil
+  local persist_counts = require("jove").config.persist_exec_counts ~= false
+  local meta = persist_counts and st.exec and st.exec.meta or nil
   local has_meta = meta ~= nil and next(meta) ~= nil
   local has_store = st.outputs ~= nil and next(st.outputs) ~= nil
   if not has_store and not (buf_seen and next(buf_seen) ~= nil) and not has_meta then
@@ -320,7 +336,7 @@ function M.export(buf, bytes)
     end
   end
 
-  if M.merge_into(nb, st.outputs, buf_seen, meta) == 0 then
+  if M.merge_into(nb, st.outputs, buf_seen, meta, persist_counts) == 0 then
     return false -- nothing matched, nothing to tombstone: real no-op
   end
 

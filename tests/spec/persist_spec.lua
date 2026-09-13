@@ -308,6 +308,28 @@ T["merge_into"]["meta-only cell: run count persists with no store/seen"] = funct
   MiniTest.expect.equality(nb.cells[2].execution_count == nil, true)
 end
 
+T["merge_into"]["persist_counts=false: cell and execute_result outputs have null execution_count"] = function()
+  local nb = vim.deepcopy(NB)
+  local h1 = cell.hash_source(NB.cells[1].source)
+  local store = {
+    [h1] = {
+      raw = {
+        {
+          cell = h1,
+          kind = "execute_result",
+          mime = { ["text/plain"] = "session-1" },
+          execution_count = 5,
+        },
+      },
+    },
+  }
+  local meta = { [h1] = { count = 5 } }
+  local merged = persist.merge_into(nb, store, nil, meta, false)
+  MiniTest.expect.equality(merged, 1)
+  MiniTest.expect.equality(nb.cells[1].execution_count, vim.NIL)
+  MiniTest.expect.equality(nb.cells[1].outputs[1].execution_count, vim.NIL)
+end
+
 T["merge_into"]["empty store / malformed notebook -> 0, untouched"] = function()
   local nb = vim.deepcopy(NB)
   MiniTest.expect.equality(persist.merge_into(nb, {}), 0)
@@ -406,6 +428,46 @@ T["export (atomic write)"]["persists session exec counts from exec.meta"] = func
   MiniTest.expect.equality(nb2.cells[2].outputs[1].execution_count, 9)
 
   vim.api.nvim_buf_delete(buf, { force = true })
+end
+
+T["export (atomic write)"]["persist_exec_counts=false: result output count is null on disk"] = function()
+  local path = tmp_copy_fixture()
+  local bytes = read_disk(path)
+  local nb = vim.json.decode(bytes)
+  local hashes = code_hashes(nb)
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  local st = state.get(buf)
+  st.path = path
+  st.json = nb
+  st.outputs = {
+    [hashes[3]] = {
+      raw = {
+        {
+          cell = hashes[3],
+          kind = "execute_result",
+          mime = { ["text/plain"] = "opt-out" },
+          execution_count = 7,
+        },
+      },
+    },
+  }
+  st.exec = { meta = { [hashes[3]] = { count = 7 } } }
+
+  local jove = require("jove")
+  local saved = jove.config.persist_exec_counts
+  jove.config.persist_exec_counts = false
+  local ok, err = pcall(function()
+    expect_truthy(persist.export(buf, bytes))
+    local nb2 = vim.json.decode(read_disk(path))
+    MiniTest.expect.equality(nb2.cells[3].execution_count, vim.NIL)
+    MiniTest.expect.equality(nb2.cells[3].outputs[1].execution_count, vim.NIL)
+  end)
+  jove.config.persist_exec_counts = saved
+  vim.api.nvim_buf_delete(buf, { force = true })
+  if not ok then
+    error(err)
+  end
 end
 
 T["export (atomic write)"]["meta-only cell count triggers save"] = function()
