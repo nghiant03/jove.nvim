@@ -1,8 +1,9 @@
 -- chrome.lua: cell chrome for jove buffers (PLAN.md Phase B).
 --
 -- Responsibilities:
---   * conceal jupytext-style front matter (`# ---` ... `# ---`) and cell
---     headers (`# %%`) with `conceal_lines = ""` extmarks;
+--   * conceal cell headers (`# %%`) with `conceal_lines = ""` extmarks;
+--     (jupytext front matter never reaches the buffer: buffer.lua strips it
+--      on read and re-emits it on write)
 --   * draw a per-cell rule (virt_lines) above each cell body carrying the
 --     status glyph, execution count and elapsed time;
 --   * highlight the body of the cell under the cursor (`JoveActiveCell`).
@@ -26,7 +27,6 @@ vim.api.nvim_set_hl(0, "JoveCellRuleCount", { link = "Special", default = true }
 vim.api.nvim_set_hl(0, "JoveCellRuleElapsed", { link = "Number", default = true })
 
 ---@class jove.ChromeBook
----@field front integer?   front-matter conceal extmark id
 ---@field headers integer[] header conceal extmark ids
 ---@field rules integer[]   per-cell rule extmark ids
 ---@field active integer?   active-cell highlight extmark id
@@ -66,7 +66,6 @@ local function ensure(buf)
   local b = bufs[buf]
   if not b then
     b = {
-      front = nil,
       headers = {},
       rules = {},
       active = nil,
@@ -83,10 +82,6 @@ end
 ---@param buf integer
 ---@param b jove.ChromeBook
 local function clear_marks(buf, b)
-  if b.front then
-    pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, b.front)
-    b.front = nil
-  end
   for _, id in ipairs(b.headers) do
     pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, id)
   end
@@ -102,21 +97,6 @@ end
 ---@return integer
 local function body_start(c)
   return c.header and (c.header + 1) or c.start_lnum
-end
-
----Locate `# ---` front matter; returns first/last lnum (1-based) or nil.
----@param lines string[]
----@return integer?, integer?
-local function find_front(lines)
-  if #lines == 0 or not lines[1]:match("^# %-%-%-%s*$") then
-    return nil, nil
-  end
-  for i = 2, #lines do
-    if lines[i]:match("^# %-%-%-%s*$") then
-      return 1, i
-    end
-  end
-  return nil, nil
 end
 
 ---Cell execution status ("queued"|"running"|"ok"|"error") or nil.
@@ -260,7 +240,7 @@ local function update_active(buf, b, cfg)
   })
 end
 
----Recompute front matter, header concealment, rules and active highlight.
+---Recompute header concealment, rules and active highlight.
 ---@param buf integer
 function M.refresh(buf)
   buf = norm_buf(buf)
@@ -281,19 +261,6 @@ function M.refresh(buf)
   local b = ensure(buf)
   local cfg = ui_conf()
   clear_marks(buf, b)
-
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-
-  if cfg.conceal_headers then
-    local first, last = find_front(lines)
-    if first and last then
-      b.front = vim.api.nvim_buf_set_extmark(buf, M.ns, first - 1, 0, {
-        end_row = last - 1,
-        end_col = 0,
-        conceal_lines = "",
-      })
-    end
-  end
 
   local cells = cell.all(buf)
   for _, c in ipairs(cells) do

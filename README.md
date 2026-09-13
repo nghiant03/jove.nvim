@@ -194,7 +194,7 @@ require("jove").setup({
     width = 32,                 -- inspector window width
   },
   ui = {
-    conceal_headers = true,     -- conceal `# %%` cell headers
+    conceal_headers = true,     -- conceal # %% cell headers (front matter is hidden by stripping it on read)
     active_cell = true,         -- highlight the active cell
     exec_counts = true,         -- show per-cell execution counts
     elapsed = true,             -- show per-cell elapsed time

@@ -16,6 +16,9 @@ local M = {}
 --                                        meta[hash] = { count, elapsed_ms } }
 --                                                        (Phase 4 + Phase A)
 --   outputs -- lua/jove/output.lua    per-cell output store (Phase 5)
+--   front_matter -- lua/jove/buffer.lua    `# ---`...`# ---` block
+--                                              stripped from the buffer on read,
+--                                              prepended on write ([]|nil)
 
 ---@type table<integer, jove.BufferState>
 local registry = {}

@@ -18,6 +18,32 @@ local read_seq = {}
 ---@type table<integer, {in_flight: boolean, dirty: boolean, pending_tick: integer?, pending_lines: string[]?}>
 local flights = {}
 
+---Split a leading `# ---` ... `# ---` front-matter block from `lines`.
+---Returns front (the block, including both `# ---` markers) and rest, or nil if absent.
+---Matches lines[1] == "# ---" and a later closing `# ---`.
+---@param lines string[]
+---@return string[]?, string[]
+local function split_front(lines)
+  local first = lines[1]
+  if not first or first:match("^# %-%-%-%s*$") == nil then
+    return nil, lines
+  end
+  for i = 2, #lines do
+    if lines[i]:match("^# %-%-%-%s*$") then
+      local front = {}
+      for j = 1, i do
+        front[j] = lines[j]
+      end
+      local rest = {}
+      for j = i + 1, #lines do
+        rest[#rest + 1] = lines[j]
+      end
+      return front, rest
+    end
+  end
+  return nil, lines -- unterminated: treat as no front matter
+end
+
 ---Detect filetype from kernelspec.language in the .ipynb JSON.
 ---@param json table?
 ---@return string
@@ -118,18 +144,24 @@ function M.read(buf, path, opts)
         end
       end
 
-      vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+      -- Strip the `# ---` front matter jupytext emits: it is re-emitted on
+      -- write (metadata round-trips via `jupytext --update`), so the buffer
+      -- shows only real cell content and the space is reclaimed.
+      local front, rest = split_front(lines)
+
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, rest)
 
       -- Stash state before setting filetype so FileType autocmds can see it.
       local st = state.get(buf)
       st.path = path
       st.json = json
+      st.front_matter = front
 
       vim.bo[buf].filetype = ft
       vim.bo[buf].modified = false
 
       if cursor then
-        restore_cursor(buf, cursor, lines)
+        restore_cursor(buf, cursor, rest)
       end
 
       -- Schedule kernel init + output import after BufRead* autocmds settle.
@@ -250,6 +282,21 @@ end
 function M.write(buf, path)
   local tick = vim.api.nvim_buf_get_changedtick(buf)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+
+  -- Re-emit the stripped front matter on write unless the user has typed
+  -- their own (a first line already starting with `# --`). jupytext merges
+  -- metadata from the existing .ipynb on `--update`, so this preserves it.
+  local st = state.peek(buf)
+  if st and st.front_matter and not lines[1]:match("^# %-%-") then
+    local merged = {}
+    for _, l in ipairs(st.front_matter) do
+      merged[#merged + 1] = l
+    end
+    for _, l in ipairs(lines) do
+      merged[#merged + 1] = l
+    end
+    lines = merged
+  end
 
   local flight = flights[buf]
   if flight and flight.in_flight then

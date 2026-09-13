@@ -83,7 +83,10 @@ end
 
 T["conceal"] = MiniTest.new_set()
 
-T["conceal"]["hides front matter and every cell header"] = function()
+-- With the read pipeline stripping front matter (buffer.lua), chrome no
+-- longer conceals it: a buffer that still contains `# ---` lines directly
+-- (as here) gets only header conceal marks.
+T["conceal"]["conceals every cell header (front matter is stripped upstream)"] = function()
   local buf = make_buffer({
     "# ---",
     "title: x",
@@ -94,8 +97,8 @@ T["conceal"]["hides front matter and every cell header"] = function()
     "# md",
   })
   chrome.refresh(buf)
-  -- 1 front-matter mark + 2 header marks.
-  MiniTest.expect.equality(conceal_count(buf), 3)
+  -- 2 header marks; the `# ---` block is left alone by chrome.
+  MiniTest.expect.equality(conceal_count(buf), 2)
   release_buffer(buf)
 end
 

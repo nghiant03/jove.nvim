@@ -126,6 +126,20 @@ T["read via BufReadCmd"]["new file: empty py:percent buffer, JSON deferred to wr
   close_notebook(buf)
 end
 
+T["read via BufReadCmd"]["strips jupytext front matter from the buffer"] = function()
+  local path = tmp_copy_fixture()
+  local buf = open_notebook(path)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  -- No `# ---` line should appear in the buffer.
+  for _, l in ipairs(lines) do
+    MiniTest.expect.equality(l:match("^# %-%-") ~= nil, false)
+  end
+  -- Stashed front matter looks like a `# ---`-terminated block.
+  local fm = state.get(buf).front_matter
+  expect_truthy(type(fm) == "table" and #fm >= 2 and fm[1] == "# ---")
+  close_notebook(buf)
+end
+
 T["write via BufWriteCmd"] = MiniTest.new_set()
 
 T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] = function()
@@ -222,6 +236,27 @@ T["write via BufWriteCmd"]["coalesces two rapid writes (single-flight)"] = funct
   MiniTest.expect.equality(#nb.cells, 3)
   MiniTest.expect.equality(state.get(buf).last_write, vim.fn.sha256(bytes))
 
+  close_notebook(buf)
+end
+
+T["write round-trips"] = MiniTest.new_set()
+
+T["write round-trips"]["preserves kernelspec even with stripped front matter on write"] = function()
+  local path = tmp_copy_fixture()
+  local buf = open_notebook(path)
+  -- Snapshot original kernelspec.
+  local orig_ks = state.get(buf).json.metadata.kernelspec
+  -- Edit a cell then save via :w (BufWriteCmd).
+  vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "# touch" })
+  vim.cmd("write")
+  -- Wait for the single-flight write to settle.
+  local done = vim.wait(30000, function()
+    local st = state.peek(buf)
+    return st ~= nil and st.last_write ~= nil and not vim.bo[buf].modified
+  end, 10)
+  expect_truthy(done)
+  local after = read_disk(path)
+  expect_truthy(after:find(orig_ks.name, 1, true) ~= nil)
   close_notebook(buf)
 end
 
