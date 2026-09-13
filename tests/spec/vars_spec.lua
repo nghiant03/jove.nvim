@@ -74,6 +74,24 @@ T["format"]["truncates long values to fit the width"] = function()
   expect_truthy(lines[1]:find("…", 1, true) ~= nil)
 end
 
+T["format"]["flattens embedded newlines in values for sidebar rows"] = function()
+  local lines = vars.format({
+    { name = "df", type = "DataFrame", value = "   a\n0  1\n1  2" },
+  }, 40)
+  MiniTest.expect.equality(#lines, 1)
+  expect_truthy(not lines[1]:find("\n", 1, true))
+  expect_truthy(lines[1]:find("a", 1, true) ~= nil)
+end
+
+T["format"]["keeps empty values empty"] = function()
+  local lines = vars.format({
+    { name = "n", type = "NoneType", value = "" },
+  }, 40)
+  MiniTest.expect.equality(#lines, 1)
+  expect_truthy(not lines[1]:find("\n", 1, true))
+  expect_truthy(lines[1]:find("NoneType", 1, true) ~= nil)
+end
+
 T["format"]["handles the empty case"] = function()
   MiniTest.expect.equality(vars.format({}, 40), { "[no variables]" })
   MiniTest.expect.equality(vars.format(nil, 40), { "[no variables]" })

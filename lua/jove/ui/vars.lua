@@ -72,6 +72,14 @@ local function pad(s, width)
   return s .. string.rep(" ", math.max(0, n))
 end
 
+---Collapse row-breaking whitespace so a value never spans multiple sidebar rows.
+---@param s string
+---@return string
+local function flatten(s)
+  local out = s:gsub("[%s]+", " ")
+  return out
+end
+
 ---Format variable records into sidebar lines. Pure; safe to unit test.
 ---@param vars table[]  { {name, type, value, size}, ... }
 ---@param width integer  Target display width.
@@ -91,7 +99,7 @@ function M.format(vars, width)
   local value_w = math.max(1, width - name_w - type_w - 4)
   local lines = {}
   for _, v in ipairs(vars) do
-    local value = tostring(v.value or "")
+    local value = flatten(tostring(v.value or ""))
     lines[#lines + 1] = ("%s  %s  %s"):format(
       pad(truncate(tostring(v.name or ""), name_w), name_w),
       pad(truncate(tostring(v.type or ""), type_w), type_w),
