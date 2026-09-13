@@ -13,7 +13,7 @@ import json
 import pytest
 
 from jove_bridge.kernel import KernelError
-from jove_bridge.session import DEFERRED, BridgeSession, _Pending
+from jove_bridge.session import DEFERRED, VARIABLES_EXPR, BridgeSession, _Pending
 
 try:  # test module sibling; pytest prepends the test dir to sys.path
     from test_bridge import BridgeProcess
@@ -175,6 +175,51 @@ def test_variables_submits_silent_user_expression_and_replies_on_shell_reply():
     assert conn.msgs == [{"id": 10, "result": {"variables": []}}]
 
 
+def test_variables_per_item_resilience():
+    """One broken object must not discard the rest of the variable listing.
+
+    Exercises ``VARIABLES_EXPR`` directly against a fake namespace: a zero-dim
+    NumPy array (has ``__len__`` but ``len()`` raises) and objects whose
+    ``len``/``repr`` raise must be isolated per item.
+    """
+
+    class BoomLen:
+        def __len__(self):
+            raise TypeError("len() of unsized object")
+
+        def __repr__(self):
+            return "BoomLen()"
+
+    class BoomRepr:
+        def __repr__(self):
+            raise ValueError("broken repr")
+
+    assert isinstance(VARIABLES_EXPR, str)
+    ns = {"regular": 41, "s": "hi", "boom_len": BoomLen(), "boom_repr": BoomRepr()}
+    data = json.loads(eval(VARIABLES_EXPR, ns))
+
+    by_name = {v["name"]: v for v in data}
+    assert not any(n.startswith("_") for n in by_name), by_name
+    assert by_name["regular"]["type"] == "int"
+    assert by_name["regular"]["value"] == "41"
+    assert by_name["regular"]["size"] is None
+    assert by_name["s"]["size"] == 2
+    assert by_name["boom_len"]["value"] == "BoomLen()"
+    assert by_name["boom_len"]["size"] is None
+    assert by_name["boom_repr"]["value"] == "<repr failed>"
+
+
+def test_variables_per_item_resilience_numpy_zero_dim():
+    """Zero-dimensional NumPy arrays report size=None rather than erroring."""
+    np = pytest.importorskip("numpy")
+    ns = {"scalar": np.array(1), "regular": 41}
+    data = json.loads(eval(VARIABLES_EXPR, ns))
+    by_name = {v["name"]: v for v in data}
+    assert by_name["scalar"]["type"] == "ndarray"
+    assert by_name["scalar"]["size"] is None
+    assert by_name["regular"]["size"] is None
+
+
 @pytest.mark.skipif(BridgeProcess is None, reason="test_bridge helper unavailable")
 def test_variables_e2e_real_kernel():
     """Round-trip against a real python3 ipykernel: types, repr, size, filter."""
@@ -184,7 +229,18 @@ def test_variables_e2e_real_kernel():
         proc.start_kernel("python3")
         msg = proc.request(
             "execute",
-            {"code": "jv_x = 41\njv_s = 'hi'\nimport os", "cell": "v0"},
+            {
+                "code": (
+                    "jv_x = 41\njv_s = 'hi'\nimport os\n"
+                    "class jv_Boom:\n"
+                    "    def __len__(self):\n"
+                    "        raise TypeError('len() of unsized object')\n"
+                    "    def __repr__(self):\n"
+                    "        return 'jv_Boom()'\n"
+                    "jv_boom = jv_Boom()"
+                ),
+                "cell": "v0",
+            },
         )
         assert msg.get("result", {}).get("status") == "ok"
 
@@ -197,6 +253,8 @@ def test_variables_e2e_real_kernel():
         assert by_name["jv_s"]["type"] == "str"
         assert by_name["jv_s"]["value"] == "'hi'"
         assert by_name["jv_s"]["size"] == 2
+        assert by_name["jv_boom"]["value"] == "jv_Boom()"
+        assert by_name["jv_boom"]["size"] is None
         assert "os" not in by_name  # imported modules are filtered out
         assert not any(n.startswith("_") for n in by_name)
     finally:

@@ -21,16 +21,36 @@ from typing import Any, Callable, Optional
 
 from .kernel import KernelController, KernelError
 
+# Helper function definitions (prefixed with ``_`` so the namespace listing
+# filter hides them) that isolate per-variable inspection failures. A broken
+# ``repr``/``len`` (e.g. a zero-dimensional NumPy array, whose ``__len__``
+# exists but raises TypeError) must not discard the whole variable list.
+_VARIABLES_HELPERS = (
+    "def _jv_repr(v):\n"
+    "    try:\n"
+    "        return repr(v)[:120]\n"
+    "    except Exception:\n"
+    "        return '<repr failed>'\n"
+    "def _jv_size(v):\n"
+    "    try:\n"
+    "        return len(v)\n"
+    "    except Exception:\n"
+    "        return None\n"
+)
+
 # Single-line expression evaluated in the *user* namespace (via ipykernel's
 # user_expressions) to snapshot non-dunder, non-module globals as a JSON
-# string. Kept self-contained (only builtins: globals/type/repr/len/hasattr/
-# __import__) so it never depends on user imports. Values are truncated with
-# repr()[:120]; `size` is len() when the object supports it, else null.
+# string. Kept self-contained (only builtins: globals/type/repr/len/exec/
+# Exception/__import__) so it never depends on user imports. The helper defs
+# live in the user namespace under ``_`` names and are filtered out. Values are
+# truncated with repr()[:120]; `size` is len() when the object supports it,
+# else null. Each item is inspected in isolation: repr failures yield
+# '<repr failed>' and len failures yield null instead of aborting the listing.
 VARIABLES_EXPR = (
-    "__import__('json').dumps(["
+    "exec(" + repr(_VARIABLES_HELPERS) + ", globals()) or __import__('json').dumps(["
     "{'name': _jv_n, 'type': type(_jv_v).__name__, "
-    "'value': repr(_jv_v)[:120], "
-    "'size': len(_jv_v) if hasattr(_jv_v, '__len__') else None}"
+    "'value': _jv_repr(_jv_v), "
+    "'size': _jv_size(_jv_v)}"
     " for _jv_n, _jv_v in list(globals().items())"
     " if not _jv_n.startswith('_') and type(_jv_v).__name__ != 'module'"
     "])"
