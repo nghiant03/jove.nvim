@@ -32,6 +32,7 @@ vim.api.nvim_set_hl(0, "JoveCellRuleElapsed", { link = "Number", default = true 
 ---@field active integer?   active-cell highlight extmark id
 ---@field group integer?    autocmd group for this buffer
 ---@field unsub fun()?      execute.on_status unsubscribe
+---@field refresh_pending boolean? a vim.schedule() refresh is already queued
 ---@field attached boolean
 
 ---@type table<integer, jove.ChromeBook>
@@ -71,6 +72,7 @@ local function ensure(buf)
       active = nil,
       group = nil,
       unsub = nil,
+      refresh_pending = false,
       attached = false,
     }
     bufs[buf] = b
@@ -369,9 +371,22 @@ function M.attach(buf)
     end,
   })
 
-  -- Execution status changes recompute glyph/count/elapsed immediately.
+  -- Execution status changes recompute glyph/count/elapsed. Coalesce into a
+  -- single refresh per event-loop tick so a batch of status transitions
+  -- (notably Run All enqueuing N cells synchronously) does not cost O(N)
+  -- full-buffer extmark rebuilds. Final glyph/count still reflects the
+  -- current `st.exec.status[hash]` for each cell because refresh reads it.
   b.unsub = execute.on_status(buf, function()
-    M.refresh(buf)
+    if b.refresh_pending then
+      return
+    end
+    b.refresh_pending = true
+    vim.schedule(function()
+      b.refresh_pending = false
+      if bufs[buf] == b then
+        M.refresh(buf)
+      end
+    end)
   end)
 
   M.refresh(buf)
