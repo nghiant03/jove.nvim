@@ -39,14 +39,15 @@ local function conceal_count(buf)
   return n
 end
 
----Concatenated text of every rule virt_lines mark.
+---Concatenated text of every top-rule virt_lines mark (excludes bottom
+---borders, which are also virt_lines but anchored below the cell).
 ---@param buf integer
 ---@return string[]
 local function rule_texts(buf)
   local out = {}
   for _, m in ipairs(marks(buf)) do
     local d = m[4]
-    if d.virt_lines and d.virt_lines[1] then
+    if d.virt_lines and d.virt_lines_above and d.virt_lines[1] then
       local parts = {}
       for _, chunk in ipairs(d.virt_lines[1]) do
         parts[#parts + 1] = chunk[1]
@@ -142,6 +143,7 @@ T["rules"]["renders count/elapsed/status from exec.meta and status"] = function(
   MiniTest.expect.equality(any_contains(texts, "✓"), true)
   MiniTest.expect.equality(any_contains(texts, "In [3]"), true)
   MiniTest.expect.equality(any_contains(texts, "0.4s"), true)
+  MiniTest.expect.equality(any_contains(texts, "Cell 1"), true)
   release_buffer(buf)
 end
 
@@ -223,6 +225,64 @@ T["detach"]["clears all chrome extmarks"] = function()
   MiniTest.expect.equality(#marks(buf) > 0, true)
   chrome.detach(buf)
   MiniTest.expect.equality(#marks(buf), 0)
+  release_buffer(buf)
+end
+
+T["borders"] = MiniTest.new_set()
+
+T["borders"]["top rule uses box corners and cell index"] = function()
+  local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
+  chrome.refresh(buf)
+  local texts = rule_texts(buf)
+  -- Two top rules present:
+  MiniTest.expect.equality(#texts, 2)
+  MiniTest.expect.equality(any_contains(texts, "╭─"), true)
+  MiniTest.expect.equality(any_contains(texts, "╮"), true)
+  MiniTest.expect.equality(any_contains(texts, "Cell 1"), true)
+  MiniTest.expect.equality(any_contains(texts, "Cell 2"), true)
+  release_buffer(buf)
+end
+
+T["borders"]["bottom border drawn below cell end"] = function()
+  local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
+  chrome.refresh(buf)
+  -- Walk every extmark and find one with virt_lines starting with "╰".
+  local found = false
+  for _, m in ipairs(marks(buf)) do
+    local d = m[4]
+    if
+      d.virt_lines
+      and not d.virt_lines_above
+      and d.virt_lines[1]
+      and d.virt_lines[1][1]
+      and d.virt_lines[1][1][1] == "╰"
+    then
+      found = true
+      break
+    end
+  end
+  MiniTest.expect.equality(found, true)
+  release_buffer(buf)
+end
+
+T["borders"]["borders = false disables the bottom border but keeps the top"] = function()
+  local cfg = require("jove").config
+  local saved = cfg.ui
+  cfg.ui = { borders = false }
+  local buf = make_buffer({ "# %% a", "x1" })
+  chrome.refresh(buf)
+  -- Exactly one rule (top), none below.
+  local below = 0
+  for _, m in ipairs(marks(buf)) do
+    local d = m[4]
+    if d.virt_lines and not d.virt_lines_above and m[2] == 0 then
+      below = below + 1
+    end
+  end
+  MiniTest.expect.equality(below, 0)
+  -- Top rule still has ╭─ corner.
+  MiniTest.expect.equality(any_contains(rule_texts(buf), "╭─"), true)
+  cfg.ui = saved
   release_buffer(buf)
 end
 

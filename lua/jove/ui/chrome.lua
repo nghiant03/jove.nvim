@@ -2,10 +2,11 @@
 --
 -- Responsibilities:
 --   * conceal cell headers (`# %%`) with `conceal_lines = ""` extmarks;
---     (jupytext front matter never reaches the buffer: buffer.lua strips it
---      on read and re-emits it on write)
+--     (jupytext front matter never reaches the buffer: buffer.lua strips it on
+--      read and re-emits it on write)
 --   * draw a per-cell rule (virt_lines) above each cell body carrying the
---     status glyph, execution count and elapsed time;
+--     status glyph, cell index, execution count and elapsed time, plus an
+--     optional closing border below the cell;
 --   * highlight the body of the cell under the cursor (`JoveActiveCell`).
 --
 -- Everything is opt-in through `config.ui` (read defensively; a missing
@@ -25,6 +26,7 @@ vim.api.nvim_set_hl(0, "JoveActiveCell", { link = "CursorLine", default = true }
 vim.api.nvim_set_hl(0, "JoveCellRule", { link = "Comment", default = true })
 vim.api.nvim_set_hl(0, "JoveCellRuleCount", { link = "Special", default = true })
 vim.api.nvim_set_hl(0, "JoveCellRuleElapsed", { link = "Number", default = true })
+vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = true })
 
 ---@class jove.ChromeBook
 ---@field headers integer[] header conceal extmark ids
@@ -39,7 +41,7 @@ vim.api.nvim_set_hl(0, "JoveCellRuleElapsed", { link = "Number", default = true 
 local bufs = {}
 
 ---Read config.ui defensively, filling in the documented defaults.
----@return { conceal_headers: boolean, active_cell: boolean, exec_counts: boolean, elapsed: boolean }
+---@return { conceal_headers: boolean, active_cell: boolean, exec_counts: boolean, elapsed: boolean, borders: boolean }
 local function ui_conf()
   local ok, jove = pcall(require, "jove")
   local ui = ok and type(jove) == "table" and jove.config and jove.config.ui
@@ -51,6 +53,7 @@ local function ui_conf()
     active_cell = ui.active_cell ~= false,
     exec_counts = ui.exec_counts ~= false,
     elapsed = ui.elapsed ~= false,
+    borders = ui.borders ~= false,
   }
 end
 
@@ -160,15 +163,17 @@ local function win_width(buf)
   return vim.o.columns
 end
 
----Build one rule's virt_text chunks.
+---Build one rule's virt_text chunks (boxed top border).
 ---@param buf integer
 ---@param c jove.Cell
 ---@param cfg table
+---@param cell_index integer  1-based index of the cell in the buffer
 ---@return table[] chunks
-local function build_rule(buf, c, cfg)
+local function build_rule(buf, c, cfg, cell_index)
   local status = cell_status(buf, c.hash)
   local chunks = {
     { status_glyph(status) .. " ", status_hl(status) },
+    { ("Cell %d "):format(cell_index), "JoveCellBorder" },
   }
   if c.kind == "markdown" then
     chunks[#chunks + 1] = { "── markdown ", "JoveCellRule" }
@@ -188,11 +193,17 @@ local function build_rule(buf, c, cfg)
   for _, chunk in ipairs(chunks) do
     used = used + vim.fn.strdisplaywidth(chunk[1])
   end
-  local fill = win_width(buf) - used
-  if fill > 1 then
-    chunks[#chunks + 1] = { string.rep("─", fill), "JoveCellRule" }
+  -- Box chrome reserves 3 display cols for the leading "╭─ " and 1 for "╮".
+  local fill = win_width(buf) - used - 4
+  local ruled = { { "╭─ ", "JoveCellBorder" } }
+  for _, chunk in ipairs(chunks) do
+    ruled[#ruled + 1] = chunk
   end
-  return chunks
+  if fill > 0 then
+    ruled[#ruled + 1] = { string.rep("─", fill), "JoveCellBorder" }
+  end
+  ruled[#ruled + 1] = { "╮", "JoveCellBorder" }
+  return ruled
 end
 
 ---Line number of the window cursor currently showing `buf` (nil if hidden).
@@ -240,7 +251,7 @@ local function update_active(buf, b, cfg)
   })
 end
 
----Recompute header concealment, rules and active highlight.
+---Recompute header concealment, cell borders/rules and active highlight.
 ---@param buf integer
 function M.refresh(buf)
   buf = norm_buf(buf)
@@ -270,13 +281,32 @@ function M.refresh(buf)
     end
   end
 
-  for _, c in ipairs(cells) do
+  for i, c in ipairs(cells) do
     local bs = body_start(c)
-    if bs <= c.end_lnum then
-      b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, bs - 1, 0, {
-        virt_lines_above = true,
-        virt_lines = { build_rule(buf, c, cfg) },
-        hl_mode = "combine",
+    b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, bs - 1, 0, {
+      virt_lines_above = true,
+      virt_lines = { build_rule(buf, c, cfg, i) },
+      hl_mode = "combine",
+    })
+
+    if cfg.borders then
+      local width = win_width(buf)
+      local bottom
+      if width < 3 then
+        bottom = { { "╰╯", "JoveCellBorder" } }
+      else
+        bottom = {
+          { "╰", "JoveCellBorder" },
+          { string.rep("─", width - 2), "JoveCellBorder" },
+          { "╯", "JoveCellBorder" },
+        }
+      end
+      -- Anchored below the cell's last line, priority 100 so it sorts after
+      -- the output virt_lines anchored at the same row.
+      b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
+        virt_lines_above = false,
+        virt_lines = { bottom },
+        priority = 100,
       })
     end
   end

@@ -198,6 +198,7 @@ require("jove").setup({
     active_cell = true,         -- highlight the active cell
     exec_counts = true,         -- show per-cell execution counts
     elapsed = true,             -- show per-cell elapsed time
+    borders = true,             -- draw a closing line below each cell
   },
   keymap = {
     run_cell = false,
