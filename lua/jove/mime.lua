@@ -51,9 +51,6 @@ end
 -- them as fixed-width columns so the output stays readable inline.
 -- -------------------------------------------------------------------------
 
--- Maximum number of table body rows rendered inline before an ellipsis row.
-local HTML_TABLE_MAX_ROWS = 20
-
 ---Collapse an HTML fragment to a single cell string: <br> -> space, drop
 ---tags, decode entities, squeeze whitespace.
 ---@param s string
@@ -242,13 +239,14 @@ function M.html_table(html)
   end
 
   local lines = {}
-  local emitted = 0
+  -- Emit the full table here: these lines end up in `entry.chunks`, which is
+  -- the single source of truth for both inline virt_lines and the
+  -- `:JoveOpenOutput` float. Inline display caps visible lines via
+  -- `output.max_lines` (see output.lua's `truncate`), and the float reads
+  -- `entry.chunks` untruncated; capping here would silently drop rows from
+  -- the full-output float.
   for _, r in ipairs(rows) do
-    if emitted >= HTML_TABLE_MAX_ROWS then
-      break
-    end
     lines[#lines + 1] = format_row(r)
-    emitted = emitted + 1
     if r.header then
       local sep = {}
       for c = 1, ncols do
@@ -256,9 +254,6 @@ function M.html_table(html)
       end
       lines[#lines + 1] = table.concat(sep, "  ")
     end
-  end
-  if #rows > HTML_TABLE_MAX_ROWS then
-    lines[#lines + 1] = "..."
   end
   return lines
 end

@@ -250,15 +250,22 @@ T["html_table"]["returns nil when there is no table"] = function()
   MiniTest.expect.equality(mime.html_table(nil), nil)
 end
 
-T["html_table"]["caps long tables with an ellipsis row"] = function()
+T["html_table"]["returns full rows so the float can show every row"] = function()
+  -- `mime.html_table` produces lines that go straight into `entry.chunks`,
+  -- consumed both inline (truncated by `output.max_lines`) and by the
+  -- :JoveOpenOutput float (always untruncated). The cell renderer must
+  -- therefore return every row, not a capped subset with an ellipsis.
   local rows = {}
   for i = 1, 30 do
     rows[#rows + 1] = ("<tr><td>%d</td><td>x</td></tr>"):format(i)
   end
   local lines = mime.html_table("<table>" .. table.concat(rows) .. "</table>")
-  MiniTest.expect.equality(lines[#lines], "...")
-  -- 20 body rows plus the ellipsis row, at most.
-  expect_truthy(#lines <= 21)
+  -- 30 body rows, no trailing ellipsis row.
+  expect_truthy(#lines == 30)
+  MiniTest.expect.equality(lines[#lines], "30  x")
+  -- Every rendered row still carries the row's value (sanity: no truncation
+  -- skipped any in the middle).
+  expect_truthy(lines[15]:find("15", 1, true) ~= nil)
 end
 
 T["html_table"]["render prefers table layout over tag-stripping"] = function()
