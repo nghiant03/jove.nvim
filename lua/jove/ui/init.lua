@@ -8,6 +8,10 @@ local cell = require("jove.cell")
 
 local execute = require("jove.execute")
 
+local state = require("jove.state")
+
+local chrome = require("jove.ui.chrome")
+
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("jove_cell_status")
@@ -44,13 +48,34 @@ local function stop_spinner(buf, b)
   end
 end
 
+---Trailing elapsed suffix for the spinner text, e.g. " 0.4s". Empty when the
+---`elapsed` option is off or the cell has no recorded elapsed_ms.
+---@param buf integer
+---@param hash string
+---@return string
+local function elapsed_suffix(buf, hash)
+  local cfg = require("jove").config
+  local ui = cfg.ui
+  if type(ui) == "table" and ui.elapsed == false then
+    return ""
+  end
+  local st = state.peek(buf)
+  local meta = st and st.exec and st.exec.meta
+  local m = meta and meta[hash]
+  if m and type(m.elapsed_ms) == "number" then
+    return (" %.1fs"):format(m.elapsed_ms / 1000)
+  end
+  return ""
+end
+
 ---@param buf integer
 ---@param lnum integer  1-based cell start line
-local function start_spinner(buf, b, lnum)
+---@param hash string
+local function start_spinner(buf, b, lnum, hash)
   stop_spinner(buf, b)
   local row = lnum - 1
   b.spinner = vim.api.nvim_buf_set_extmark(buf, ns, row, 0, {
-    virt_text = { { SPINNER_FRAMES[1], "DiagnosticInfo" } },
+    virt_text = { { SPINNER_FRAMES[1] .. elapsed_suffix(buf, hash), "DiagnosticInfo" } },
     virt_text_pos = "eol",
   })
   b.spinner_row = row
@@ -74,20 +99,34 @@ local function start_spinner(buf, b, lnum)
       local frame = SPINNER_FRAMES[(i % #SPINNER_FRAMES) + 1]
       pcall(vim.api.nvim_buf_set_extmark, buf, ns, b.spinner_row, 0, {
         id = b.spinner,
-        virt_text = { { frame, "DiagnosticInfo" } },
+        virt_text = { { frame .. elapsed_suffix(buf, hash), "DiagnosticInfo" } },
         virt_text_pos = "eol",
       })
     end)
   )
 end
 
----Find the start line of the cell with `hash`; nil for synthetic keys.
+---Whether cell headers are concealed (defensive config read).
+---@return boolean
+local function conceal_headers()
+  local ok, jove = pcall(require, "jove")
+  local ui = ok and type(jove) == "table" and jove.config and jove.config.ui
+  return type(ui) == "table" and ui.conceal_headers ~= false or type(ui) ~= "table"
+end
+
+---Find the line the cell's status sign/spinner belongs on: the header line,
+---or the first body line when headers are concealed (the header is not drawn
+---and a sign on it would be invisible).
 ---@param buf integer
 ---@param hash string
 ---@return integer?
 local function cell_lnum(buf, hash)
   for _, c in ipairs(cell.all(buf)) do
     if c.hash == hash then
+      if conceal_headers() and c.header then
+        local body = c.header + 1
+        return body <= c.end_lnum and body or c.header
+      end
       return c.start_lnum
     end
   end
@@ -135,7 +174,7 @@ function M.on_status(buf, hash, status)
   end
 
   if status == "running" then
-    start_spinner(buf, b, lnum)
+    start_spinner(buf, b, lnum, hash)
   end
 end
 
@@ -147,6 +186,9 @@ function M.attach(buf)
     return
   end
   local b = ensure(buf)
+  -- Cell chrome (concealment, rules, active highlight) is idempotent on its
+  -- own; attach it regardless of the status-subscription early return.
+  chrome.attach(buf)
   if b.unsub then
     return
   end
@@ -168,6 +210,7 @@ vim.api.nvim_create_autocmd("BufWipeout", {
       end
       bufs[ev.buf] = nil
     end
+    chrome.detach(ev.buf)
   end,
 })
 

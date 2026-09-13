@@ -214,4 +214,59 @@ T["misc"]["empty params render to no chunks"] = function()
   MiniTest.expect.equality(mime.render(nil), {})
 end
 
+T["html_table"] = MiniTest.new_set()
+
+local STYLED_TABLE = [[
+<style>.dataframe td { color: red; }</style>
+<table border="1" class="dataframe">
+  <thead><tr><th>a</th><th>long</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>xy &amp; z</td></tr>
+    <tr><td>22</td><td>w</td></tr>
+  </tbody>
+</table>
+]]
+
+T["html_table"]["renders padded columns with a header separator"] = function()
+  local lines = mime.html_table(STYLED_TABLE)
+  MiniTest.expect.equality(lines, {
+    "a   long",
+    "──  ──────",
+    "1   xy & z",
+    "22  w",
+  })
+end
+
+T["html_table"]["strips style blocks and decodes entities"] = function()
+  local lines = mime.html_table(STYLED_TABLE)
+  MiniTest.expect.equality(table.concat(lines, "\n"):find("dataframe", 1, true) == nil, true)
+  MiniTest.expect.equality(lines[3]:find("&amp;", 1, true) == nil, true)
+  MiniTest.expect.equality(lines[3]:find("xy & z", 1, true) ~= nil, true)
+end
+
+T["html_table"]["returns nil when there is no table"] = function()
+  MiniTest.expect.equality(mime.html_table("<b>hi</b>"), nil)
+  MiniTest.expect.equality(mime.html_table(""), nil)
+  MiniTest.expect.equality(mime.html_table(nil), nil)
+end
+
+T["html_table"]["caps long tables with an ellipsis row"] = function()
+  local rows = {}
+  for i = 1, 30 do
+    rows[#rows + 1] = ("<tr><td>%d</td><td>x</td></tr>"):format(i)
+  end
+  local lines = mime.html_table("<table>" .. table.concat(rows) .. "</table>")
+  MiniTest.expect.equality(lines[#lines], "...")
+  -- 20 body rows plus the ellipsis row, at most.
+  expect_truthy(#lines <= 21)
+end
+
+T["html_table"]["render prefers table layout over tag-stripping"] = function()
+  local chunks = mime.render({ kind = "display_data", mime = { ["text/html"] = STYLED_TABLE } })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1].kind, "text")
+  MiniTest.expect.equality(chunks[1].mime, "text/html")
+  expect_truthy(chunks[1].text:find("─", 1, true) ~= nil)
+end
+
 return T

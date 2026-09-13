@@ -41,6 +41,228 @@ local function html_to_text(html)
   return (t:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+-- -------------------------------------------------------------------------
+-- Phase C: HTML table -> aligned plain-text renderer.
+--
+-- pandas' `DataFrame.style` (and plain `df.to_html()`) emit a full HTML
+-- document with an injected <style> block; the naive tag-stripper in
+-- html_to_text() turns that into an unreadable wall of CSS. The parser below
+-- pulls out the first <table>, reads its <tr>/<th>/<td> cells, and renders
+-- them as fixed-width columns so the output stays readable inline.
+-- -------------------------------------------------------------------------
+
+-- Maximum number of table body rows rendered inline before an ellipsis row.
+local HTML_TABLE_MAX_ROWS = 20
+
+---Collapse an HTML fragment to a single cell string: <br> -> space, drop
+---tags, decode entities, squeeze whitespace.
+---@param s string
+---@return string
+local function html_cell_text(s)
+  s = s:gsub("<[bB][rR]%s*/?>", " ")
+  s = s:gsub("<[^>]*>", "")
+  -- Numeric references first, then named ones; &amp; last so "&amp;lt;"
+  -- decodes to "&lt;" rather than "<".
+  s = s:gsub("&#[xX](%x+);", function(hex)
+    return vim.fn.nr2char(tonumber(hex, 16))
+  end)
+  s = s:gsub("&#(%d+);", function(dec)
+    return vim.fn.nr2char(tonumber(dec))
+  end)
+  s = s:gsub("&nbsp;", " ")
+  s = s:gsub("&quot;", '"')
+  s = s:gsub("&lt;", "<")
+  s = s:gsub("&gt;", ">")
+  s = s:gsub("&apos;", "'")
+  s = s:gsub("&amp;", "&")
+  s = s:gsub("%s+", " ")
+  s = s:gsub("^ ", ""):gsub(" $", "")
+  return s
+end
+
+---Remove every <style>...</style> block (pandas injects the whole table CSS
+---there). Unterminated style blocks are dropped to end-of-string.
+---@param html string
+---@return string
+local function strip_style_blocks(html)
+  local out = html
+  while true do
+    local lower = out:lower()
+    local s = lower:find("<style[%s>]", 1) or lower:find("<style/", 1)
+    if not s then
+      return out
+    end
+    local e = lower:find("</style>", s, true)
+    if not e then
+      return out:sub(1, s - 1)
+    end
+    out = out:sub(1, s - 1) .. out:sub(e + 8)
+  end
+end
+
+---Body of the first <table> (between the opening tag and </table>), or nil.
+---@param html string
+---@return string?
+local function extract_table(html)
+  local lower = html:lower()
+  local s = lower:find("<table[%s>]", 1)
+  if not s then
+    return nil
+  end
+  local gt = lower:find(">", s, true)
+  if not gt then
+    return nil
+  end
+  local e = lower:find("</table>", gt, true)
+  if not e then
+    return nil
+  end
+  return html:sub(gt + 1, e - 1)
+end
+
+---Parse the <tr>/<th>/<td> cells of one row. Returns { cells, header }.
+---@param row string
+---@return {cells: string[], header: boolean}
+local function parse_cells(row)
+  local cells = {}
+  local lower = row:lower()
+  local pos = 1
+  local is_header = false
+  while true do
+    local ths = lower:find("<th[%s/>]", pos)
+    local tds = lower:find("<td[%s/>]", pos)
+    local s, closer
+    if ths and (not tds or ths < tds) then
+      s, closer = ths, "</th"
+      is_header = true
+    elseif tds then
+      s, closer = tds, "</td"
+    else
+      break
+    end
+    local gt = lower:find(">", s, true)
+    if not gt then
+      break
+    end
+    if lower:sub(s, gt):find("/", 1, true) then
+      -- Self-closing cell (<td/>): empty.
+      cells[#cells + 1] = ""
+      pos = gt + 1
+    else
+      local ce = lower:find(closer, gt, true)
+      if not ce then
+        cells[#cells + 1] = html_cell_text(row:sub(gt + 1))
+        break
+      end
+      cells[#cells + 1] = html_cell_text(row:sub(gt + 1, ce - 1))
+      local cgt = lower:find(">", ce, true)
+      pos = (cgt or ce) + 1
+    end
+  end
+  return { cells = cells, header = is_header }
+end
+
+---Parse all <tr> rows of a table body.
+---@param tbl string
+---@return {cells: string[], header: boolean}[]
+local function parse_rows(tbl)
+  local rows = {}
+  local lower = tbl:lower()
+  local pos = 1
+  while true do
+    local s = lower:find("<tr[%s/>]", pos)
+    if not s then
+      break
+    end
+    local gt = lower:find(">", s, true)
+    if not gt then
+      break
+    end
+    local close = lower:find("</tr>", gt, true)
+    local row_html, next_pos
+    if close then
+      row_html = tbl:sub(gt + 1, close - 1)
+      next_pos = close + 5 -- skip "</tr>"
+    else
+      row_html = tbl:sub(gt + 1)
+      next_pos = #tbl + 1
+    end
+    rows[#rows + 1] = parse_cells(row_html)
+    pos = next_pos
+  end
+  return rows
+end
+
+---Render the first HTML table in `html` as padded, aligned text lines.
+---Returns nil when there is no parseable table (caller falls back to the
+---naive html_to_text tag-stripper).
+---@param html string
+---@return string[]?
+function M.html_table(html)
+  if type(html) ~= "string" then
+    return nil
+  end
+  local cleaned = strip_style_blocks(html)
+  local tbl = extract_table(cleaned)
+  if not tbl then
+    return nil
+  end
+  local rows = parse_rows(tbl)
+  if #rows == 0 then
+    return nil
+  end
+
+  local ncols = 0
+  for _, r in ipairs(rows) do
+    ncols = math.max(ncols, #r.cells)
+  end
+  if ncols == 0 then
+    return nil
+  end
+
+  -- Column widths by display width (CJK/emoji aware).
+  local widths = {}
+  for c = 1, ncols do
+    widths[c] = 0
+  end
+  for _, r in ipairs(rows) do
+    for c = 1, ncols do
+      local txt = r.cells[c] or ""
+      widths[c] = math.max(widths[c], vim.fn.strdisplaywidth(txt))
+    end
+  end
+
+  local function format_row(r)
+    local parts = {}
+    for c = 1, ncols do
+      local txt = r.cells[c] or ""
+      parts[c] = txt .. string.rep(" ", widths[c] - vim.fn.strdisplaywidth(txt))
+    end
+    return (table.concat(parts, "  "):gsub("%s+$", ""))
+  end
+
+  local lines = {}
+  local emitted = 0
+  for _, r in ipairs(rows) do
+    if emitted >= HTML_TABLE_MAX_ROWS then
+      break
+    end
+    lines[#lines + 1] = format_row(r)
+    emitted = emitted + 1
+    if r.header then
+      local sep = {}
+      for c = 1, ncols do
+        sep[c] = string.rep("─", widths[c])
+      end
+      lines[#lines + 1] = table.concat(sep, "  ")
+    end
+  end
+  if #rows > HTML_TABLE_MAX_ROWS then
+    lines[#lines + 1] = "..."
+  end
+  return lines
+end
+
 ---Sort class of a mime within the render order (lower sorts first).
 ---@param mime string
 ---@return integer
@@ -139,7 +361,14 @@ function M.render(params)
         hl_group = "Comment",
       }
     elseif mime == "text/html" then
-      chunks[#chunks + 1] = { kind = "text", mime = mime, text = html_to_text(value) }
+      -- Prefer the table renderer (pandas/DataFrame.style etc.); fall back
+      -- to the naive tag-stripper for non-tabular HTML.
+      local table_lines = M.html_table(value)
+      chunks[#chunks + 1] = {
+        kind = "text",
+        mime = mime,
+        text = table_lines and table.concat(table_lines, "\n") or html_to_text(value),
+      }
     elseif mime == "image/png" or mime == "image/jpeg" then
       chunks[#chunks + 1] = { kind = "image", mime = mime, data = value }
     elseif mime == "image/svg+xml" then

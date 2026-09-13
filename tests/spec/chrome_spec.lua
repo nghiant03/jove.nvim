@@ -1,0 +1,226 @@
+-- chrome_spec.lua: Phase B cell chrome (concealment, rules, active cell).
+local MiniTest = require("mini.test")
+local chrome = require("jove.ui.chrome")
+local state = require("jove.state")
+
+local T = MiniTest.new_set()
+
+---@param lines string[]
+---@return integer buf
+local function make_buffer(lines)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  state.get(buf).path = "fake.ipynb"
+  vim.api.nvim_set_current_buf(buf)
+  return buf
+end
+
+---@param buf integer
+local function release_buffer(buf)
+  pcall(vim.api.nvim_buf_delete, buf, { force = true })
+end
+
+---@param buf integer
+---@return table[]
+local function marks(buf)
+  return vim.api.nvim_buf_get_extmarks(buf, chrome.ns, 0, -1, { details = true })
+end
+
+---Number of marks carrying a conceal_lines attribute (empty string included).
+---@param buf integer
+---@return integer
+local function conceal_count(buf)
+  local n = 0
+  for _, m in ipairs(marks(buf)) do
+    if m[4].conceal_lines ~= nil then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+---Concatenated text of every rule virt_lines mark.
+---@param buf integer
+---@return string[]
+local function rule_texts(buf)
+  local out = {}
+  for _, m in ipairs(marks(buf)) do
+    local d = m[4]
+    if d.virt_lines and d.virt_lines[1] then
+      local parts = {}
+      for _, chunk in ipairs(d.virt_lines[1]) do
+        parts[#parts + 1] = chunk[1]
+      end
+      out[#out + 1] = table.concat(parts)
+    end
+  end
+  return out
+end
+
+---First active-cell highlight mark, or nil.
+---@param buf integer
+---@return table?
+local function active_mark(buf)
+  for _, m in ipairs(marks(buf)) do
+    if m[4].line_hl_group == "JoveActiveCell" then
+      return m
+    end
+  end
+  return nil
+end
+
+---@param texts string[]
+---@param needle string
+---@return boolean
+local function any_contains(texts, needle)
+  for _, t in ipairs(texts) do
+    if t:find(needle, 1, true) then
+      return true
+    end
+  end
+  return false
+end
+
+T["conceal"] = MiniTest.new_set()
+
+T["conceal"]["hides front matter and every cell header"] = function()
+  local buf = make_buffer({
+    "# ---",
+    "title: x",
+    "# ---",
+    "# %% a",
+    "x1",
+    "# %% [markdown]",
+    "# md",
+  })
+  chrome.refresh(buf)
+  -- 1 front-matter mark + 2 header marks.
+  MiniTest.expect.equality(conceal_count(buf), 3)
+  release_buffer(buf)
+end
+
+T["conceal"]["no front matter => only header conceal marks"] = function()
+  local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
+  chrome.refresh(buf)
+  MiniTest.expect.equality(conceal_count(buf), 2)
+  release_buffer(buf)
+end
+
+T["conceal"]["conceal_headers = false disables concealment"] = function()
+  local cfg = require("jove").config
+  local saved = cfg.ui
+  cfg.ui = { conceal_headers = false }
+  local buf = make_buffer({ "# ---", "t: x", "# ---", "# %% a", "x1" })
+  chrome.refresh(buf)
+  MiniTest.expect.equality(conceal_count(buf), 0)
+  cfg.ui = saved
+  release_buffer(buf)
+end
+
+T["rules"] = MiniTest.new_set()
+
+T["rules"]["renders one rule per non-empty cell body above it"] = function()
+  local buf = make_buffer({ "# %% a", "x1", "# %% [markdown]", "# md" })
+  chrome.refresh(buf)
+  local texts = rule_texts(buf)
+  MiniTest.expect.equality(#texts, 2)
+  MiniTest.expect.equality(any_contains(texts, "── markdown "), true)
+  MiniTest.expect.equality(any_contains(texts, "○"), true) -- unread glyph
+  release_buffer(buf)
+end
+
+T["rules"]["renders count/elapsed/status from exec.meta and status"] = function()
+  local buf = make_buffer({ "# %% a", "x1" })
+  local hash = require("jove.cell").all(buf)[1].hash
+  state.get(buf).exec =
+    { status = { [hash] = "ok" }, meta = { [hash] = { count = 3, elapsed_ms = 400 } } }
+  chrome.refresh(buf)
+  local texts = rule_texts(buf)
+  MiniTest.expect.equality(any_contains(texts, "✓"), true)
+  MiniTest.expect.equality(any_contains(texts, "In [3]"), true)
+  MiniTest.expect.equality(any_contains(texts, "0.4s"), true)
+  release_buffer(buf)
+end
+
+T["rules"]["exec_counts/elapsed = false omit those chunks"] = function()
+  local cfg = require("jove").config
+  local saved = cfg.ui
+  cfg.ui = { exec_counts = false, elapsed = false }
+  local buf = make_buffer({ "# %% a", "x1" })
+  local hash = require("jove.cell").all(buf)[1].hash
+  state.get(buf).exec =
+    { status = { [hash] = "running" }, meta = { [hash] = { count = 7, elapsed_ms = 1200 } } }
+  chrome.refresh(buf)
+  local texts = rule_texts(buf)
+  MiniTest.expect.equality(any_contains(texts, "In ["), false)
+  MiniTest.expect.equality(any_contains(texts, "1.2s"), false)
+  MiniTest.expect.equality(any_contains(texts, "⠋"), true)
+  cfg.ui = saved
+  release_buffer(buf)
+end
+
+T["rules"]["no kernel state does not crash and renders a blank-count rule"] = function()
+  local buf = make_buffer({ "# %% a", "x1" })
+  local ok = pcall(chrome.refresh, buf)
+  MiniTest.expect.equality(ok, true)
+  MiniTest.expect.equality(#rule_texts(buf), 1)
+  release_buffer(buf)
+end
+
+T["active cell"] = MiniTest.new_set()
+
+T["active cell"]["highlights the body of the cell under the cursor"] = function()
+  local buf = make_buffer({ "# %% a", "x1", "x2", "# %% b", "y1" })
+  chrome.refresh(buf)
+  vim.api.nvim_win_set_cursor(0, { 2, 0 }) -- inside cell a body
+  chrome.refresh_active(buf)
+  local m = active_mark(buf)
+  MiniTest.expect.equality(m ~= nil, true)
+  MiniTest.expect.equality(m[2], 1) -- row 1 (line 2)
+  MiniTest.expect.equality(m[4].end_row, 2) -- through line 3
+  release_buffer(buf)
+end
+
+T["active cell"]["CursorMoved autocmd updates the highlight"] = function()
+  local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1", "y2" })
+  chrome.attach(buf)
+  vim.api.nvim_win_set_cursor(0, { 2, 0 }) -- cell a body (line 2)
+  vim.cmd("doautocmd CursorMoved")
+  local m1 = active_mark(buf)
+  MiniTest.expect.equality(m1 ~= nil, true)
+  MiniTest.expect.equality(m1[2], 1)
+
+  vim.api.nvim_win_set_cursor(0, { 4, 0 }) -- cell b body (line 4)
+  vim.cmd("doautocmd CursorMoved")
+  local m2 = active_mark(buf)
+  MiniTest.expect.equality(m2 ~= nil, true)
+  MiniTest.expect.equality(m2[2], 3)
+  MiniTest.expect.equality(m2[4].end_row, 4)
+  release_buffer(buf)
+end
+
+T["active cell"]["active_cell = false draws no highlight"] = function()
+  local cfg = require("jove").config
+  local saved = cfg.ui
+  cfg.ui = { active_cell = false }
+  local buf = make_buffer({ "# %% a", "x1" })
+  chrome.refresh(buf)
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+  chrome.refresh_active(buf)
+  MiniTest.expect.equality(active_mark(buf), nil)
+  cfg.ui = saved
+  release_buffer(buf)
+end
+
+T["detach"] = MiniTest.new_set()
+
+T["detach"]["clears all chrome extmarks"] = function()
+  local buf = make_buffer({ "# ---", "t: x", "# ---", "# %% a", "x1" })
+  chrome.attach(buf)
+  MiniTest.expect.equality(#marks(buf) > 0, true)
+  chrome.detach(buf)
+  MiniTest.expect.equality(#marks(buf), 0)
+  release_buffer(buf)
+end
+
+return T
