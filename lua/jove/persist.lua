@@ -169,12 +169,14 @@ end
 ---`meta` carries the execute module's per-hash run metadata
 ---({ count?, elapsed_ms? }); when a run cell's count is known it is written
 ---as the cell's (and its execute_result outputs') execution_count, replacing
----the null. Without it counts stay `vim.NIL` (unchanged behavior).
+---the null. A cell with a meta entry but no session outputs/seen entry (e.g.
+---`x = 1`: run metadata, no output) still gets its count written. Without
+---meta counts stay `vim.NIL` (unchanged behavior).
 ---@param nb table?
 ---@param store table?  -- state.outputs: hash → {raw = {...}, from_disk?}
 ---@param seen_hashes table?  -- hash → true, "had outputs this session"
 ---@param meta table?  -- hash → { count?: integer, elapsed_ms?: number }
----@return integer merged  -- number of cells replaced or tombstoned
+---@return integer merged  -- number of cells replaced, tombstoned, or counted
 function M.merge_into(nb, store, seen_hashes, meta)
   if type(nb) ~= "table" or type(nb.cells) ~= "table" then
     return 0
@@ -212,6 +214,14 @@ function M.merge_into(nb, store, seen_hashes, meta)
         c.outputs = {}
         c.execution_count = count or vim.NIL
         merged = merged + 1
+      elseif count ~= nil and c.execution_count ~= count then
+        -- Meta-only cell (ran, produced no outputs): persist just the count.
+        -- Deliberately NOT gated on from_disk: from_disk only guards output
+        -- rewriting (disk content already correct), while a session run that
+        -- reported a count is new truth. Only touches the file when the
+        -- on-disk value actually changes, so steady-state saves stay no-ops.
+        c.execution_count = count
+        merged = merged + 1
       end
     end
   end
@@ -246,10 +256,11 @@ end
 ---updates `st.json` and `st.last_write` to the MERGED bytes -- the
 ---FileChangedShell self-trigger suppression keeps working.
 ---No-op (silent) when the buffer is not jove-managed, when there is nothing
----session-side to persist, or when the merge changes nothing (a pure
----open→save: from_disk store entries are skipped and the seen-set is pruned
----to the fresh JSON, so nothing merges and the file is not rewritten);
----failures notify WARN, never crash the write.
+---session-side to persist (no outputs, no tombstones, no run-count metadata),
+---or when the merge changes nothing (a pure open→save: from_disk store
+---entries are skipped and the seen-set is pruned to the fresh JSON, so
+---nothing merges and the file is not rewritten); failures notify WARN, never
+---crash the write.
 ---@param buf integer
 ---@param bytes string?  Fresh notebook JSON from the write flow; nil falls
 ---    back to st.json.
@@ -261,9 +272,11 @@ function M.export(buf, bytes)
     return false -- not a jove-managed buffer
   end
   local buf_seen = seen[buf]
+  local meta = require("jove").config.persist_exec_counts and st.exec and st.exec.meta or nil
+  local has_meta = meta ~= nil and next(meta) ~= nil
   local has_store = st.outputs ~= nil and next(st.outputs) ~= nil
-  if not has_store and not (buf_seen and next(buf_seen) ~= nil) then
-    return false -- nothing session-side to persist (outputs OR tombstones)
+  if not has_store and not (buf_seen and next(buf_seen) ~= nil) and not has_meta then
+    return false -- nothing session-side to persist (outputs OR tombstones OR meta)
   end
 
   -- Remember store hashes as "had outputs this session" (before the merge
@@ -307,14 +320,7 @@ function M.export(buf, bytes)
     end
   end
 
-  if
-    M.merge_into(
-      nb,
-      st.outputs,
-      buf_seen,
-      require("jove").config.persist_exec_counts and st.exec and st.exec.meta or nil
-    ) == 0
-  then
+  if M.merge_into(nb, st.outputs, buf_seen, meta) == 0 then
     return false -- nothing matched, nothing to tombstone: real no-op
   end
 

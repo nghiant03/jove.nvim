@@ -295,6 +295,19 @@ T["merge_into"]["run meta count replaces null on cells and execute_result output
   MiniTest.expect.equality(nb.cells[2].execution_count == nil, true)
 end
 
+T["merge_into"]["meta-only cell: run count persists with no store/seen"] = function()
+  local nb = vim.deepcopy(NB)
+  local h1 = cell.hash_source(NB.cells[1].source)
+  local meta = { [h1] = { count = 4 } }
+  local merged = persist.merge_into(nb, nil, nil, meta)
+  MiniTest.expect.equality(merged, 1)
+  MiniTest.expect.equality(nb.cells[1].execution_count, 4)
+  -- No session outputs for this cell: the disk outputs are left untouched.
+  MiniTest.expect.equality(nb.cells[1].outputs[1].text, "old")
+  -- Cells without a meta entry are unaffected.
+  MiniTest.expect.equality(nb.cells[2].execution_count == nil, true)
+end
+
 T["merge_into"]["empty store / malformed notebook -> 0, untouched"] = function()
   local nb = vim.deepcopy(NB)
   MiniTest.expect.equality(persist.merge_into(nb, {}), 0)
@@ -393,6 +406,39 @@ T["export (atomic write)"]["persists session exec counts from exec.meta"] = func
   MiniTest.expect.equality(nb2.cells[2].outputs[1].execution_count, 9)
 
   vim.api.nvim_buf_delete(buf, { force = true })
+end
+
+T["export (atomic write)"]["meta-only cell count triggers save"] = function()
+  local path = tmp_copy_fixture()
+  local bytes = read_disk(path)
+  local nb = vim.json.decode(bytes)
+  local hashes = code_hashes(nb)
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  local st = state.get(buf)
+  st.path = path
+  st.json = nb
+  -- No session outputs and no seen hashes: only run metadata for the
+  -- output-less cell (cell 5, execution_count null on disk).
+  st.exec = { meta = { [hashes[5]] = { count = 4 } } }
+
+  local merged
+  local orig_merge = persist.merge_into
+  persist.merge_into = function(...)
+    merged = orig_merge(...)
+    return merged
+  end
+  local ok, err = pcall(function()
+    expect_truthy(persist.export(buf, bytes))
+    local nb2 = vim.json.decode(read_disk(path))
+    MiniTest.expect.equality(nb2.cells[5].execution_count, 4)
+    MiniTest.expect.equality(merged, 1)
+  end)
+  persist.merge_into = orig_merge
+  vim.api.nvim_buf_delete(buf, { force = true })
+  if not ok then
+    error(err)
+  end
 end
 
 T["export (atomic write)"]["copy-before-merge: failed encode leaves st.json untouched"] = function()
