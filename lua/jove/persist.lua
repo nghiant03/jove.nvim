@@ -417,6 +417,27 @@ function M.import(buf)
     out.clear(buf) -- reload semantics: disk wins over stale session entries
   end
   out.import(buf, by_hash)
+
+  -- Reconcile per-cell exec metadata with the freshly imported disk state:
+  -- a `count` recorded BEFORE this import is stale (the disk copy is the
+  -- new truth and `merge_into` would otherwise rewrite it on next save when
+  -- the session run produced no new outputs). Drop only `count`; leave
+  -- `elapsed_ms` since it is display-side and not persisted.
+  --
+  -- Only do this when disk actually had outputs: an empty disk copy is not
+  -- authoritative on counts (see M.import's store-reset asymmetry above),
+  -- so any session-recorded count still stands.
+  if next(by_hash) ~= nil and st.exec and st.exec.meta then
+    for hash in pairs(by_hash) do
+      local m = st.exec.meta[hash]
+      if m then
+        m.count = nil
+        if m.elapsed_ms == nil then
+          st.exec.meta[hash] = nil
+        end
+      end
+    end
+  end
 end
 
 return M
