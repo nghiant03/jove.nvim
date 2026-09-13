@@ -175,6 +175,8 @@ require("jove").setup({
   auto_kernel = true,           -- start kernel automatically on open
   auto_import_outputs = true,   -- render persisted outputs on open/reload
   auto_export_outputs = true,   -- merge session outputs into the .ipynb on save
+  persist_exec_counts = true,   -- persist kernel execution counts into the .ipynb
+  elapsed = true,               -- show per-cell elapsed execution time
   auto_reload = false,          -- auto-reload when the .ipynb changes on disk
   cell_motions = true,          -- map [c / ]c cell motions
   signs = {
@@ -186,6 +188,16 @@ require("jove").setup({
   output = {
     max_lines = 50,             -- inline output truncation limit
     images = true,              -- render images via snacks.image when available
+  },
+  variables = {
+    auto_refresh = true,        -- refresh the variables inspector on idle
+    width = 32,                 -- inspector window width
+  },
+  ui = {
+    conceal_headers = true,     -- conceal `# %%` cell headers
+    active_cell = true,         -- highlight the active cell
+    exec_counts = true,         -- show per-cell execution counts
+    elapsed = true,             -- show per-cell elapsed time
   },
   keymap = {
     run_cell = false,
@@ -203,6 +215,10 @@ Cells run one at a time per notebook: a queued cell gets the `queued` sign,
 then `running` (with a spinner on the cell), then `ok` or `error`. Errors
 keep the `✗` sign and render the traceback. `:JoveInterrupt` stops the
 running execution.
+
+When enabled (`ui.exec_counts` / `ui.elapsed`), each cell shows its kernel
+execution count and how long its last run took; counts are also persisted
+into the `.ipynb` on save (`persist_exec_counts`).
 
 Add a kernel status component to your statusline:
 
@@ -237,8 +253,9 @@ The exact semantics:
 - **Untouched cells** keep whatever jupytext preserved on disk, including
   their original execution counts.
 - **Cells re-run this session** get their disk outputs replaced by the
-  session outputs (execution counts are nulled — the session result carries
-  no count).
+  session outputs along with the kernel execution count; with
+  `persist_exec_counts = false` (or when the kernel reports no count) the
+  count is written as `null`.
 - **Cleared outputs stay cleared**: deleting a cell's outputs and saving
   persists `outputs: []`, so they don't resurrect on reload.
 - **Reload treats disk as truth**: `:JoveReload` (or an external change with

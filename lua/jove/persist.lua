@@ -106,7 +106,10 @@ function M.to_nbformat(params)
       output_type = "execute_result",
       data = as_dict(params.mime),
       metadata = vim.empty_dict(),
-      execution_count = vim.NIL,
+      -- The bridge tags execute_result events with the kernel execution
+      -- count; unknown counts stay null (nbformat-valid).
+      execution_count = type(params.execution_count) == "number" and params.execution_count
+        or vim.NIL,
     }
   elseif kind == "display_data" then
     return {
@@ -163,11 +166,16 @@ end
 ---Store entries flagged `from_disk` (output.import: disk content transiting
 ---the store, not session results) are SKIPPED entirely — their outputs are
 ---already on disk; rewriting them would null execution counts on every save.
+---`meta` carries the execute module's per-hash run metadata
+---({ count?, elapsed_ms? }); when a run cell's count is known it is written
+---as the cell's (and its execute_result outputs') execution_count, replacing
+---the null. Without it counts stay `vim.NIL` (unchanged behavior).
 ---@param nb table?
 ---@param store table?  -- state.outputs: hash → {raw = {...}, from_disk?}
 ---@param seen_hashes table?  -- hash → true, "had outputs this session"
+---@param meta table?  -- hash → { count?: integer, elapsed_ms?: number }
 ---@return integer merged  -- number of cells replaced or tombstoned
-function M.merge_into(nb, store, seen_hashes)
+function M.merge_into(nb, store, seen_hashes, meta)
   if type(nb) ~= "table" or type(nb.cells) ~= "table" then
     return 0
   end
@@ -176,6 +184,8 @@ function M.merge_into(nb, store, seen_hashes)
     if c.cell_type == "code" and c.source ~= nil then
       local hash = cell.hash_source(c.source)
       local entry = store and store[hash]
+      local m = meta and meta[hash]
+      local count = m and type(m.count) == "number" and m.count or nil
       -- Disk content transiting the store (output.import tags entries
       -- from_disk) is skipped entirely: its outputs are already on disk,
       -- and rewriting them would null execution counts on every save. A
@@ -186,17 +196,21 @@ function M.merge_into(nb, store, seen_hashes)
         for _, params in ipairs(entry.raw) do
           local out = M.to_nbformat(params)
           if out then
+            -- Attribute the session count to the result output too.
+            if count ~= nil and out.output_type == "execute_result" then
+              out.execution_count = count
+            end
             outs[#outs + 1] = out
           end
         end
         c.outputs = outs
-        c.execution_count = vim.NIL
+        c.execution_count = count or vim.NIL
         merged = merged + 1
       elseif not from_disk and seen_hashes and seen_hashes[hash] then
         -- Session cleared this cell's outputs: persist the deletion
         -- (`outputs` is an array, so an empty Lua table encodes correctly).
         c.outputs = {}
-        c.execution_count = vim.NIL
+        c.execution_count = count or vim.NIL
         merged = merged + 1
       end
     end
@@ -293,7 +307,14 @@ function M.export(buf, bytes)
     end
   end
 
-  if M.merge_into(nb, st.outputs, buf_seen) == 0 then
+  if
+    M.merge_into(
+      nb,
+      st.outputs,
+      buf_seen,
+      require("jove").config.persist_exec_counts and st.exec and st.exec.meta or nil
+    ) == 0
+  then
     return false -- nothing matched, nothing to tombstone: real no-op
   end
 

@@ -8,10 +8,14 @@ local M = {}
 ---@field auto_kernel boolean            Start a bridge + kernel on open (kernelspec from notebook metadata, env, or picker).
 ---@field auto_import_outputs boolean    Import persisted outputs from the .ipynb on open/reload (gates persist.import).
 ---@field auto_export_outputs boolean    Merge session outputs into the .ipynb on save (gates persist.export).
+---@field persist_exec_counts boolean    Persist kernel execution counts into the .ipynb on save.
+---@field elapsed boolean                Show per-cell elapsed execution time (UI).
 ---@field auto_reload boolean            Auto-reload buffer when the .ipynb changes on disk (our own writes are suppressed).
 ---@field cell_motions boolean           Map [c / ]c cell motions on jove buffers.
 ---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.
 ---@field output table                   Output rendering options: { max_lines, images }.
+---@field variables table                Variables inspector options: { auto_refresh, width }.
+---@field ui table                       UI options: { conceal_headers, active_cell, exec_counts, elapsed }.
 ---@field keymap table<string, string|false>
 
 ---@type jove.Config
@@ -21,6 +25,8 @@ M.config = {
   auto_kernel = true,
   auto_import_outputs = true,
   auto_export_outputs = true,
+  persist_exec_counts = true,
+  elapsed = true,
   auto_reload = false,
   cell_motions = true,
   signs = {
@@ -32,6 +38,16 @@ M.config = {
   output = {
     max_lines = 50,
     images = true,
+  },
+  variables = {
+    auto_refresh = true,
+    width = 32,
+  },
+  ui = {
+    conceal_headers = true,
+    active_cell = true,
+    exec_counts = true,
+    elapsed = true,
   },
   keymap = {
     run_cell = false,
@@ -57,10 +73,14 @@ local KNOWN_KEYS = {
   auto_kernel = true,
   auto_import_outputs = true,
   auto_export_outputs = true,
+  persist_exec_counts = true,
+  elapsed = true,
   auto_reload = true,
   cell_motions = true,
   signs = true,
   output = true,
+  variables = true,
+  ui = true,
   keymap = true,
 }
 local KNOWN_KEYMAP_KEYS = {
@@ -114,6 +134,8 @@ local function validate_config(cfg)
   vim.validate("auto_kernel", cfg.auto_kernel, "boolean")
   vim.validate("auto_import_outputs", cfg.auto_import_outputs, "boolean")
   vim.validate("auto_export_outputs", cfg.auto_export_outputs, "boolean")
+  vim.validate("persist_exec_counts", cfg.persist_exec_counts, "boolean")
+  vim.validate("elapsed", cfg.elapsed, "boolean")
   vim.validate("auto_reload", cfg.auto_reload, "boolean")
   vim.validate("cell_motions", cfg.cell_motions, "boolean")
   vim.validate("signs", cfg.signs, "table")
@@ -123,6 +145,14 @@ local function validate_config(cfg)
   vim.validate("output", cfg.output, "table")
   vim.validate("output.max_lines", cfg.output.max_lines, "number")
   vim.validate("output.images", cfg.output.images, "boolean")
+  vim.validate("variables", cfg.variables, "table")
+  vim.validate("variables.auto_refresh", cfg.variables.auto_refresh, "boolean")
+  vim.validate("variables.width", cfg.variables.width, "number")
+  vim.validate("ui", cfg.ui, "table")
+  vim.validate("ui.conceal_headers", cfg.ui.conceal_headers, "boolean")
+  vim.validate("ui.active_cell", cfg.ui.active_cell, "boolean")
+  vim.validate("ui.exec_counts", cfg.ui.exec_counts, "boolean")
+  vim.validate("ui.elapsed", cfg.ui.elapsed, "boolean")
   vim.validate("keymap", cfg.keymap, "table")
   for k, v in pairs(cfg.keymap) do
     vim.validate(("keymap.%s"):format(k), v, is_keymap_lhs)

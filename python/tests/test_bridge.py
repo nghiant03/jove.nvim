@@ -256,7 +256,7 @@ def test_start_kernel_status_sequence(bridge):
 def test_execute_stream(kernel):
     since = kernel.cursor()
     msg = kernel.request("execute", {"code": "print(1+1)", "cell": "cell-a1"})
-    assert msg["result"] == {"status": "ok"}
+    assert msg["result"].get("status") == "ok"
     ev = kernel.wait_event(
         "output", since=since, pred=lambda p: p.get("cell") == "cell-a1"
     )
@@ -290,7 +290,7 @@ def test_execute_error(kernel):
 def test_execute_result_mime_bundle(kernel):
     since = kernel.cursor()
     msg = kernel.request("execute", {"code": "'hello'", "cell": "r1"})
-    assert msg["result"] == {"status": "ok"}
+    assert msg["result"].get("status") == "ok"
     ev = kernel.wait_event(
         "output",
         since=since,
@@ -304,7 +304,7 @@ def test_execute_display_data(kernel):
     since = kernel.cursor()
     code = "from IPython.display import display, HTML\ndisplay(HTML('<b>jove</b>'))"
     msg = kernel.request("execute", {"code": code, "cell": "d1"})
-    assert msg["result"] == {"status": "ok"}
+    assert msg["result"].get("status") == "ok"
     ev = kernel.wait_event(
         "output",
         since=since,
@@ -323,8 +323,8 @@ def test_overlapping_executes(kernel):
     rid2 = kernel.send_request("execute", {"code": "print('second-done')", "cell": "c2"})
     r1 = kernel.wait_response(rid1, since=since)
     r2 = kernel.wait_response(rid2, since=since)
-    assert r1["result"] == {"status": "ok"}
-    assert r2["result"] == {"status": "ok"}
+    assert r1["result"].get("status") == "ok"
+    assert r2["result"].get("status") == "ok"
 
     # A cell's final iopub output can be emitted after its execute_reply
     # (ZMQ gives no cross-socket ordering; the bridge re-tags late outputs to
@@ -377,7 +377,7 @@ def test_interrupt(kernel):
     # Kernel recovered and answers again.
     kernel.wait_status("idle", since=since)
     msg = kernel.request("execute", {"code": "print('alive')", "cell": "after"})
-    assert msg["result"] == {"status": "ok"}
+    assert msg["result"].get("status") == "ok"
     ev = kernel.wait_event(
         "output", since=since, pred=lambda p: p.get("cell") == "after"
     )
@@ -431,13 +431,13 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
 
     # Kernel recovered and answers again.
     msg = kernel.request("execute", {"code": "print('alive')", "cell": "after"})
-    assert msg["result"] == {"status": "ok"}
+    assert msg["result"].get("status") == "ok"
 
 
 def test_restart(bridge):
     bridge.start_kernel("python3")
     msg = bridge.request("execute", {"code": "jove_secret = 42", "cell": "s1"})
-    assert msg["result"] == {"status": "ok"}
+    assert msg["result"].get("status") == "ok"
 
     since = bridge.cursor()
     msg = bridge.request("restart")

@@ -57,10 +57,34 @@ local function ensure_exec(st)
       status_cbs = {}, -- fn(hash, status)
       attached = nil, -- kernel entry whose bridge we subscribed
       unsubs = nil, -- unsubscribe fns for the attached bridge
+      start_hr = {}, -- [hash] -> hrtime at request send (elapsed source)
+      meta = {}, -- [hash] -> { count?: integer, elapsed_ms?: number }
     }
     st.exec = exec
   end
   return exec
+end
+
+---Record per-run metadata for a cell (count from the bridge, elapsed from
+---hrtime). Only numeric values are stored; absent data leaves prior values
+---(or nil) intact.
+---@param exec table?
+---@param hash string
+---@param count integer?
+---@param elapsed_ms number?
+local function set_meta(exec, hash, count, elapsed_ms)
+  if not exec then
+    return
+  end
+  exec.meta = exec.meta or {}
+  local m = exec.meta[hash] or {}
+  if type(count) == "number" then
+    m.count = count
+  end
+  if type(elapsed_ms) == "number" then
+    m.elapsed_ms = elapsed_ms
+  end
+  exec.meta[hash] = m
 end
 
 ---@param buf integer
@@ -103,6 +127,12 @@ local function ensure_attached(buf)
   local function on_output(params)
     if type(params) ~= "table" or type(params.cell) ~= "string" then
       return
+    end
+    -- The bridge tags execute_result events with the kernel execution count;
+    -- record it even when the shell reply (which may also carry it) is late.
+    if params.kind == "execute_result" and type(params.execution_count) == "number" then
+      local st2 = state.peek(buf)
+      set_meta(st2 and st2.exec, params.cell, params.execution_count, nil)
     end
     local out = M._output()
     if out then
@@ -173,14 +203,26 @@ function pump(buf)
   -- bridge's default explicitly. The reply may outlive the buffer (wiped
   -- mid-run): peek the state and bail when the registry entry is gone --
   -- state.get here would resurrect a phantom entry.
+  exec.start_hr[item.hash] = vim.uv.hrtime()
   k.bridge:request("execute", { code = item.code, cell = item.hash }, function(result, err)
     local st2 = state.peek(buf)
     local exec2 = st2 and st2.exec
-    if exec2 and exec2.running == item then
-      exec2.running = nil
-      local status = (not err and type(result) == "table" and result.status == "ok") and "ok"
-        or "error"
-      set_status(buf, item.hash, status)
+    if exec2 then
+      -- Elapsed is measured at the response handler boundary (covers queue
+      -- wait excluded: start_hr is stamped just before the send).
+      local start = exec2.start_hr and exec2.start_hr[item.hash]
+      local elapsed = start and (vim.uv.hrtime() - start) / 1e6 or nil
+      if exec2.start_hr then
+        exec2.start_hr[item.hash] = nil
+      end
+      local count = (not err and type(result) == "table") and result.execution_count or nil
+      set_meta(exec2, item.hash, count, elapsed)
+      if exec2.running == item then
+        exec2.running = nil
+        local status = (not err and type(result) == "table" and result.status == "ok") and "ok"
+          or "error"
+        set_status(buf, item.hash, status)
+      end
     end
     pump(buf)
   end, { timeout_ms = false })
@@ -362,6 +404,16 @@ end
 function M.status(buf, hash)
   local st = state.peek(norm_buf(buf))
   return st and st.exec and st.exec.status[hash] or nil
+end
+
+---Per-run metadata recorded for a cell: { count?: integer, elapsed_ms?: number }
+---(nil until the cell has run and the bridge supplied the data).
+---@param buf integer
+---@param hash string
+---@return { count: integer?, elapsed_ms: number? }?
+function M.meta(buf, hash)
+  local st = state.peek(norm_buf(buf))
+  return st and st.exec and st.exec.meta and st.exec.meta[hash] or nil
 end
 
 ---Number of queued (not yet running) items.

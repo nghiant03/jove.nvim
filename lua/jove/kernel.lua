@@ -91,16 +91,16 @@ end
 ---@param specs table<string, {display_name: string?, language: string?}>
 ---@param metadata_name string?
 ---@param force boolean
----@param cb fun(name: string?)
+---@param cb fun(name: string?, spec: table?)
 local function resolve_kernelspec(specs, metadata_name, force, cb)
   if not force then
     if metadata_name and specs[metadata_name] then
-      cb(metadata_name)
+      cb(metadata_name, specs[metadata_name])
       return
     end
     local env = active_env_name()
     if env and specs[env] then
-      cb(env)
+      cb(env, specs[env])
       return
     end
   end
@@ -122,15 +122,21 @@ local function resolve_kernelspec(specs, metadata_name, force, cb)
       return ("%s (%s)"):format(name, spec.display_name or name)
     end,
   }, function(choice)
-    cb(choice)
+    cb(choice, choice and specs[choice] or nil)
   end)
 end
 
 ---Start a kernel on `entry.bridge` and drive `entry.status` from events.
----@param entry {bridge: jove.bridge, name: string?, status: string}
+---@param entry {bridge: jove.bridge, name: string?, language: string?, status: string}
 ---@param name string
-local function start_kernel(entry, name)
+---@param spec table?  -- kernelspec (carries `language`)
+local function start_kernel(entry, name, spec)
   entry.name = name
+  -- Lowercased kernelspec language (e.g. "python"), consumed by the UI
+  -- inspector; preserved across restarts when no fresh spec is known.
+  if spec and type(spec.language) == "string" and spec.language ~= "" then
+    entry.language = spec.language:lower()
+  end
   entry.status = "starting"
   -- Kernel process spawn can be slow on cold caches; give it more than the
   -- default request timeout.
@@ -155,7 +161,7 @@ end
 ---buffer, and the predecessor's hook is cleared when a kernel is replaced,
 ---making this idempotent per buffer.
 ---@param buf integer
----@param entry {bridge: jove.bridge, name: string?, status: string}
+---@param entry {bridge: jove.bridge, name: string?, language: string?, status: string}
 local function attach_wipeout(buf, entry)
   vim.api.nvim_clear_autocmds({ group = wipe_group, buffer = buf })
   vim.api.nvim_create_autocmd("BufWipeout", {
@@ -187,7 +193,7 @@ function M.init(buf, opts)
   end
 
   local b = bridge_mod.new({ bridge_python = require("jove").config.bridge_python })
-  local entry = { bridge = b, name = nil, status = "starting", _last_name = nil }
+  local entry = { bridge = b, name = nil, language = nil, status = "starting", _last_name = nil }
   -- Reserve the slot up front so concurrent init() calls can't double-start;
   -- cleaned up on every failure path below.
   st.kernel = entry
@@ -249,7 +255,7 @@ function M.init(buf, opts)
       notify_bridge_unavailable(err or "list_kernelspecs returned no kernelspecs")
       return
     end
-    resolve_kernelspec(result.kernelspecs, kernelspec_name(buf), opts.force, function(name)
+    resolve_kernelspec(result.kernelspecs, kernelspec_name(buf), opts.force, function(name, spec)
       if st.kernel ~= entry then
         return
       end
@@ -258,7 +264,7 @@ function M.init(buf, opts)
         cleanup()
         return
       end
-      start_kernel(entry, name)
+      start_kernel(entry, name, spec)
     end)
   end)
 end

@@ -11,7 +11,10 @@ local M = {}
 --   cells   -- lua/jove/cell.lua      cell parse cache (Phase 2)
 --   kernel  -- lua/jove/kernel.lua    bridge/kernel handle (Phase 3)
 --   exec    -- lua/jove/execute.lua   { queue, running, status, status_cbs,
---                                        attached, unsubs } (Phase 4)
+--                                        attached, unsubs,
+--                                        start_hr[hash],
+--                                        meta[hash] = { count, elapsed_ms } }
+--                                                        (Phase 4 + Phase A)
 --   outputs -- lua/jove/output.lua    per-cell output store (Phase 5)
 
 ---@type table<integer, jove.BufferState>

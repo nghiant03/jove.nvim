@@ -278,6 +278,61 @@ T["status"]["on_status callback fires and unsubscribes"] = function()
   MiniTest.expect.equality(seen[3].status, "ok")
 end
 
+T["meta"] = MiniTest.new_set()
+
+T["meta"]["response count + elapsed recorded per hash"] = function()
+  local buf = make_buffer(LINES)
+  local br = fake_bridge()
+  inject_kernel(br, buf)
+  local h1 = hashes(buf)
+
+  execute.run_cell(buf, 1)
+  br:reply({ status = "ok", execution_count = 7 })
+
+  local m = execute.meta(buf, h1)
+  MiniTest.expect.equality(m.count, 7)
+  MiniTest.expect.equality(type(m.elapsed_ms), "number")
+  expect_truthy(m.elapsed_ms >= 0)
+end
+
+T["meta"]["execute_result output event carries the count before the reply"] = function()
+  local buf = make_buffer(LINES)
+  local br = fake_bridge()
+  inject_kernel(br, buf)
+  local h1 = hashes(buf)
+
+  execute.run_cell(buf, 1)
+  br:emit("output", {
+    cell = h1,
+    kind = "execute_result",
+    execution_count = 3,
+    mime = { ["text/plain"] = "1" },
+  })
+  MiniTest.expect.equality(execute.meta(buf, h1).count, 3)
+
+  -- A later reply without a count must not clobber the recorded one.
+  br:reply({ status = "ok" })
+  MiniTest.expect.equality(execute.meta(buf, h1).count, 3)
+end
+
+T["meta"]["unknown count stays nil; elapsed still recorded (json shape)"] = function()
+  local buf = make_buffer(LINES)
+  local br = fake_bridge()
+  inject_kernel(br, buf)
+  local h1 = hashes(buf)
+
+  execute.run_cell(buf, 1)
+  br:reply({ status = "ok" })
+
+  local m = execute.meta(buf, h1)
+  MiniTest.expect.equality(m.count == nil, true)
+  MiniTest.expect.equality(type(m.elapsed_ms), "number")
+  -- meta is a plain encodable table (UI reads it directly).
+  local encoded = vim.json.encode(m)
+  expect_truthy(encoded:find('"elapsed_ms"', 1, true) ~= nil)
+  expect_truthy(encoded:find('"count"', 1, true) == nil)
+end
+
 T["output seam"] = MiniTest.new_set()
 
 T["output seam"]["clear on running, push on output event"] = function()
