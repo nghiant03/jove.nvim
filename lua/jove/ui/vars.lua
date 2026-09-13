@@ -214,10 +214,17 @@ function M.open(buf)
   end)
 
   -- Keep the session table from leaking when the scratch buffer goes away.
+  -- Unsubscribe the status listener before clearing: the same listener is
+  -- installed again on every reopen and would otherwise stack up, with each
+  -- duplicate firing `M.refresh(buf)` on every status transition.
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = fbuf,
     once = true,
     callback = function()
+      local s = sessions[buf]
+      if s and s.unsub then
+        pcall(s.unsub)
+      end
       sessions[buf] = nil
     end,
   })
