@@ -322,6 +322,72 @@ function M.start(cb)
   return M.new():start(cb)
 end
 
+-- Timeout for the (silent, best-effort) variable snapshot request.
+local VARIABLES_TIMEOUT_MS = 5000
+
+---Resolve the running kernel's language for `buf`, if it can be determined.
+---Lane A sets `entry.language` after start_kernel; before that (or on older
+---checkouts) fall back to the notebook's kernelspec language. nil = unknown.
+---@param buf integer
+---@return string?
+local function language_of(buf)
+  local state = require("jove.state")
+  local entry = state.peek(buf)
+  local k = entry and entry.kernel
+  if k and type(k.language) == "string" and k.language ~= "" then
+    return k.language
+  end
+  local json = entry and entry.json
+  local ks = json and json.metadata and json.metadata.kernelspec
+  if ks and type(ks.language) == "string" and ks.language ~= "" then
+    return ks.language
+  end
+  return nil
+end
+
+---Run the variable-inspector probe for `buf` and hand the parsed result to
+---`cb`. The result is `{ variables = <array>, unsupported = <language>? }`;
+---on any failure it is `{ variables = {} }` (never nil) after a WARN notify.
+---Not a method: it looks up the buffer's kernel handle itself.
+---@param buf integer  Buffer handle (0 = current).
+---@param cb fun(result: {variables: table[]?, unsupported: string?})?
+function M.variables(buf, cb)
+  buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
+  local respond = function(result)
+    if cb then
+      vim.schedule(function()
+        cb(result)
+      end)
+    end
+  end
+
+  local language = language_of(buf)
+  if language ~= nil and language ~= "python" then
+    respond({ variables = nil, unsupported = language })
+    return
+  end
+
+  local state = require("jove.state")
+  local entry = state.peek(buf)
+  local k = entry and entry.kernel
+  if not (k and k.name and k.bridge and k.bridge:is_alive()) then
+    respond({ variables = {} })
+    return
+  end
+
+  k.bridge:request("variables", {}, function(result, err)
+    if err or type(result) ~= "table" or type(result.variables) ~= "table" then
+      vim.notify(
+        ("[jove] variable inspector: request failed (%s)"):format(tostring(err or "bad reply")),
+        vim.log.levels.WARN
+      )
+      respond({ variables = {} })
+      return
+    end
+    respond(result)
+  end, { timeout_ms = VARIABLES_TIMEOUT_MS })
+end
+
 -- -------------------------------------------------------------------------
 -- Internals
 -- -------------------------------------------------------------------------

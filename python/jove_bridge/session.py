@@ -12,12 +12,29 @@ shell channels and routes messages:
 
 from __future__ import annotations
 
+import ast
+import json
 import threading
 import time
 import traceback
 from typing import Any, Callable, Optional
 
 from .kernel import KernelController, KernelError
+
+# Single-line expression evaluated in the *user* namespace (via ipykernel's
+# user_expressions) to snapshot non-dunder, non-module globals as a JSON
+# string. Kept self-contained (only builtins: globals/type/repr/len/hasattr/
+# __import__) so it never depends on user imports. Values are truncated with
+# repr()[:120]; `size` is len() when the object supports it, else null.
+VARIABLES_EXPR = (
+    "__import__('json').dumps(["
+    "{'name': _jv_n, 'type': type(_jv_v).__name__, "
+    "'value': repr(_jv_v)[:120], "
+    "'size': len(_jv_v) if hasattr(_jv_v, '__len__') else None}"
+    " for _jv_n, _jv_v in list(globals().items())"
+    " if not _jv_n.startswith('_') and type(_jv_v).__name__ != 'module'"
+    "])"
+)
 
 # Sentinel returned by dispatch() when the response will be sent later by the
 # poll thread (e.g. execute waits for the shell-channel execute_reply).
@@ -113,6 +130,8 @@ class BridgeSession:
                     "invalid_params", "inspect: 'detail_level' must be 0 or 1"
                 )
             return self.inspect(params["code"], params["cursor_pos"], detail, reply_id)
+        if method == "variables":
+            return self.variables(reply_id)
         raise KernelError("unknown_method", f"unknown method: {method!r}")
 
     @staticmethod
@@ -169,6 +188,97 @@ class BridgeSession:
                 code, cursor_pos, detail_level=detail_level
             ),
         )
+
+    # -- variable inspector (Phase D) --------------------------------------
+
+    def variables(self, reply_id: int) -> Any:
+        """Snapshot user-namespace variables (python kernels only).
+
+        Runs an empty (non-history) execute carrying a user_expression that
+        returns a JSON list; the reply is parsed in
+        :meth:`_finish_variables`. Non-python kernels short-circuit with an
+        ``unsupported`` marker rather than running Python-only code.
+        """
+        language = self._kernel_language()
+        if language and language != "python":
+            return {"variables": [], "unsupported": language}
+        return self._submit_shell(
+            "variables",
+            reply_id,
+            lambda client: client.execute(
+                "",
+                # NOTE: silent=True makes ipykernel return an EMPTY
+                # user_expressions dict (verified against ipykernel 7), so
+                # the probe must run non-silent. Empty code emits no output;
+                # store_history=False keeps it out of the kernel history.
+                silent=False,
+                store_history=False,
+                user_expressions={"__jove__": VARIABLES_EXPR},
+            ),
+        )
+
+    def _kernel_language(self) -> Optional[str]:
+        """Language of the kernelspec backing the running kernel, if known."""
+        km = self.kernel.km
+        name = getattr(km, "kernel_name", None) if km is not None else None
+        if not name:
+            return None
+        try:
+            spec = self.kernel.list_kernelspecs().get(name) or {}
+        except Exception:
+            return None
+        language = spec.get("language")
+        return language or None
+
+    def _finish_variables(self, pending: _Pending, msg_type: Any, content: dict) -> None:
+        """Parse the user_expressions JSON out of an execute_reply and reply."""
+        empty: dict = {"variables": []}
+        if msg_type != "execute_reply" or content.get("status") != "ok":
+            self.conn.send_result(pending.reply_id, empty)
+            return
+        ue = (content.get("user_expressions") or {}).get("__jove__") or {}
+        if ue.get("status") != "ok":
+            self.conn.send_result(pending.reply_id, empty)
+            return
+        text = (ue.get("data") or {}).get("text/plain") or ""
+        if not isinstance(text, str):
+            self.conn.send_result(pending.reply_id, empty)
+            return
+        # IPython renders a str user_expression as its repr (quoted and
+        # escaped), so `text` is a Python string literal wrapping the JSON.
+        # Accept both the raw JSON and the repr-wrapped form.
+        try:
+            raw = json.loads(text)
+        except Exception:
+            try:
+                unwrapped = ast.literal_eval(text)
+            except Exception:
+                self.conn.send_result(pending.reply_id, empty)
+                return
+            if isinstance(unwrapped, str):
+                try:
+                    raw = json.loads(unwrapped)
+                except Exception:
+                    self.conn.send_result(pending.reply_id, empty)
+                    return
+            else:
+                raw = unwrapped
+        if not isinstance(raw, list):
+            self.conn.send_result(pending.reply_id, empty)
+            return
+        variables = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            variables.append(
+                {
+                    "name": item.get("name"),
+                    "type": item.get("type"),
+                    "value": item.get("value"),
+                    "size": item.get("size"),
+                }
+            )
+        self.conn.send_result(pending.reply_id, {"variables": variables})
 
     def _submit_shell(
         self,
@@ -298,14 +408,17 @@ class BridgeSession:
                 },
             )
         elif msg_type in ("display_data", "execute_result"):
-            self.conn.send_event(
-                "output",
-                {
-                    "cell": cell,
-                    "kind": msg_type,
-                    "mime": dict(content.get("data") or {}),
-                },
-            )
+            out = {
+                "cell": cell,
+                "kind": msg_type,
+                "mime": dict(content.get("data") or {}),
+            }
+            # execute_result carries the cell's execution_count; display_data
+            # doesn't. Forwarded here so the Lua side can render `Out [n]`
+            # labels without a second iopub round-trip.
+            if msg_type == "execute_result" and "execution_count" in content:
+                out["execution_count"] = content["execution_count"]
+            self.conn.send_event("output", out)
         elif msg_type == "error":
             self._emit_error_output(
                 cell,
@@ -357,9 +470,17 @@ class BridgeSession:
             return
         msg_type = msg.get("msg_type")
         content = msg.get("content") or {}
+        # Phase D: the variables probe answers from its execute_reply's
+        # user_expressions instead of the generic execute handling below.
+        if pending.kind == "variables":
+            self._finish_variables(pending, msg_type, content)
+            return
         if msg_type == "execute_reply":
             if content.get("status") == "ok":
-                self.conn.send_result(pending.reply_id, {"status": "ok"})
+                result = {"status": "ok"}
+                if "execution_count" in content:
+                    result["execution_count"] = content["execution_count"]
+                self.conn.send_result(pending.reply_id, result)
             else:
                 status = content.get("status", "error")
                 ename = content.get("ename", "")
@@ -372,10 +493,14 @@ class BridgeSession:
                     # error result imply an error-kind output event, so
                     # synthesize one here.
                     self._emit_error_output(pending.cell, ename, evalue, tb_lines)
-                self.conn.send_result(
-                    pending.reply_id,
-                    {"status": "error", "ename": ename, "evalue": evalue},
-                )
+                err_result = {
+                    "status": "error",
+                    "ename": ename,
+                    "evalue": evalue,
+                }
+                if "execution_count" in content:
+                    err_result["execution_count"] = content["execution_count"]
+                self.conn.send_result(pending.reply_id, err_result)
         elif msg_type == "complete_reply":
             self.conn.send_result(
                 pending.reply_id, {"matches": list(content.get("matches") or [])}

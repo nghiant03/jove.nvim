@@ -126,3 +126,23 @@ end, { desc = "Clear all rendered outputs in this buffer" })
 vim.api.nvim_create_user_command("JoveReload", function()
   require("jove.buffer").reload(0)
 end, { desc = "Reload the current notebook buffer from disk" })
+
+vim.api.nvim_create_user_command("JoveVariables", function()
+  require("jove.ui.vars").toggle(0)
+end, { desc = "Toggle the variable inspector sidebar" })
+
+vim.api.nvim_create_user_command("JoveKernelInfo", function()
+  local float = require("jove.ui.panel").info_float(0)
+  local win = vim.api.nvim_open_win(float.buf, true, float.opts)
+  local function close()
+    if vim.api.nvim_win_is_valid(win) then
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+  end
+  vim.keymap.set("n", "q", close, { buffer = float.buf, nowait = true, silent = true })
+  vim.keymap.set("n", "<Esc>", close, { buffer = float.buf, nowait = true, silent = true })
+end, { desc = "Show kernel/session info in a float" })
+
+vim.api.nvim_create_user_command("JoveToc", function()
+  require("jove.toc").pick(0)
+end, { desc = "Show a table of contents for the current notebook" })
