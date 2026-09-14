@@ -188,6 +188,10 @@ require("jove").setup({
   output = {
     max_lines = 50,             -- inline output truncation limit
     images = true,              -- render images via snacks.image when available
+    header = true,              -- draw the `└─ Out[n]` rule above inline output
+    guide = "▎ ",               -- per-line output guide rail; false disables it
+    inside_border = false,      -- render output inside the cell border instead of below it
+    hl = nil,                   -- output background tint: hl group name (string, linked) or attrs table; nil disables
   },
   variables = {
     auto_refresh = true,        -- refresh the variables inspector on idle
@@ -233,16 +237,32 @@ string when no kernel is running.
 
 ## Output rendering
 
-Outputs render inline as virtual lines below each cell:
+Outputs render as virtual lines below each cell, outside the `╰──╯` bottom
+border:
 
+- A full-width `└─ Out[n]` rule heads the block (`JoveOutputHeader`, linked to
+  `Comment`); `n` is the kernel execution count when known. Set
+  `output.header = false` to omit it.
+- Every line carries a `▎ ` guide rail (`JoveOutputGuide` → `Comment`, or
+  `JoveOutputGuideError` → `DiagnosticError` for error blocks). Customize with
+  `output.guide = "│ "`, or disable with `output.guide = false`.
+- `output.inside_border = true` restores the older in-box layout (output
+  rendered between the cell body and its closing border).
+- `output.hl` optionally tints the block's full window-width background: an hl
+  group name (`string`, linked to `JoveOutput`) or attrs table (e.g.
+  `{ bg = "#2a2a3a" }`). nil disables the tint.
 - `:JoveToggleOutput` folds/unfolds the current cell's output.
 - `:JoveOpenOutput` opens the current cell's output in a scrollable float
-  (close with `q` or `<Esc>`).
+  (close with `q` or `<Esc>`); the float shows the raw, undecorated lines.
 - Output longer than `output.max_lines` is truncated inline, with a trailer
   pointing at `:JoveOpenOutput` for the full view.
 - Error tracebacks are shown as plain text.
 - Image outputs (PNG/JPEG) render inline via `snacks.image` when available;
   otherwise a text placeholder is shown.
+
+Highlight groups: `JoveOutputHeader`, `JoveOutputGuide`,
+`JoveOutputGuideError` and `JoveOutput` (all user-overridable via
+`nvim_set_hl`).
 
 ## Output persistence
 
