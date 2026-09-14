@@ -144,8 +144,12 @@ T["push"]["appends incrementally without duplicating the extmark"] = function()
   MiniTest.expect.equality(#t, 4)
   expect_truthy(starts_with(t[1], "┌─ "))
   -- Each content row: `│<guide> text<padding>│` with right rail at edge.
-  expect_truthy(starts_with(t[2], "│▎ ") and ends_with(t[2], "│") and t[2]:find("one", 1, true) ~= nil)
-  expect_truthy(starts_with(t[3], "│▎ ") and ends_with(t[3], "│") and t[3]:find("two", 1, true) ~= nil)
+  expect_truthy(
+    starts_with(t[2], "│▎ ") and ends_with(t[2], "│") and t[2]:find("one", 1, true) ~= nil
+  )
+  expect_truthy(
+    starts_with(t[3], "│▎ ") and ends_with(t[3], "│") and t[3]:find("two", 1, true) ~= nil
+  )
   expect_truthy(starts_with(t[4], "└"))
   expect_truthy(second.extmark_id == first.extmark_id)
   -- exactly one extmark in the output namespace for the whole buffer
@@ -389,7 +393,9 @@ T["truncation"]["caps virt_lines at output.max_lines with a float trailer"] = fu
   expect_truthy(starts_with(t[1], "┌─ "))
   expect_truthy(starts_with(t[2], "│▎ line1") and ends_with(t[2], "│"))
   expect_truthy(starts_with(t[4], "│▎ line3") and ends_with(t[4], "│"))
-  expect_truthy(starts_with(t[5], "│▎ … +7 lines · :JoveOpenOutput") and ends_with(t[5], "│"))
+  expect_truthy(
+    starts_with(t[5], "│▎ … +7 lines · :JoveOpenOutput") and ends_with(t[5], "│")
+  )
   expect_truthy(starts_with(t[6], "└"))
 
   jove.config.output.max_lines = orig
