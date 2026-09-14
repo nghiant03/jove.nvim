@@ -286,4 +286,72 @@ T["borders"]["borders = false disables the bottom border but keeps the top"] = f
   release_buffer(buf)
 end
 
+T["border_hl"] = MiniTest.new_set({
+  hooks = {
+    pre_case = function()
+      -- JoveCellBorder is a module-level global; restore its documented
+      -- default before each subcase so attrs leaking from a previous test
+      -- cannot be mistaken for a passed assertion.
+      vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = false })
+    end,
+    post_case = function()
+      vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = false })
+    end,
+  },
+})
+
+T["border_hl"]["string value links JoveCellBorder to the named group"] = function()
+  local cfg = require("jove").config
+  local saved = cfg.ui
+  vim.api.nvim_set_hl(0, "MyBorder", { fg = "#ff9e64" })
+  cfg.ui = { border_hl = "MyBorder" }
+  local buf = make_buffer({ "# %% a", "x1" })
+  chrome.refresh(buf)
+  -- The rendered rule virt_lines still address JoveCellBorder (not MyBorder),
+  -- but the group now resolves MyBorder through the link.
+  local found = false
+  for _, m in ipairs(marks(buf)) do
+    local d = m[4]
+    if d.virt_lines and d.virt_lines_above and d.virt_lines[1] then
+      for _, chunk in ipairs(d.virt_lines[1]) do
+        if chunk[2] == "JoveCellBorder" then
+          found = true
+          break
+        end
+      end
+    end
+  end
+  MiniTest.expect.equality(found, true)
+  cfg.ui = saved
+  release_buffer(buf)
+end
+
+T["border_hl"]["table value passes attrs straight to nvim_set_hl"] = function()
+  local cfg = require("jove").config
+  local saved = cfg.ui
+  cfg.ui = { border_hl = { fg = "#ff9e64" } }
+  local buf = make_buffer({ "# %% a", "x1" })
+  chrome.refresh(buf)
+  local got = vim.api.nvim_get_hl(0, { name = "JoveCellBorder" })
+  MiniTest.expect.equality(got.fg, 0xff9e64)
+  MiniTest.expect.equality(got.link, nil) -- table form: not a link
+  cfg.ui = saved
+  release_buffer(buf)
+end
+
+T["border_hl"]["nil leaves JoveCellBorder at the default Comment link"] = function()
+  -- pre_case already reset to the link form; emulate "the user never set
+  -- border_hl" with cfg.ui empty.
+  local cfg = require("jove").config
+  local saved = cfg.ui
+  cfg.ui = {}
+  local buf = make_buffer({ "# %% a", "x1" })
+  chrome.refresh(buf)
+  local got = vim.api.nvim_get_hl(0, { name = "JoveCellBorder" })
+  MiniTest.expect.equality(got.link, "Comment")
+  MiniTest.expect.equality(got.fg, nil)
+  cfg.ui = saved
+  release_buffer(buf)
+end
+
 return T

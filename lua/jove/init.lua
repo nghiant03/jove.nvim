@@ -15,7 +15,11 @@ local M = {}
 ---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.
 ---@field output table                   Output rendering options: { max_lines, images }.
 ---@field variables table                Variables inspector options: { auto_refresh, width }.
----@field ui table                       UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders }.
+---@field ui table
+---  | UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders, border_hl }.
+---  | border_hl: `string|nil` (an existing hl group to link `JoveCellBorder` to)
+---  | or `table|nil` (attrs passed to `nvim_set_hl` for `JoveCellBorder`, e.g.
+---  | `{ fg = "#ff9e64" }`). nil leaves the default link in place.
 ---@field keymap table<string, string|false>
 
 ---@type jove.Config
@@ -155,6 +159,7 @@ local function validate_config(cfg)
   vim.validate("ui.exec_counts", cfg.ui.exec_counts, "boolean")
   vim.validate("ui.elapsed", cfg.ui.elapsed, "boolean")
   vim.validate("ui.borders", cfg.ui.borders, "boolean")
+  vim.validate("ui.border_hl", cfg.ui.border_hl, { "string", "table" }, true)
   vim.validate("keymap", cfg.keymap, "table")
   for k, v in pairs(cfg.keymap) do
     vim.validate(("keymap.%s"):format(k), v, is_keymap_lhs)

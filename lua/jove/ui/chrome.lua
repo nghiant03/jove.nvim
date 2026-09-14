@@ -41,7 +41,7 @@ vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = true })
 local bufs = {}
 
 ---Read config.ui defensively, filling in the documented defaults.
----@return { conceal_headers: boolean, active_cell: boolean, exec_counts: boolean, elapsed: boolean, borders: boolean }
+---@return { conceal_headers: boolean, active_cell: boolean, exec_counts: boolean, elapsed: boolean, borders: boolean, border_hl: string|table? }
 local function ui_conf()
   local ok, jove = pcall(require, "jove")
   local ui = ok and type(jove) == "table" and jove.config and jove.config.ui
@@ -54,7 +54,24 @@ local function ui_conf()
     exec_counts = ui.exec_counts ~= false,
     elapsed = ui.elapsed ~= false,
     borders = ui.borders ~= false,
+    border_hl = ui.border_hl,
   }
+end
+
+---Apply `cfg.border_hl` to the `JoveCellBorder` highlight group.
+--- string → `{ link = hl }`; table → passed straight to nvim_set_hl.
+--- nil → no-op (default link at module load is respected, user overrides
+---       via direct nvim_set_hl still apply).
+---@param cfg string|table|nil
+local function apply_border_hl(cfg)
+  if cfg == nil then
+    return
+  end
+  if type(cfg) == "string" then
+    vim.api.nvim_set_hl(0, "JoveCellBorder", { link = cfg })
+  else
+    vim.api.nvim_set_hl(0, "JoveCellBorder", cfg)
+  end
 end
 
 ---@param buf integer
@@ -271,6 +288,7 @@ function M.refresh(buf)
 
   local b = ensure(buf)
   local cfg = ui_conf()
+  apply_border_hl(cfg.border_hl)
   clear_marks(buf, b)
 
   local cells = cell.all(buf)
@@ -358,6 +376,17 @@ function M.attach(buf)
     buffer = buf,
     callback = function()
       M.refresh(buf)
+    end,
+  })
+  -- ColorScheme reloads clear hl groups; a refresh on TextChanged would only
+  -- re-establish the override after the next keystroke, so hook it explicitly
+  -- to repaint borders right when the colorscheme settles.
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = group,
+    callback = function()
+      if vim.api.nvim_buf_is_valid(buf) then
+        M.refresh(buf)
+      end
     end,
   })
   vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufEnter", "WinEnter" }, {

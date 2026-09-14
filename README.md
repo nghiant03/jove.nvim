@@ -199,6 +199,7 @@ require("jove").setup({
     exec_counts = true,         -- show per-cell execution counts
     elapsed = true,             -- show per-cell elapsed time
     borders = true,             -- draw a closing line below each cell
+    border_hl = nil,            -- cell border highlight: an hl group name (string, linked) or attrs table (e.g. { fg = "#ff9e64" }); nil keeps the default Comment link
   },
   keymap = {
     run_cell = false,

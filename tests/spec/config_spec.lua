@@ -167,6 +167,31 @@ T["setup"]["output: nested validation and partial merge"] = function()
   MiniTest.expect.equality(jove.config.output.images, defaults.output.images)
 end
 
+T["setup"]["ui.border_hl: accepts string or table; rejects other types"] = function()
+  jove.setup({ ui = { border_hl = "MyBorder" } })
+  MiniTest.expect.equality(jove.config.ui.border_hl, "MyBorder")
+  jove.setup({ ui = { border_hl = { fg = "#ff9e64", bold = true } } })
+  MiniTest.expect.equality(jove.config.ui.border_hl.fg, "#ff9e64")
+  MiniTest.expect.equality(jove.config.ui.border_hl.bold, true)
+  MiniTest.expect.error(function()
+    jove.setup({ ui = { border_hl = 42 } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ ui = { border_hl = true } })
+  end)
+  -- Successful setup after the errors must still leave a valid config;
+  -- vim.validate on the failed calls runs before M.config is reassigned,
+  -- so earlier good values are preserved.
+  jove.setup({ ui = { border_hl = "MyBorder" } })
+  MiniTest.expect.equality(jove.config.ui.border_hl, "MyBorder")
+  -- Resetting ui and re-setup without border_hl drops it (post-reset
+  -- mutation; defaults table does not contain border_hl at all).
+  jove.config = vim.deepcopy(defaults)
+  jove._reset_shim_state()
+  jove.setup({ ui = { borders = false } })
+  MiniTest.expect.equality(jove.config.ui.border_hl, nil)
+end
+
 T["setup"]["raises on invalid opt types"] = function()
   MiniTest.expect.error(function()
     jove.setup({ jupytext = 123 })
