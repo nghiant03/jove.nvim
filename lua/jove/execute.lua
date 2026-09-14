@@ -223,6 +223,12 @@ function pump(buf)
           or "error"
         set_status(buf, item.hash, status)
       end
+      -- The execution count may only arrive with this reply (print-only cells
+      -- emit no execute_result output event): re-render so the inline `Out[n]`
+      -- header picks it up.
+      if out and out.refresh_cell then
+        pcall(out.refresh_cell, buf, item.hash)
+      end
     end
     pump(buf)
   end, { timeout_ms = false })

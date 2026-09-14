@@ -13,7 +13,14 @@ local M = {}
 ---@field auto_reload boolean            Auto-reload buffer when the .ipynb changes on disk (our own writes are suppressed).
 ---@field cell_motions boolean           Map [c / ]c cell motions on jove buffers.
 ---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.
----@field output table                   Output rendering options: { max_lines, images }.
+---@field output table                   Output rendering options:
+---  | { max_lines, images, header, guide, inside_border, hl }.
+---  | header: draw the `└─ Out[n]` rule above inline output (boolean).
+---  | guide: per-line rail string, or `false` to disable (`string|false`).
+---  | inside_border: render output inside the cell box instead of below it
+---  | (boolean).
+---  | hl: output background tint — an existing hl group name (`string`, linked
+---  | to `JoveOutput`) or attrs passed to `nvim_set_hl` (`table`); nil disables.
 ---@field variables table                Variables inspector options: { auto_refresh, width }.
 ---@field ui table
 ---  | UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders, border_hl }.
@@ -42,6 +49,10 @@ M.config = {
   output = {
     max_lines = 50,
     images = true,
+    header = true,
+    guide = "▎ ",
+    inside_border = false,
+    hl = nil,
   },
   variables = {
     auto_refresh = true,
@@ -150,6 +161,10 @@ local function validate_config(cfg)
   vim.validate("output", cfg.output, "table")
   vim.validate("output.max_lines", cfg.output.max_lines, "number")
   vim.validate("output.images", cfg.output.images, "boolean")
+  vim.validate("output.header", cfg.output.header, "boolean")
+  vim.validate("output.guide", cfg.output.guide, is_keymap_lhs) -- string-or-false
+  vim.validate("output.inside_border", cfg.output.inside_border, "boolean")
+  vim.validate("output.hl", cfg.output.hl, { "string", "table" }, true)
   vim.validate("variables", cfg.variables, "table")
   vim.validate("variables.auto_refresh", cfg.variables.auto_refresh, "boolean")
   vim.validate("variables.width", cfg.variables.width, "number")

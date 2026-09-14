@@ -24,6 +24,17 @@ local M = {}
 
 M.ns = vim.api.nvim_create_namespace("jove-output")
 
+-- Extmark priority for the inline output virt_lines. Must exceed the chrome
+-- bottom-border priority (100): same-row virtual lines render in ascending
+-- priority order, so this keeps the output below the `╰──╯` border.
+local RENDER_PRIORITY = 200
+
+-- Highlight groups (default links; users can override before setup()).
+vim.api.nvim_set_hl(0, "JoveOutputHeader", { link = "Comment", default = true })
+vim.api.nvim_set_hl(0, "JoveOutputGuide", { link = "Comment", default = true })
+vim.api.nvim_set_hl(0, "JoveOutputGuideError", { link = "DiagnosticError", default = true })
+vim.api.nvim_set_hl(0, "JoveOutput", { default = true })
+
 -- Wired by plugin/jove.lua as :JoveOpenOutput; used in the truncation trailer.
 local OPEN_CMD = ":JoveOpenOutput"
 
@@ -106,6 +117,93 @@ local function truncate(lines, max)
   return shown
 end
 
+---Width to span for a buffer's output rules (its window width, else columns).
+---@param buf integer
+---@return integer
+local function win_width(buf)
+  local wins = vim.fn.win_findbuf(buf)
+  if #wins > 0 then
+    local ok, w = pcall(vim.api.nvim_win_get_width, wins[1])
+    if ok and type(w) == "number" and w > 0 then
+      return w
+    end
+  end
+  return vim.o.columns
+end
+
+---Apply `cfg.output.hl` to the `JoveOutput` highlight group.
+--- string → `{ link = hl }`; table → passed straight to nvim_set_hl;
+--- nil → no-op (default group at module load is respected).
+---@param cfg string|table|nil
+local function apply_output_hl(cfg)
+  if cfg == nil then
+    return
+  end
+  if type(cfg) == "string" then
+    vim.api.nvim_set_hl(0, "JoveOutput", { link = cfg })
+  else
+    vim.api.nvim_set_hl(0, "JoveOutput", cfg)
+  end
+end
+
+---Decorate truncated inline output lines for the outside-border layout: a
+---full-width `└─ Out[n]` header rule, a guide rail on every content line and
+---an optional window-width background tint. No-op for an empty line list.
+---@param buf integer
+---@param shown table[]  truncated virt_lines from `truncate`
+---@param ctx { count: integer?, has_error: boolean }
+---@return table[] decorated
+local function decorate(buf, shown, ctx)
+  if #shown == 0 then
+    return shown
+  end
+  local cfg = require("jove").config
+  local out_cfg = (cfg and cfg.output) or {}
+  local width = win_width(buf)
+  local guide = out_cfg.guide == nil and "▎ " or out_cfg.guide
+  local guide_hl = ctx.has_error and "JoveOutputGuideError" or "JoveOutputGuide"
+  apply_output_hl(out_cfg.hl)
+
+  local decorated = {}
+  if out_cfg.header ~= false then
+    local label = type(ctx.count) == "number" and ("Out[%d] "):format(ctx.count) or "Out "
+    local header = {
+      { "└─ ", "JoveOutputHeader" },
+      { label, "JoveOutputHeader" },
+    }
+    local fill = width - vim.fn.strdisplaywidth("└─ ") - vim.fn.strdisplaywidth(label)
+    if fill > 0 then
+      header[#header + 1] = { string.rep("─", fill), "JoveOutputHeader" }
+    end
+    decorated[#decorated + 1] = header
+  end
+
+  for _, line in ipairs(shown) do
+    local new_line = {}
+    if guide then
+      new_line[#new_line + 1] = { guide, guide_hl }
+    end
+    for _, chunk in ipairs(line) do
+      local text, hl = chunk[1], chunk[2]
+      if out_cfg.hl ~= nil and hl == nil then
+        hl = "JoveOutput"
+      end
+      new_line[#new_line + 1] = { text, hl }
+    end
+    if out_cfg.hl ~= nil then
+      local used = 0
+      for _, chunk in ipairs(new_line) do
+        used = used + vim.fn.strdisplaywidth(chunk[1])
+      end
+      if width - used > 0 then
+        new_line[#new_line + 1] = { string.rep(" ", width - used), "JoveOutput" }
+      end
+    end
+    decorated[#decorated + 1] = new_line
+  end
+  return decorated
+end
+
 ---(Re)render one cell's extmark. Skips silently when the hash is unknown to
 ---the current buffer contents (edited away) or the cell is toggled hidden.
 ---@param buf integer
@@ -133,12 +231,35 @@ local function render_cell(buf, cell_hash)
 
   local lines, images = build_lines(entry.chunks)
   local cfg = require("jove").config
-  local max = math.max(1, (cfg.output and cfg.output.max_lines) or 50)
+  local out_cfg = (cfg and cfg.output) or {}
+  local max = math.max(1, out_cfg.max_lines or 50)
   local shown = truncate(lines, max)
 
+  local has_error = false
+  for _, line in ipairs(lines) do
+    for _, chunk in ipairs(line) do
+      if chunk[2] == "ErrorMsg" then
+        has_error = true
+        break
+      end
+    end
+    if has_error then
+      break
+    end
+  end
+  local meta = require("jove.execute").meta(buf, cell_hash)
+  local decorated = decorate(buf, shown, {
+    count = meta and meta.count or nil,
+    has_error = has_error,
+  })
+  -- A header line shifts every content line (and thus any image placeholder)
+  -- down by one: keep the image layer's base_row offsets in sync.
+  local header_offset = (#shown > 0 and out_cfg.header ~= false) and 1 or 0
+
   entry.extmark_id = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
-    virt_lines = shown,
+    virt_lines = decorated,
     virt_lines_above = false,
+    priority = (not out_cfg.inside_border) and RENDER_PRIORITY or nil,
   })
 
   -- Real image placement (no-op without snacks.image; placeholder stays then).
@@ -146,13 +267,28 @@ local function render_cell(buf, cell_hash)
     local visible = {}
     for _, e in ipairs(images) do
       if e.index <= max then
-        visible[#visible + 1] = e
+        visible[#visible + 1] = { chunk = e.chunk, index = e.index + header_offset }
       end
     end
     if #visible > 0 then
       pcall(image.render, buf, cell_hash, visible, { base_row = c.end_lnum })
     end
   end
+end
+
+---Public wrapper: re-render one cell's inline output. Used when metadata (the
+---execution count shown in the header) arrives after the output itself, e.g.
+---print-only cells whose count comes with the execute reply.
+---@param buf integer
+---@param cell_hash string
+function M.refresh_cell(buf, cell_hash)
+  safe(function()
+    buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
+    if type(buf) ~= "number" or not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
+    render_cell(buf, cell_hash)
+  end)
 end
 
 ---Append one output event to a cell's store and re-render it incrementally.
