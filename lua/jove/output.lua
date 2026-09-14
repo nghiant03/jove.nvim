@@ -26,10 +26,15 @@ M.ns = vim.api.nvim_create_namespace("jove-output")
 
 -- Extmark priority for the inline output virt_lines. Must exceed the chrome
 -- bottom-border priority (100): same-row virtual lines render in ascending
--- priority order, so this keeps the output below the `╰──╯` border.
+-- priority order, so this keeps the Output block below the `╰──╯` cell
+-- bottom border — its `┌─ Out ─┐` frame sits directly adjacent, not inside.
 local RENDER_PRIORITY = 200
 
 -- Highlight groups (default links; users can override before setup()).
+-- `JoveCellBorder` (chrome.lua) surrounds the code body; `JoveOutputBorder`
+-- is the distinct group for the Output block's frame, so the two can be
+-- themed independently and never visually merge.
+vim.api.nvim_set_hl(0, "JoveOutputBorder", { link = "DiagnosticInfo", default = true })
 vim.api.nvim_set_hl(0, "JoveOutputHeader", { link = "Comment", default = true })
 vim.api.nvim_set_hl(0, "JoveOutputGuide", { link = "Comment", default = true })
 vim.api.nvim_set_hl(0, "JoveOutputGuideError", { link = "DiagnosticError", default = true })
@@ -146,9 +151,14 @@ local function apply_output_hl(cfg)
   end
 end
 
----Decorate truncated inline output lines for the outside-border layout: a
----full-width `└─ Out[n]` header rule, a guide rail on every content line and
----an optional window-width background tint. No-op for an empty line list.
+---Decorate truncated inline output lines for the outside-border (default)
+---layout: a self-contained `┌─ Out[n] ──┐ │ … │ └───┘` box rendered below the
+---code cell border, top frame at row `c.end_lnum - 1` virt_lines_above =
+---false so it sits visually below the cell's bottom `╰──╯` corner. The frame
+---uses `JoveOutputBorder` (distinct from `JoveCellBorder`) so the two boxes
+---stay visually independent while sharing the same horizontal row.
+---`header = false` skips the frame entirely and falls back to the legacy
+---content-with-rail layout for users who want minimal chrome.
 ---@param buf integer
 ---@param shown table[]  truncated virt_lines from `truncate`
 ---@param ctx { count: integer?, has_error: boolean }
@@ -160,27 +170,104 @@ local function decorate(buf, shown, ctx)
   local cfg = require("jove").config
   local out_cfg = (cfg and cfg.output) or {}
   local width = win_width(buf)
+  -- Default guide inherited from the legacy layout: without it content would
+  -- touch the box rails and feel cramped. Users can still set `guide = false`
+  -- or any custom string (same option as the legacy header-rail path).
   local guide = out_cfg.guide == nil and "▎ " or out_cfg.guide
   local guide_hl = ctx.has_error and "JoveOutputGuideError" or "JoveOutputGuide"
   apply_output_hl(out_cfg.hl)
 
-  local decorated = {}
-  if out_cfg.header ~= false then
-    local label = type(ctx.count) == "number" and ("Out[%d] "):format(ctx.count) or "Out "
-    local header = {
-      { "└─ ", "JoveOutputHeader" },
-      { label, "JoveOutputHeader" },
-    }
-    local fill = width - vim.fn.strdisplaywidth("└─ ") - vim.fn.strdisplaywidth(label)
-    if fill > 0 then
-      header[#header + 1] = { string.rep("─", fill), "JoveOutputHeader" }
+  -- Legacy "inside_border" mode: keep the original header rule + guide rail
+  -- layout so users who opt out of the new boxed layout see no behaviour
+  -- change.
+  if out_cfg.inside_border then
+    local decorated = {}
+    if out_cfg.header ~= false then
+      local label = type(ctx.count) == "number" and ("Out[%d] "):format(ctx.count) or "Out "
+      local fill = width - vim.fn.strdisplaywidth("└─ ") - vim.fn.strdisplaywidth(label)
+      local header = {
+        { "└─ ", "JoveOutputHeader" },
+        { label, "JoveOutputHeader" },
+      }
+      if fill > 0 then
+        header[#header + 1] = { string.rep("─", fill), "JoveOutputHeader" }
+      end
+      decorated[#decorated + 1] = header
     end
-    decorated[#decorated + 1] = header
+    for _, line in ipairs(shown) do
+      local new_line = {}
+      if guide then
+        new_line[#new_line + 1] = { guide, guide_hl }
+      end
+      for _, chunk in ipairs(line) do
+        local text, hl = chunk[1], chunk[2]
+        if out_cfg.hl ~= nil and hl == nil then
+          hl = "JoveOutput"
+        end
+        new_line[#new_line + 1] = { text, hl }
+      end
+      if out_cfg.hl ~= nil then
+        local used = 0
+        for _, chunk in ipairs(new_line) do
+          used = used + vim.fn.strdisplaywidth(chunk[1])
+        end
+        if width - used > 0 then
+          new_line[#new_line + 1] = { string.rep(" ", width - used), "JoveOutput" }
+        end
+      end
+      decorated[#decorated + 1] = new_line
+    end
+    return decorated
   end
 
+  -- Outside-border (box) layout. `header = false` opts out of the frame
+  -- altogether and falls back to plain content + guide rail.
+  if out_cfg.header == false then
+    local decorated = {}
+    for _, line in ipairs(shown) do
+      local new_line = {}
+      if guide and guide ~= "" then
+        new_line[#new_line + 1] = { guide, guide_hl }
+      end
+      for _, chunk in ipairs(line) do
+        local text, hl = chunk[1], chunk[2]
+        if out_cfg.hl ~= nil and hl == nil then
+          hl = "JoveOutput"
+        end
+        new_line[#new_line + 1] = { text, hl }
+      end
+      decorated[#decorated + 1] = new_line
+    end
+    return decorated
+  end
+
+  local decorated = {}
+
+  -- Top frame: `┌─ Out[n] ─...─┐` (JoveOutputBorder).
+  local prefix = "┌─ "
+  local label = type(ctx.count) == "number" and ("Out[%d] "):format(ctx.count) or "Out "
+  local header_used = vim.fn.strdisplaywidth(prefix) + vim.fn.strdisplaywidth(label)
+  local header_fill = math.max(0, width - header_used - 1) -- reserve 1 col for ┐
+  local top = {
+    { prefix, "JoveOutputBorder" },
+    { label, "JoveOutputBorder" },
+  }
+  if header_fill > 0 then
+    top[#top + 1] = { string.rep("─", header_fill), "JoveOutputBorder" }
+  end
+  top[#top + 1] = { "┐", "JoveOutputBorder" }
+  decorated[#decorated + 1] = top
+
+  -- Content lines: `│ [guide] text   │` — left/right rails in the distinct
+  -- border group, the optional guide sits between the rail and the text.
+  -- Padding spaces extend the line so the right rail aligns with the closing
+  -- `┐` corner; the padding is applied unconditionally so the box is always
+  -- the full window width regardless of `output.hl` (which only tints, it
+  -- does not size the frame).
   for _, line in ipairs(shown) do
     local new_line = {}
-    if guide then
+    new_line[#new_line + 1] = { "│", "JoveOutputBorder" }
+    if guide and guide ~= "" then
       new_line[#new_line + 1] = { guide, guide_hl }
     end
     for _, chunk in ipairs(line) do
@@ -190,17 +277,25 @@ local function decorate(buf, shown, ctx)
       end
       new_line[#new_line + 1] = { text, hl }
     end
-    if out_cfg.hl ~= nil then
-      local used = 0
-      for _, chunk in ipairs(new_line) do
-        used = used + vim.fn.strdisplaywidth(chunk[1])
-      end
-      if width - used > 0 then
-        new_line[#new_line + 1] = { string.rep(" ", width - used), "JoveOutput" }
-      end
+    local used = 1 -- from the left rail
+    for _, chunk in ipairs(new_line) do
+      used = used + vim.fn.strdisplaywidth(chunk[1])
     end
+    if width - used - 1 > 0 then -- reserve 1 col for the right rail
+      new_line[#new_line + 1] = { string.rep(" ", width - used - 1), "JoveOutput" }
+    end
+    new_line[#new_line + 1] = { "│", "JoveOutputBorder" }
     decorated[#decorated + 1] = new_line
   end
+
+  -- Bottom frame: `└─ ... ─┘` (JoveOutputBorder).
+  local bottom = { { "└", "JoveOutputBorder" } }
+  if width > 2 then
+    bottom[#bottom + 1] = { string.rep("─", width - 2), "JoveOutputBorder" }
+  end
+  bottom[#bottom + 1] = { "┘", "JoveOutputBorder" }
+  decorated[#decorated + 1] = bottom
+
   return decorated
 end
 

@@ -15,10 +15,13 @@ local M = {}
 ---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.
 ---@field output table                   Output rendering options:
 ---  | { max_lines, images, header, guide, inside_border, hl }.
----  | header: draw the `└─ Out[n]` rule above inline output (boolean).
----  | guide: per-line rail string, or `false` to disable (`string|false`).
----  | inside_border: render output inside the cell box instead of below it
----  | (boolean).
+---  | header: draw the Output block's `┌─ Out[n] ─┐` top frame below each
+---  | cell (boolean); setting false renders just content with the guide rail,
+---  | no Output frame.
+---  | guide: per-line inner rail string (placed between the left `│` border
+---  | rail and the text), or `false` to disable (`string|false`).
+---  | inside_border: render output inside the cell border instead of in its
+---  | own dedicated bordered block (boolean).
 ---  | hl: output background tint — an existing hl group name (`string`, linked
 ---  | to `JoveOutput`) or attrs passed to `nvim_set_hl` (`table`); nil disables.
 ---@field variables table                Variables inspector options: { auto_refresh, width }.

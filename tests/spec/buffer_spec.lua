@@ -140,6 +140,50 @@ T["read via BufReadCmd"]["strips jupytext front matter from the buffer"] = funct
   close_notebook(buf)
 end
 
+T["read via BufReadCmd"]["trailing empty cell gets a body line"] = function()
+  -- Synthesize a notebook whose last cell is empty (`source = []`), like the
+  -- workshop notebook that motivated this guard. jupytext emits such a cell
+  -- as a bare trailing `# %%` header with no body; without the guard chrome
+  -- would render zero visible rows and the cell would be inaccessible.
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  local path = vim.fs.joinpath(dir, "trailing.ipynb")
+  local fd = assert(io.open(path, "wb"))
+  fd:write(vim.json.encode({
+    nbformat = 4,
+    nbformat_minor = 5,
+    metadata = {
+      kernelspec = { name = "python3", language = "python", display_name = "Python 3" },
+      language_info = { name = "python" },
+    },
+    cells = {
+      {
+        cell_type = "code",
+        metadata = { id = "first" },
+        execution_count = 1,
+        outputs = {},
+        source = { "1 + 1\n" },
+      },
+      {
+        cell_type = "code",
+        metadata = { id = "trailing" },
+        execution_count = nil,
+        outputs = {},
+        source = {},
+      },
+    },
+  }))
+  fd:close()
+
+  local buf = open_notebook(path)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  -- Last line is the appended body separator (empty string).
+  MiniTest.expect.equality(lines[#lines], "")
+  -- Second-to-last is the trailing cell's `# %%` header.
+  MiniTest.expect.equality(lines[#lines - 1]:match("^# %%") ~= nil, true)
+  close_notebook(buf)
+end
+
 T["write via BufWriteCmd"] = MiniTest.new_set()
 
 T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] = function()

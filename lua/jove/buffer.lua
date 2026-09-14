@@ -149,6 +149,18 @@ function M.read(buf, path, opts)
       -- shows only real cell content and the space is reclaimed.
       local front, rest = split_front(lines)
 
+      -- Guarantee the last cell has at least one body line. jupytext's
+      -- py:percent emits a trailing empty ipynb cell as a bare `# %%` header
+      -- with no body, and `chrome.lua` conceals the header line; the cell
+      -- would therefore render with zero visible rows (no rule, no border,
+      -- nowhere to enter the cell, and `G` lands on the concealed tag).
+      -- Appending one empty line gives it the same shape jupytext gives
+      -- middle-empty cells (header + blank separator) and round-trips back
+      -- to an empty ipynb source on save.
+      if rest[#rest] and rest[#rest]:match("^# %%") then
+        rest[#rest + 1] = ""
+      end
+
       vim.api.nvim_buf_set_lines(buf, 0, -1, false, rest)
 
       -- Stash state before setting filetype so FileType autocmds can see it.

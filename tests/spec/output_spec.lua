@@ -6,7 +6,22 @@ local cell = require("jove.cell")
 local output = require("jove.output")
 local jove = require("jove")
 
-local T = MiniTest.new_set()
+local function default_output()
+  jove.config.output.max_lines = 50
+  jove.config.output.images = true
+  jove.config.output.header = true
+  jove.config.output.guide = "▎ "
+  jove.config.output.inside_border = false
+  jove.config.output.hl = nil
+end
+
+local T = MiniTest.new_set({
+  -- Each test may tweak jove.config.output (guide/header/etc.); restore
+  -- defaults so subsequent cases are independent of any leaked config.
+  hooks = {
+    pre_case = default_output,
+  },
+})
 
 ---mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
@@ -63,6 +78,15 @@ local function starts_with(s, prefix)
   return s:sub(1, #prefix) == prefix
 end
 
+---`s:sub(-1)` only returns the LAST BYTE of a multi-byte glyph (the rail
+---chars we use are 3-byte UTF-8), so a direct `ends_with(s, "│")` check loses
+---the comparison. Use byte-width math against the suffix instead.
+---@param suffix string
+---@return boolean
+local function ends_with(s, suffix)
+  return s:sub(-#suffix) == suffix
+end
+
 ---Flatten virt_lines into plain text lines for assertions.
 ---@param virt_lines table
 ---@return string[]
@@ -93,11 +117,15 @@ T["push"]["stores the event and renders virt_lines below the cell end"] = functi
   expect_truthy(ext ~= nil)
   MiniTest.expect.equality(ext.row, end_lnum) -- virt_lines appear below end_lnum
   local t = texts(ext.virt_lines)
-  MiniTest.expect.equality(#t, 2)
-  expect_truthy(starts_with(t[1], "└─ "))
+  -- Outside-border layout: top frame, content (rails), bottom frame. The
+  -- right rail always aligns with the window edge so the frame stays square.
+  MiniTest.expect.equality(#t, 3)
+  expect_truthy(starts_with(t[1], "┌─ "))
   expect_truthy(t[1]:find("Out", 1, true) ~= nil)
   MiniTest.expect.equality(t[1]:find("Out[", 1, true), nil) -- count unknown: bare "Out"
-  MiniTest.expect.equality(t[2], "▎ hello")
+  expect_truthy(starts_with(t[2], "│▎ "))
+  expect_truthy(t[2]:find("hello", 1, true) ~= nil and ends_with(t[2], "│"))
+  expect_truthy(starts_with(t[3], "└"))
   release_buffer(buf)
 end
 
@@ -113,10 +141,12 @@ T["push"]["appends incrementally without duplicating the extmark"] = function()
   local entry = state.peek(buf).outputs[hash]
   MiniTest.expect.equality(#entry.raw, 2)
   local t = texts(second.virt_lines)
-  MiniTest.expect.equality(#t, 3)
-  expect_truthy(starts_with(t[1], "└─ "))
-  MiniTest.expect.equality(t[2], "▎ one")
-  MiniTest.expect.equality(t[3], "▎ two")
+  MiniTest.expect.equality(#t, 4)
+  expect_truthy(starts_with(t[1], "┌─ "))
+  -- Each content row: `│<guide> text<padding>│` with right rail at edge.
+  expect_truthy(starts_with(t[2], "│▎ ") and ends_with(t[2], "│") and t[2]:find("one", 1, true) ~= nil)
+  expect_truthy(starts_with(t[3], "│▎ ") and ends_with(t[3], "│") and t[3]:find("two", 1, true) ~= nil)
+  expect_truthy(starts_with(t[4], "└"))
   expect_truthy(second.extmark_id == first.extmark_id)
   -- exactly one extmark in the output namespace for the whole buffer
   MiniTest.expect.equality(#vim.api.nvim_buf_get_extmarks(buf, output.ns, 0, -1, {}), 1)
@@ -149,7 +179,12 @@ T["push"]["renders a text placeholder for image chunks"] = function()
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
   local ext = extmark_of(buf, hash)
-  MiniTest.expect.equality(texts(ext.virt_lines)[2], "▎ [image: image/png]")
+  -- Outside-border layout: top frame, content row with rails + image placeholder
+  -- + right rail at edge, bottom frame.
+  local t = texts(ext.virt_lines)
+  MiniTest.expect.equality(#t, 3)
+  expect_truthy(starts_with(t[2], "│▎ [image:"))
+  expect_truthy(ends_with(t[2], "│"))
   release_buffer(buf)
 end
 
@@ -164,9 +199,13 @@ T["push"]["survives an error event with ANSI traceback"] = function()
   })
   local ext = extmark_of(buf, hash)
   local t = texts(ext.virt_lines)
-  expect_truthy(starts_with(t[1], "└─ "))
-  MiniTest.expect.equality(t[2], "▎ ZeroDivisionError: division by zero")
-  MiniTest.expect.equality(t[3], "▎ ZeroDivisionError")
+  expect_truthy(starts_with(t[1], "┌─ "))
+  -- Each error line: `│▎ <line text><padding>│` (the inner guide stays the
+  -- default `▎ ` — the error styling only swaps the hl group to GuideError).
+  MiniTest.expect.equality(#t, 4)
+  expect_truthy(starts_with(t[2], "│▎ ZeroDivisionError:") and ends_with(t[2], "│"))
+  expect_truthy(starts_with(t[3], "│▎ ZeroDivisionError") and ends_with(t[3], "│"))
+  expect_truthy(starts_with(t[4], "└"))
   release_buffer(buf)
 end
 
@@ -204,29 +243,47 @@ T["decoration"]["header = false omits the rule and keeps content only"] = functi
   release_buffer(buf)
 end
 
-T["decoration"]["guide = false omits the rail"] = function()
+T["decoration"]["guide = false omits the inner padding rail"] = function()
   local orig = jove.config.output.guide
   jove.config.output.guide = false
   local buf = make_buffer({ "# %% a", "print(1)" })
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hi" } })
-  MiniTest.expect.equality(texts(extmark_of(buf, hash).virt_lines)[2], "hi")
+  -- Outside-border layout: top frame + content (rails, no inner padding) +
+  -- bottom frame. The content row wraps the text with the two rails and
+  -- pads to window width; with `guide = false` only `hi` sits between them.
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  MiniTest.expect.equality(#t, 3)
+  expect_truthy(starts_with(t[2], "│"))
+  expect_truthy(ends_with(t[2], "│"))
+  expect_truthy(t[2]:find("hi", 1, true) ~= nil)
+  expect_truthy(t[2]:find("▎", 1, true) == nil) -- no inner rail
   jove.config.output.guide = orig
   release_buffer(buf)
 end
 
-T["decoration"]["custom guide string is used verbatim"] = function()
+T["decoration"]["custom guide string is used verbatim between rails"] = function()
   local orig = jove.config.output.guide
   jove.config.output.guide = "│ "
   local buf = make_buffer({ "# %% a", "print(1)" })
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hi" } })
-  MiniTest.expect.equality(texts(extmark_of(buf, hash).virt_lines)[2], "│ hi")
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  -- [1] top frame, [2] content row: outer rail + custom guide + text +
+  -- outer rail. The custom `│ ` then `hi` => `││ hi│` between outer rails.
+  expect_truthy(starts_with(t[2], "││"))
+  expect_truthy(ends_with(t[2], "│"))
+  expect_truthy(t[2]:find("hi", 1, true) ~= nil)
   jove.config.output.guide = orig
   release_buffer(buf)
 end
 
-T["decoration"]["error output switches the rail to JoveOutputGuideError"] = function()
+T["decoration"]["error output switches the inner padding rail to JoveOutputGuideError"] = function()
+  -- Force the default guide so this test is independent of any prior case
+  -- (preceding tests set + restore jove.config.output.guide at function
+  -- boundaries, but mini.test doesn't snapshot config between cases).
+  local orig = jove.config.output.guide
+  jove.config.output.guide = "▎ "
   local buf = make_buffer({ "# %% a", "1/0" })
   local hash = cell_hash(buf)
   output.push(buf, hash, {
@@ -235,9 +292,13 @@ T["decoration"]["error output switches the rail to JoveOutputGuideError"] = func
     evalue = "division by zero",
     traceback = { "ZeroDivisionError" },
   })
-  local rail = extmark_of(buf, hash).virt_lines[2][1]
-  MiniTest.expect.equality(rail[1], "▎ ")
-  MiniTest.expect.equality(rail[2], "JoveOutputGuideError")
+  -- Outside-border layout: the first virt_line is the top frame, the second
+  -- is the first content row whose outer rails are the box borders; the
+  -- inner rail (between outer rail and text) carries the error hl.
+  local inner_rail = extmark_of(buf, hash).virt_lines[2][2]
+  MiniTest.expect.equality(inner_rail[1], "▎ ")
+  MiniTest.expect.equality(inner_rail[2], "JoveOutputGuideError")
+  jove.config.output.guide = orig
   release_buffer(buf)
 end
 
@@ -323,18 +384,19 @@ T["truncation"]["caps virt_lines at output.max_lines with a float trailer"] = fu
 
   local ext = extmark_of(buf, hash)
   local t = texts(ext.virt_lines)
-  -- header + 3 content lines + trailer
-  MiniTest.expect.equality(#t, 5)
-  expect_truthy(starts_with(t[1], "└─ "))
-  MiniTest.expect.equality(t[2], "▎ line1")
-  MiniTest.expect.equality(t[4], "▎ line3")
-  MiniTest.expect.equality(t[5], "▎ … +7 lines · :JoveOpenOutput")
+  -- top frame + 3 retained lines + trailer + bottom frame.
+  MiniTest.expect.equality(#t, 6)
+  expect_truthy(starts_with(t[1], "┌─ "))
+  expect_truthy(starts_with(t[2], "│▎ line1") and ends_with(t[2], "│"))
+  expect_truthy(starts_with(t[4], "│▎ line3") and ends_with(t[4], "│"))
+  expect_truthy(starts_with(t[5], "│▎ … +7 lines · :JoveOpenOutput") and ends_with(t[5], "│"))
+  expect_truthy(starts_with(t[6], "└"))
 
   jove.config.output.max_lines = orig
   -- Re-render at restored config shows everything again on next push.
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "done" } })
   ext = extmark_of(buf, hash)
-  MiniTest.expect.equality(#texts(ext.virt_lines), 12) -- header + 11 content
+  MiniTest.expect.equality(#texts(ext.virt_lines), 13) -- top + 11 content + bottom
   release_buffer(buf)
 end
 
@@ -355,9 +417,11 @@ T["import"]["bulk-attaches outputs by hash and renders them"] = function()
   local st = state.peek(buf)
   MiniTest.expect.equality(#st.outputs[h1].raw, 2)
   local t1 = texts(extmark_of(buf, h1).virt_lines)
-  MiniTest.expect.equality(t1[2], "▎ a1")
-  MiniTest.expect.equality(t1[3], "▎ a2")
-  MiniTest.expect.equality(texts(extmark_of(buf, h2).virt_lines)[2], "▎ b1")
+  -- Outside-border layout: top frame, two content rows (rails), bottom frame.
+  MiniTest.expect.equality(#t1, 4)
+  expect_truthy(starts_with(t1[2], "│▎ a1") and ends_with(t1[2], "│"))
+  expect_truthy(starts_with(t1[3], "│▎ a2") and ends_with(t1[3], "│"))
+  expect_truthy(texts(extmark_of(buf, h2).virt_lines)[2]:find("b1", 1, true) ~= nil)
   release_buffer(buf)
 end
 
@@ -421,7 +485,14 @@ T["buf = 0 (current buffer)"]["push(0, ...) attaches to the current buffer"] = f
   output.push(0, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "hello" } })
   local ext = extmark_of(buf, cell_hash(buf))
   expect_truthy(ext ~= nil)
-  MiniTest.expect.equality(texts(ext.virt_lines)[2], "▎ hello")
+  -- Outside-border layout: top frame + content row + bottom frame. The
+  -- content row's left rail + default guide `▎ ` puts `▎ hello ` between
+  -- the two outer `│` rails.
+  local t = texts(ext.virt_lines)
+  MiniTest.expect.equality(#t, 3)
+  expect_truthy(starts_with(t[2], "│"))
+  expect_truthy(ends_with(t[2], "│"))
+  expect_truthy(t[2]:find("hello", 1, true) ~= nil)
   release_buffer(buf)
 end
 

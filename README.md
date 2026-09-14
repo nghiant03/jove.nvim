@@ -188,9 +188,9 @@ require("jove").setup({
   output = {
     max_lines = 50,             -- inline output truncation limit
     images = true,              -- render images via snacks.image when available
-    header = true,              -- draw the `└─ Out[n]` rule above inline output
-    guide = "▎ ",               -- per-line output guide rail; false disables it
-    inside_border = false,      -- render output inside the cell border instead of below it
+    header = true,              -- draw the Output block's `┌─ Out[n] ─┐` top frame; false renders content + guide rail only
+    guide = "▎ ",               -- per-line inner output rail (between the left border and the text); false disables it
+    inside_border = false,      -- render output inside the cell border instead of its own bordered block below it
     hl = nil,                   -- output background tint: hl group name (string, linked) or attrs table; nil disables
   },
   variables = {
@@ -237,17 +237,34 @@ string when no kernel is running.
 
 ## Output rendering
 
-Outputs render as virtual lines below each cell, outside the `╰──╯` bottom
-border:
+Outputs render as a dedicated bordered `Out` block below each cell, attached
+to the cell border so the two stay visually separated:
 
-- A full-width `└─ Out[n]` rule heads the block (`JoveOutputHeader`, linked to
-  `Comment`); `n` is the kernel execution count when known. Set
-  `output.header = false` to omit it.
-- Every line carries a `▎ ` guide rail (`JoveOutputGuide` → `Comment`, or
-  `JoveOutputGuideError` → `DiagnosticError` for error blocks). Customize with
-  `output.guide = "│ "`, or disable with `output.guide = false`.
-- `output.inside_border = true` restores the older in-box layout (output
-  rendered between the cell body and its closing border).
+```
+╭─ ○ Cell 5 ────────────────╮       <- JoveCellBorder
+[code lines]
+╰────────────────────────────╯       <- JoveCellBorder
+┌─ Out[3] ─────────────────────┐     <- JoveOutputBorder (distinct group)
+│ ▎ accuracy             │
+│ ▎ 0.74      0.74  …     │
+└────────────────────────────────┘     <- JoveOutputBorder
+```
+
+- The Code cell border (`JoveCellBorder`) wraps the **code only**; the Output
+  block is its own bordered region with the **distinct** `JoveOutputBorder`
+  group so cell vs output can be themed independently and never visually merge.
+- Effect: the output sits directly below the code border without being
+  contained inside it (set `output.inside_border = true` for the older
+  in-box behaviour).
+- The Output top frame carries the `Out[n]` label and is the same role the
+  `└─ Out[n]` rule used to play; `output.header = false` skips the entire
+  Output frame and renders just content with the guide rail.
+- Every content row carries a `▎ ` guide rail between its left and right
+  border rails (`JoveOutputGuide` → `Comment`, or `JoveOutputGuideError` →
+  `DiagnosticError` for error blocks). Customize with `output.guide = "│ "`,
+  or disable with `output.guide = false`.
+- `output.inside_border = true` restores the original layout (output rendered
+  between the cell body and its closing border — no Output frame).
 - `output.hl` optionally tints the block's full window-width background: an hl
   group name (`string`, linked to `JoveOutput`) or attrs table (e.g.
   `{ bg = "#2a2a3a" }`). nil disables the tint.
@@ -260,9 +277,10 @@ border:
 - Image outputs (PNG/JPEG) render inline via `snacks.image` when available;
   otherwise a text placeholder is shown.
 
-Highlight groups: `JoveOutputHeader`, `JoveOutputGuide`,
-`JoveOutputGuideError` and `JoveOutput` (all user-overridable via
-`nvim_set_hl`).
+Highlight groups: `JoveCellBorder` (cell frame), `JoveOutputBorder` (Output
+frame, distinct from the cell frame), `JoveOutputHeader`,
+`JoveOutputGuide`, `JoveOutputGuideError` and `JoveOutput` (all
+user-overridable via `nvim_set_hl`).
 
 ## Output persistence
 
