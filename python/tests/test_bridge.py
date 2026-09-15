@@ -190,8 +190,6 @@ def kernel(bridge):
     return bridge
 
 
-
-
 def test_ready_and_list_kernelspecs(bridge):
     ready = bridge.messages[0]
     assert ready["event"] == "ready"
@@ -242,8 +240,6 @@ def test_start_kernel_status_sequence(bridge):
     statuses = bridge.statuses_since(since)
     assert statuses[0] == "starting"
     assert "idle" in statuses
-
-
 
 
 def test_execute_stream(kernel):
@@ -313,7 +309,9 @@ def test_overlapping_executes(kernel):
         "execute",
         {"code": "import time\ntime.sleep(0.7)\nprint('first-done')", "cell": "c1"},
     )
-    rid2 = kernel.send_request("execute", {"code": "print('second-done')", "cell": "c2"})
+    rid2 = kernel.send_request(
+        "execute", {"code": "print('second-done')", "cell": "c2"}
+    )
     r1 = kernel.wait_response(rid1, since=since)
     r2 = kernel.wait_response(rid2, since=since)
     assert r1["result"].get("status") == "ok"
@@ -356,9 +354,7 @@ def test_interrupt(kernel):
     rid = kernel.send_request(
         "execute", {"code": _interruptable_sleep(), "cell": "slow"}
     )
-    kernel.wait_event(
-        "output", since=since, pred=lambda p: p.get("cell") == "slow"
-    )
+    kernel.wait_event("output", since=since, pred=lambda p: p.get("cell") == "slow")
     msg = kernel.request("interrupt")
     assert msg["result"] == {}
 
@@ -388,9 +384,7 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
     rid_sleep = kernel.send_request(
         "execute", {"code": _interruptable_sleep(), "cell": "sleep"}
     )
-    kernel.wait_event(
-        "output", since=since, pred=lambda p: p.get("cell") == "sleep"
-    )
+    kernel.wait_event("output", since=since, pred=lambda p: p.get("cell") == "sleep")
     rid_quick = kernel.send_request(
         "execute", {"code": "print('quick-done')", "cell": "quick"}
     )
@@ -413,9 +407,7 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
     outputs = kernel.outputs_since(since)
     for cell in ("sleep", "quick"):
         errs = [
-            o
-            for o in outputs
-            if o.get("cell") == cell and o.get("kind") == "error"
+            o for o in outputs if o.get("cell") == cell and o.get("kind") == "error"
         ]
         assert len(errs) == 1, f"expected exactly one error output for {cell!r}"
         assert errs[0]["mime"]["text/plain"]
@@ -441,8 +433,6 @@ def test_restart(bridge):
     result = msg["result"]
     assert result["status"] == "error"
     assert result["ename"] == "NameError"
-
-
 
 
 def test_shutdown_exits_zero(bridge):
@@ -593,9 +583,9 @@ def test_late_iopub_after_execute_reply_still_tagged():
         }
     )
     outputs = [m["params"] for m in conn.msgs if m.get("event") == "output"]
-    assert any(
-        p["cell"] == "c-late" and p["kind"] == "error" for p in outputs
-    ), conn.msgs
+    assert any(p["cell"] == "c-late" and p["kind"] == "error" for p in outputs), (
+        conn.msgs
+    )
 
     # Unknown parents and expired grace entries are still dropped.
     session._handle_iopub(

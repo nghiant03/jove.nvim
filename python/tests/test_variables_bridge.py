@@ -104,7 +104,9 @@ def test_finish_variables_unwraps_ipython_string_repr():
     text = repr(json.dumps(payload))  # e.g. '\'[{"name": "x", ...}]\''
     content = {
         "status": "ok",
-        "user_expressions": {"__jove__": {"status": "ok", "data": {"text/plain": text}}},
+        "user_expressions": {
+            "__jove__": {"status": "ok", "data": {"text/plain": text}}
+        },
     }
     session._finish_variables(_Pending("variables", 8), "execute_reply", content)
     assert conn.msgs == [{"id": 8, "result": {"variables": payload}}]

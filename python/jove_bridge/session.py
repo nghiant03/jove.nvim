@@ -187,9 +187,7 @@ class BridgeSession:
         return self._submit_shell(
             "inspect",
             reply_id,
-            lambda client: client.inspect(
-                code, cursor_pos, detail_level=detail_level
-            ),
+            lambda client: client.inspect(code, cursor_pos, detail_level=detail_level),
         )
 
     def variables(self, reply_id: int) -> Any:
@@ -229,7 +227,9 @@ class BridgeSession:
         language = spec.get("language")
         return language or None
 
-    def _finish_variables(self, pending: _Pending, msg_type: Any, content: dict) -> None:
+    def _finish_variables(
+        self, pending: _Pending, msg_type: Any, content: dict
+    ) -> None:
         """Parse the user_expressions JSON out of an execute_reply and reply."""
         empty: dict = {"variables": []}
         if msg_type != "execute_reply" or content.get("status") != "ok":
