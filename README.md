@@ -1,28 +1,39 @@
 # jove.nvim
 
-[![CI](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+> **Jupyter notebooks, edited natively in Neovim.**
+> *Jove — /dʒoʊv/, as in Jupiter.*
 
 Edit Jupyter `.ipynb` notebooks in Neovim as if they were native Python
 buffers — real LSP/copilot/treesitter, a first-party kernel client, inline
 cell outputs, and proper round-tripping to disk. No otter, no quarto, no
 molten, no temp files, no lost outputs.
 
-## Contents
+<!-- panvimdoc-ignore-start -->
 
-- [How it works](#how-it-works)
-- [Requirements](#requirements)
-- [Install (lazy.nvim)](#install-lazynvim)
-- [Commands](#commands)
-- [Keymaps and motions](#keymaps-and-motions)
-- [Configuration](#configuration)
-- [Execution and status](#execution-and-status)
-- [Output rendering](#output-rendering)
-- [Output persistence](#output-persistence)
-- [Comparison](#comparison)
-- [Migrating from 0.1 (molten-based)](#migrating-from-01-molten-based)
-- [Non-goals](#non-goals)
-- [License](#license)
+[![CI](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml)
+[![Neovim](https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&logoColor=white)](https://neovim.io)
+[![Jupyter](https://img.shields.io/badge/Jupyter-.ipynb-F37626?logo=jupyter&logoColor=white)](https://jupyter.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+<!-- panvimdoc-ignore-end -->
+
+## Features
+
+- **Native buffers** — notebooks open as ordinary Python buffers; pyright,
+  ruff, copilot, treesitter and git tooling attach like any other file.
+- **Built-in kernel client** — a first-party Python bridge starts and
+  supervises one kernel per notebook; if it dies, it restarts automatically.
+  No molten, no browser.
+- **Inline outputs** — text, tables, tracebacks and images (PNG/JPEG via
+  `snacks.image`) render in bordered blocks below each cell, with signs and a
+  spinner for queued/running/done state.
+- **True round-tripping** — session outputs and execution counts merge back
+  into the `.ipynb` on save; cleared outputs stay cleared; reload treats disk
+  as truth.
+- **Cell ergonomics** — `ic`/`ac` cell text-objects, `[c`/`]c` cell motions,
+  cell borders, per-cell execution counts and elapsed time.
+- **Tooling** — variable inspector sidebar, notebook table of contents, and a
+  kernel info panel with sessions and installed kernelspecs.
 
 ## How it works
 
@@ -66,7 +77,9 @@ Run `:checkhealth jove` to verify all of the above: the Neovim version, the
 `snacks.image` integration, and a conflict check against `jupytext.nvim`
 (it also warns if it detects molten, which jove no longer uses).
 
-## Install (lazy.nvim)
+## Installation
+
+### [lazy.nvim](https://github.com/folke/lazy.nvim) (recommended)
 
 ```lua
 {
@@ -88,6 +101,9 @@ Run `:checkhealth jove` to verify all of the above: the Neovim version, the
 > handlers are installed from `plugin/jove.lua` at startup either way, but
 > you'll lose the `ic`/`ac` cell text-objects, `[c`/`]c` cell motions, all
 > `keymap = {}` bindings, and the cell status signs/spinner.
+
+With any other plugin manager, load jove at startup (not lazily) and call
+`require("jove").setup({...})` in your config.
 
 **Do not load `jupytext.nvim` alongside jove** — both register `BufReadCmd`
 on `*.ipynb`. Jove detects it and refuses to register its handlers with a
@@ -114,56 +130,6 @@ opts = {
 If `jupytext` lives in a conda env that isn't on `$PATH` for the nvim
 process, either prepend that env's `bin/` to `vim.env.PATH` early in your
 `init.lua` or point `opts.jupytext` at the absolute binary path.
-
-## Commands
-
-| Command | Action |
-|---|---|
-| `:JoveRunCell` | Run current notebook cell |
-| `:JoveRunAbove` | Run all notebook cells above the cursor |
-| `:JoveRunAll` | Run all notebook cells |
-| `:JoveRunSelection` | Run the visual selection as one unit |
-| `:JoveRunCellAndAdvance` | Run the current cell and jump to the next |
-| `:JoveNextCell` | Jump to next notebook cell |
-| `:JovePrevCell` | Jump to previous notebook cell |
-| `:JoveInitKernel` | Start a kernel for the current notebook |
-| `:JoveSelectKernel` | Pick a kernelspec for the current notebook (replaces running kernel) |
-| `:JoveInterrupt` | Interrupt the running execution |
-| `:JoveRestartKernel` | Restart the current notebook kernel |
-| `:JoveShutdownKernel` | Shut down the current notebook kernel and bridge |
-| `:JoveToggleOutput` | Show/hide rendered outputs of the current cell |
-| `:JoveOpenOutput` | Open the current cell's outputs in a float |
-| `:JoveClearOutput` | Clear outputs of the current cell |
-| `:JoveClearOutputs` | Clear all rendered outputs in this buffer |
-| `:JoveReload` | Reload the current notebook buffer from disk |
-| `:JoveVariables` | Toggle the variable inspector sidebar |
-| `:JoveKernelInfo` | Show kernel panel (current session, running kernels, installed kernelspecs) |
-| `:JoveToc` | Show a table of contents for the current notebook |
-
-Use `:checkhealth jove` to verify dependencies, versions, and conflicts.
-
-## Keymaps and motions
-
-On jove buffers (python, julia, r, javascript filetypes backed by an
-`.ipynb`):
-
-- `ic` / `ac` cell text-objects (operator-pending and visual modes) — always
-  on, no extra plugin needed.
-- `[c` / `]c` cell motions (normal mode) — on by default; disable with
-  `cell_motions = false`.
-- Everything under `keymap = {}` is opt-in; all bindings default to disabled.
-
-```lua
-opts = {
-  keymap = {
-    run_cell        = "<leader>x",  -- normal: run cell under cursor
-    run_and_advance = "<leader>X",  -- normal: run cell, jump to next
-    run_selection   = "<leader>xx", -- visual: run selection as one unit
-    next_cell       = "]h",
-    prev_cell       = "[h",
-  },
-}
-```
 
 ## Configuration
 
@@ -218,7 +184,59 @@ require("jove").setup({
 })
 ```
 
-## Execution and status
+## Usage
+
+### Commands
+
+| Command | Action |
+|---|---|
+| `:JoveRunCell` | Run current notebook cell |
+| `:JoveRunAbove` | Run all notebook cells above the cursor |
+| `:JoveRunAll` | Run all notebook cells |
+| `:JoveRunSelection` | Run the visual selection as one unit |
+| `:JoveRunCellAndAdvance` | Run the current cell and jump to the next |
+| `:JoveNextCell` | Jump to next notebook cell |
+| `:JovePrevCell` | Jump to previous notebook cell |
+| `:JoveInitKernel` | Start a kernel for the current notebook |
+| `:JoveSelectKernel` | Pick a kernelspec for the current notebook (replaces running kernel) |
+| `:JoveInterrupt` | Interrupt the running execution |
+| `:JoveRestartKernel` | Restart the current notebook kernel |
+| `:JoveShutdownKernel` | Shut down the current notebook kernel and bridge |
+| `:JoveToggleOutput` | Show/hide rendered outputs of the current cell |
+| `:JoveOpenOutput` | Open the current cell's outputs in a float |
+| `:JoveClearOutput` | Clear outputs of the current cell |
+| `:JoveClearOutputs` | Clear all rendered outputs in this buffer |
+| `:JoveReload` | Reload the current notebook buffer from disk |
+| `:JoveVariables` | Toggle the variable inspector sidebar |
+| `:JoveKernelInfo` | Show kernel panel (current session, running kernels, installed kernelspecs) |
+| `:JoveToc` | Show a table of contents for the current notebook |
+
+Use `:checkhealth jove` to verify dependencies, versions, and conflicts.
+
+### Keymaps and motions
+
+On jove buffers (python, julia, r, javascript filetypes backed by an
+`.ipynb`):
+
+- `ic` / `ac` cell text-objects (operator-pending and visual modes) — always
+  on, no extra plugin needed.
+- `[c` / `]c` cell motions (normal mode) — on by default; disable with
+  `cell_motions = false`.
+- Everything under `keymap = {}` is opt-in; all bindings default to disabled.
+
+```lua
+opts = {
+  keymap = {
+    run_cell        = "<leader>x",  -- normal: run cell under cursor
+    run_and_advance = "<leader>X",  -- normal: run cell, jump to next
+    run_selection   = "<leader>xx", -- visual: run selection as one unit
+    next_cell       = "]h",
+    prev_cell       = "[h",
+  },
+}
+```
+
+### Execution and status
 
 Cells run one at a time per notebook: a queued cell gets the `queued` sign,
 then `running` (with a spinner on the cell), then `ok` or `error`. Errors
@@ -350,6 +368,11 @@ jove 0.2 replaced molten with a first-party kernel bridge:
 - Browser sync à la jupynium.
 - Quarto/`.qmd` support — jove is scoped to Jupyter notebooks.
 - Reimplementing `jupytext` format conversions in Lua.
+
+## Contributing
+
+Bug reports, feature requests and pull requests are welcome on
+[GitHub](https://github.com/nghiant03/jove.nvim/issues).
 
 ## License
 
