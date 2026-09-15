@@ -7,6 +7,8 @@
 --       raw    = <list of raw output event params>,
 --       hidden = <bool, per-cell fold state>,
 --       extmark_id = <int?, virt_lines extmark below the cell end>,
+--       bytes  = <int, approximate payload bytes accumulated>,
+--       truncated = <bool, true once config.output.max_bytes was hit>,
 --     },
 --   }
 --
@@ -52,6 +54,21 @@ local function safe(fn)
   end
 end
 
+---Mark the buffer modified: outputs and execution counts are notebook
+---content, so a session change means there is unsaved notebook state even
+---when the buffer text is untouched. This drives :q warnings and lets :w
+---reach BufWriteCmd (which merges outputs into the .ipynb).
+---@param buf integer
+function M.mark_dirty(buf)
+  if vim.api.nvim_buf_is_valid(buf) then
+    local st = state.peek(buf)
+    if st then
+      st.content_rev = (st.content_rev or 0) + 1
+    end
+    vim.bo[buf].modified = true
+  end
+end
+
 ---Find the cell with `hash` in `buf` (nil when the hash no longer exists).
 ---@param buf integer
 ---@param hash string
@@ -73,11 +90,76 @@ local function get_entry(st, cell_hash)
   local store = st.outputs or {}
   local entry = store[cell_hash]
   if not entry then
-    entry = { chunks = {}, raw = {}, hidden = false, extmark_id = nil }
+    entry =
+      { chunks = {}, raw = {}, hidden = false, extmark_id = nil, bytes = 0, truncated = false }
     store[cell_hash] = entry
   end
   st.outputs = store
   return entry, store
+end
+
+---Append rendered chunks to an entry, bounding memory and re-render cost:
+---
+--- * stream events coalesce into the previous stream text chunk (same
+---   mime/highlight), so a stream arriving in many small events stays one
+---   growing chunk — terminal/Jupyter semantics — instead of an
+---   ever-lengthening chunk list; error/result/note chunks never merge, so
+---   event boundaries with distinct styling survive;
+--- * once the accumulated payload exceeds `config.output.max_bytes` the tail
+---   is dropped and a marker is appended (displayed inline and persisted with
+---   the cell's outputs, so the saved notebook records the truncation).
+---@param entry table
+---@param params table       raw output event (kept in entry.raw for persist)
+---@param new_chunks table[] mime.render(params)
+local function append_output(entry, params, new_chunks)
+  if entry.truncated then
+    return
+  end
+  local cfg = require("jove").config
+  local max_bytes = math.max(1024, (cfg and cfg.output and cfg.output.max_bytes) or 1048576)
+  -- Account for retained raw data too, including unsupported MIME bundles
+  -- and zero-length events (whose tables still consume memory).
+  local size = #vim.json.encode(params)
+  entry.bytes = (entry.bytes or 0) + size
+  if entry.bytes > max_bytes then
+    entry.truncated = true
+    local text = ("… output truncated: jove output.max_bytes (%d) reached …"):format(max_bytes)
+    entry.chunks[#entry.chunks + 1] =
+      { kind = "note", mime = "text/plain", text = text, hl_group = "Comment" }
+    -- Persist the marker as a stderr stream so the .ipynb shows the tail was
+    -- dropped rather than silently losing it.
+    entry.raw[#entry.raw + 1] =
+      { kind = "stream", name = "stderr", mime = { ["text/plain"] = text } }
+    return
+  end
+  local previous = entry.raw[#entry.raw]
+  local can_merge = params.kind == "stream"
+    and previous
+    and previous.kind == "stream"
+    and (previous.name or "stdout") == (params.name or "stdout")
+  entry.raw[#entry.raw + 1] = params
+  for _, chunk in ipairs(new_chunks) do
+    local last = entry.chunks[#entry.chunks]
+    if
+      can_merge
+      and last
+      and last.kind == "text"
+      and chunk.kind == "text"
+      and last.mime == chunk.mime
+      and last.hl_group == chunk.hl_group
+    then
+      if #last.text + #chunk.text <= 4096 then
+        last.text = last.text .. chunk.text
+      else
+        -- Keep concatenation work bounded without inserting a visual newline
+        -- at an internal storage-block boundary.
+        chunk.continues = true
+        entry.chunks[#entry.chunks + 1] = chunk
+      end
+    else
+      entry.chunks[#entry.chunks + 1] = chunk
+    end
+  end
 end
 
 ---Render chunks to virt_lines. Image chunks render as a placeholder text
@@ -95,8 +177,13 @@ local function build_lines(chunks)
       -- placement covers it, a failed one (API drift) still shows the text.
       lines[#lines + 1] = { { ("[image: %s]"):format(chunk.mime), "Comment" } }
     else
-      for _, l in ipairs(vim.split(chunk.text or "", "\n", { plain = true, trimempty = false })) do
-        lines[#lines + 1] = { { l, chunk.hl_group } }
+      for i, l in ipairs(vim.split(chunk.text or "", "\n", { plain = true, trimempty = false })) do
+        if i == 1 and chunk.continues and #lines > 0 then
+          local last = lines[#lines][1]
+          last[1] = last[1] .. l
+        else
+          lines[#lines + 1] = { { l, chunk.hl_group } }
+        end
       end
     end
   end
@@ -377,7 +464,7 @@ end
 ---@param buf integer
 ---@param cell_hash string
 ---@param params table  `output` event params (PROTOCOL.md)
-function M.push(buf, cell_hash, params)
+function M.push(buf, cell_hash, params, opts)
   safe(function()
     buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
     if type(buf) ~= "number" or not vim.api.nvim_buf_is_valid(buf) then
@@ -391,16 +478,37 @@ function M.push(buf, cell_hash, params)
     -- A session event means the cell actually ran: any disk provenance ends
     -- here (persist.merge_into may now rewrite this cell's outputs).
     entry.from_disk = nil
-    entry.raw[#entry.raw + 1] = params
-    vim.list_extend(entry.chunks, mime.render(params))
-    render_cell(buf, cell_hash)
+    if entry.truncated then
+      return
+    end
+    append_output(entry, params, mime.render(params))
+    M.mark_dirty(buf)
+    if opts and opts.defer then
+      if not entry.render_pending then
+        entry.render_pending = true
+        vim.defer_fn(function()
+          entry.render_pending = nil
+          local current = state.peek(buf)
+          if current and current.outputs and current.outputs[cell_hash] == entry then
+            render_cell(buf, cell_hash)
+          end
+        end, 16)
+      end
+    else
+      render_cell(buf, cell_hash)
+    end
   end)
 end
 
 ---Drop one cell's store + extmark, or the whole buffer's outputs.
+---Clearing is a notebook-content change: the buffer is marked modified so the
+---deletion reaches disk on save (persist.lua tombstones cleared cells).
+---`opts.skip_dirty` is for internal resets where disk state replaces the
+---session state (persist.import), i.e. not a user-visible change.
 ---@param buf integer
 ---@param cell_hash string?
-function M.clear(buf, cell_hash)
+---@param opts {skip_dirty: boolean?}?
+function M.clear(buf, cell_hash, opts)
   safe(function()
     buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
     local st = state.peek(buf)
@@ -415,6 +523,9 @@ function M.clear(buf, cell_hash)
         end
         image.clear(buf, cell_hash)
         st.outputs[cell_hash] = nil
+        if not (opts and opts.skip_dirty) then
+          M.mark_dirty(buf)
+        end
       end
     else
       for hash, entry in pairs(st.outputs) do
@@ -424,6 +535,9 @@ function M.clear(buf, cell_hash)
         image.clear(buf, hash)
       end
       st.outputs = nil
+      if not (opts and opts.skip_dirty) then
+        M.mark_dirty(buf)
+      end
     end
   end)
 end
@@ -546,8 +660,7 @@ function M.import(buf, outputs_by_hash)
       -- by excluding them from session-output merges.
       entry.from_disk = true
       for _, params in ipairs(events or {}) do
-        entry.raw[#entry.raw + 1] = params
-        vim.list_extend(entry.chunks, mime.render(params))
+        append_output(entry, params, mime.render(params))
       end
       render_cell(buf, hash)
     end

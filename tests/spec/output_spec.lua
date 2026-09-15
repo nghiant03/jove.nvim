@@ -134,17 +134,19 @@ T["push"]["appends incrementally without duplicating the extmark"] = function()
 
   local entry = state.peek(buf).outputs[hash]
   MiniTest.expect.equality(#entry.raw, 2)
+  -- Adjacent stream events coalesce into one chunk (terminal semantics:
+  -- "one" followed by "two" renders "onetwo"), keeping the chunk list flat
+  -- no matter how many events stream in. The raw events stay separate for
+  -- persistence.
+  MiniTest.expect.equality(#entry.chunks, 1)
   local t = texts(second.virt_lines)
-  MiniTest.expect.equality(#t, 4)
+  MiniTest.expect.equality(#t, 3)
   expect_truthy(starts_with(t[1], "┌─ "))
   -- Each content row: `│<guide> text<padding>│` with right rail at edge.
   expect_truthy(
-    starts_with(t[2], "│▎ ") and ends_with(t[2], "│") and t[2]:find("one", 1, true) ~= nil
+    starts_with(t[2], "│▎ ") and ends_with(t[2], "│") and t[2]:find("onetwo", 1, true) ~= nil
   )
-  expect_truthy(
-    starts_with(t[3], "│▎ ") and ends_with(t[3], "│") and t[3]:find("two", 1, true) ~= nil
-  )
-  expect_truthy(starts_with(t[4], "└"))
+  expect_truthy(starts_with(t[3], "└"))
   expect_truthy(second.extmark_id == first.extmark_id)
   MiniTest.expect.equality(#vim.api.nvim_buf_get_extmarks(buf, output.ns, 0, -1, {}), 1)
   release_buffer(buf)
@@ -386,7 +388,7 @@ T["truncation"]["caps virt_lines at output.max_lines with a float trailer"] = fu
   jove.config.output.max_lines = orig
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "done" } })
   ext = extmark_of(buf, hash)
-  MiniTest.expect.equality(#texts(ext.virt_lines), 13) -- top + 11 content + bottom
+  MiniTest.expect.equality(#texts(ext.virt_lines), 12) -- "done" continues the final stream line
   release_buffer(buf)
 end
 
@@ -407,10 +409,9 @@ T["import"]["bulk-attaches outputs by hash and renders them"] = function()
   local st = state.peek(buf)
   MiniTest.expect.equality(#st.outputs[h1].raw, 2)
   local t1 = texts(extmark_of(buf, h1).virt_lines)
-  -- Outside-border layout: top frame, two content rows (rails), bottom frame.
-  MiniTest.expect.equality(#t1, 4)
-  expect_truthy(starts_with(t1[2], "│▎ a1") and ends_with(t1[2], "│"))
-  expect_truthy(starts_with(t1[3], "│▎ a2") and ends_with(t1[3], "│"))
+  -- Adjacent stream fragments continue the same line.
+  MiniTest.expect.equality(#t1, 3)
+  expect_truthy(starts_with(t1[2], "│▎ a1a2") and ends_with(t1[2], "│"))
   expect_truthy(texts(extmark_of(buf, h2).virt_lines)[2]:find("b1", 1, true) ~= nil)
   release_buffer(buf)
 end

@@ -8,10 +8,17 @@
 -- "code".
 --
 -- Cell identity: `hash` is the sha256 hex digest (vim.fn.sha256) of the
--- normalized cell body. Normalization: the header line is excluded; each body
--- line has its trailing whitespace stripped; trailing empty lines are dropped;
+-- normalized cell body. Normalization: the header line is excluded;
+-- trailing empty separator lines are dropped; whitespace within lines is preserved;
 -- the rest is joined with "\n". Jupytext's py:percent round-trip loses
 -- jupytext cell ids, so persist.lua matches cells to outputs by content hash.
+--
+-- Duplicate cells: when several cells normalize to the same digest, the bare
+-- hash alone cannot tell them apart (outputs would be saved to every copy).
+-- The identity key is therefore `sha` for the first occurrence in buffer
+-- order and `sha .. "#" .. n` for the n-th duplicate (see M.dup_key).
+-- persist.lua applies the same ordinal scheme to .ipynb cells, which share
+-- the buffer's cell order.
 --
 -- Cache: the parsed list is stored per buffer in state.get(buf).cells =
 --   { list = <cell list>, tick = <vim.b[buf].changedtick at parse time> }
@@ -25,7 +32,7 @@ local M = {}
 ---@field start_lnum integer  1-based, inclusive
 ---@field end_lnum integer    1-based, inclusive (last cell reaches buffer end)
 ---@field kind "code"|"markdown"
----@field hash string         sha256 hex of the normalized body (identity key, see module comment)
+---@field hash string         identity key: sha256 hex of the normalized body, with a `#n` suffix for the n-th duplicate (see module comment)
 ---@field header integer?     lnum of the `# %%` header; nil for the synthetic pre-header cell
 
 ---@param line string
@@ -46,18 +53,26 @@ local function header_kind(line)
   return "code"
 end
 
----Normalize a cell body: strip trailing whitespace per line, drop trailing
----empty lines, join the rest with "\n".
+---Normalize a cell body: drop trailing empty separator lines, join with "\n".
+---Keep whitespace inside source lines: it can be meaningful in string literals.
 ---@param lines string[]  body lines (already sliced, header excluded)
 ---@return string
 local function normalize_body(lines)
-  for i = 1, #lines do
-    lines[i] = lines[i]:gsub("%s+$", "")
-  end
   while #lines > 0 and lines[#lines] == "" do
     lines[#lines] = nil
   end
   return table.concat(lines, "\n")
+end
+
+---Identity key for the `n`th occurrence of content hash `sha` in a cell
+---list. The first occurrence keeps the bare hash, so single-occurrence cells
+---have a stable identity across sessions and `hash_source` results;
+---duplicates are suffixed in document order.
+---@param sha string
+---@param n integer  1-based occurrence index of `sha`
+---@return string
+function M.dup_key(sha, n)
+  return n == 1 and sha or (sha .. "#" .. n)
 end
 
 ---Single pass over the buffer lines producing the cell list.
@@ -66,6 +81,7 @@ end
 local function parse_cells(lines)
   local cells = {}
   local cur = nil -- cell currently being built
+  local counts = {} -- sha -> occurrences so far (duplicate suffixing)
 
   ---@param end_lnum integer
   local function finish(end_lnum)
@@ -74,11 +90,13 @@ local function parse_cells(lines)
     for i = body_start, end_lnum do
       body[#body + 1] = lines[i]
     end
+    local sha = vim.fn.sha256(normalize_body(body))
+    counts[sha] = (counts[sha] or 0) + 1
     cells[#cells + 1] = {
       start_lnum = cur.start_lnum,
       end_lnum = end_lnum,
       kind = cur.kind,
-      hash = vim.fn.sha256(normalize_body(body)),
+      hash = M.dup_key(sha, counts[sha]),
       header = cur.header,
     }
   end
@@ -105,15 +123,14 @@ end
 ---persist.lua matches .ipynb JSON cells to session outputs by hash: when
 ---jupytext round-trips the source verbatim, this hash equals the `hash` the
 ---buffer's parsed cells carry (and the bridge cell keys execute.lua sends).
+---This returns the FIRST occurrence's identity (no duplicate suffix);
+---persist.lua applies M.dup_key itself while scanning a notebook's cells.
 ---@param source string|string[]?
 ---@return string
 function M.hash_source(source)
   local lines
   if type(source) == "table" then
-    lines = {}
-    for _, l in ipairs(source) do
-      lines[#lines + 1] = type(l) == "string" and l or tostring(l)
-    end
+    lines = vim.split(table.concat(source, ""), "\n", { plain = true, trimempty = false })
   else
     lines = vim.split(tostring(source), "\n", { plain = true, trimempty = false })
   end

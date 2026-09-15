@@ -32,18 +32,53 @@ local function read_file(path, cb)
 end
 
 ---Write bytes atomically: temp file in the same dir, then rename over `path`.
+---
+---Every step is checked: a short write or failed close (e.g. full disk
+---surfacing at flush time) removes the temp file and reports an error
+---instead of renaming a partial file over a good one. An existing symlinked
+---destination is written through (the rename targets the resolved path, so
+---the symlink itself survives), and an existing destination's permission
+---bits are copied onto the temp file before the rename.
 ---@param path string
 ---@param bytes string
 ---@return boolean, string?  -- ok, error
-local function atomic_write(path, bytes)
-  local tmp = ("%s.jove-%s.tmp"):format(path, vim.uv.os_getpid())
+function M.atomic_write(path, bytes)
+  local target = vim.uv.fs_realpath(path) or path
+  local temp_fd, tmp = vim.uv.fs_mkstemp(target .. ".jove-XXXXXX")
+  if not temp_fd then
+    return false, tostring(tmp)
+  end
+  local closed, close_err = vim.uv.fs_close(temp_fd)
+  if not closed then
+    os.remove(tmp)
+    return false, tostring(close_err)
+  end
   local fd, ferr = io.open(tmp, "wb")
   if not fd then
+    os.remove(tmp)
     return false, ferr or ("cannot create " .. tmp)
   end
-  fd:write(bytes)
-  fd:close()
-  local ok, rerr = os.rename(tmp, path)
+  local wok, werr = fd:write(bytes)
+  if not wok then
+    fd:close()
+    os.remove(tmp)
+    return false, tostring(werr or ("cannot write " .. tmp))
+  end
+  local cok, cerr = fd:close()
+  if not cok then
+    os.remove(tmp)
+    return false, tostring(cerr or ("cannot close " .. tmp))
+  end
+  -- A permission-copy failure must not silently broaden file access.
+  local stat = vim.uv.fs_stat(target)
+  if stat then
+    local mok, merr = vim.uv.fs_chmod(tmp, stat.mode % 4096)
+    if not mok then
+      os.remove(tmp)
+      return false, tostring(merr)
+    end
+  end
+  local ok, rerr = os.rename(tmp, target)
   if not ok then
     os.remove(tmp)
     return false, rerr or ("cannot rename " .. tmp)
@@ -115,7 +150,7 @@ function M.write(path, lines, cb)
           return cb(nil, ((stderr ~= "" and stderr) or "jupytext write failed"))
         end
         local bytes = stdout or ""
-        local ok, werr = atomic_write(path, bytes)
+        local ok, werr = M.atomic_write(path, bytes)
         if not ok then
           return cb(nil, werr)
         end

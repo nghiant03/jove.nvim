@@ -95,9 +95,12 @@ end
 ---Only `buftype` is set synchronously; the jupytext read is async. Concurrent
 ---reads of the same buffer are guarded: only the most recent read's
 ---completion is applied, stale ones are ignored.
+---`opts.guard_tick` (a changedtick captured when the reload was requested)
+---makes the completion abort instead of clobbering edits made while the
+---conversion was in flight; used by every reload path, not the initial read.
 ---@param buf integer
 ---@param path string
----@param opts {preserve_cursor: boolean?}?
+---@param opts {preserve_cursor: boolean?, guard_tick: integer?}?
 function M.read(buf, path, opts)
   opts = opts or {}
   local cfg = require("jove").config
@@ -118,6 +121,8 @@ function M.read(buf, path, opts)
 
   local seq = (read_seq[buf] or 0) + 1
   read_seq[buf] = seq
+  local initial_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local initial_rev = (state.peek(buf) or {}).content_rev or 0
 
   convert.read(path, function(lines, err)
     -- The convert callback runs in a libuv (fast) context; move onto the
@@ -129,6 +134,20 @@ function M.read(buf, path, opts)
 
       if not lines then
         vim.notify("[jove] read failed: " .. (err or "?"), vim.log.levels.ERROR)
+        return
+      end
+
+      -- Edits made while the conversion was in flight would be silently
+      -- replaced by set_lines below; drop the reload instead.
+      if
+        (opts.guard_tick and vim.b[buf].changedtick ~= opts.guard_tick)
+        or not vim.deep_equal(initial_lines, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+        or ((state.peek(buf) or {}).content_rev or 0) ~= initial_rev
+      then
+        vim.notify(
+          "[jove] reload skipped: the buffer was edited while reading",
+          vim.log.levels.WARN
+        )
         return
       end
 
@@ -179,11 +198,10 @@ function M.read(buf, path, opts)
         end)
       end
       if cfg.auto_import_outputs then
-        vim.schedule(function()
-          if vim.api.nvim_buf_is_valid(buf) then
-            persist.import(buf)
-          end
-        end)
+        persist.import(buf)
+      else
+        require("jove.execute").reset(buf)
+        require("jove.output").clear(buf, nil, { skip_dirty = true })
       end
     end)
   end)
@@ -231,21 +249,27 @@ local function start_write(buf, path, tick, lines)
       end
       st.last_write = vim.fn.sha256(bytes)
 
-      -- Only clear the modified flag if the user hasn't edited the buffer
-      -- while the write was in flight; otherwise leave it set so they know
-      -- to re-save.
-      if vim.api.nvim_buf_get_changedtick(buf) == tick then
-        vim.bo[buf].modified = false
-      end
-
       -- BufWritePost observes the jupytext-written file before session outputs merge.
       vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
 
+      local export_failed = false
       if cfg.auto_export_outputs and not flight.dirty then
         -- Export synchronously so the checksum matches the merged file before
         -- yielding to FileChangedShell. Only the final write exports outputs;
         -- a pending replay would overwrite an intermediate merge.
-        persist.export(buf, bytes)
+        local _, export_err = persist.export(buf, bytes)
+        export_failed = export_err ~= nil
+      end
+
+      -- Only clear the modified flag when the whole save — text conversion
+      -- AND output export — durably landed, and the user hasn't edited the
+      -- buffer while the write was in flight. A failed output merge leaves
+      -- the buffer modified so the unsaved results stay visible (and :q
+      -- still warns).
+      if export_failed then
+        vim.bo[buf].modified = true
+      elseif vim.api.nvim_buf_get_changedtick(buf) == tick and not flight.dirty then
+        vim.bo[buf].modified = false
       end
 
       if flight.dirty then
@@ -351,12 +375,26 @@ function M.changed_shell(buf, path)
 
   local cfg = require("jove").config
   if cfg.auto_reload then
+    if vim.bo[buf].modified then
+      -- Unsaved edits (text or session outputs) would be clobbered; leave
+      -- the disk change untouched and say so. Returning true suppresses the
+      -- default handler (we already notified).
+      vim.notify(
+        ("[jove] %s changed on disk; buffer has unsaved changes — :JoveReload to discard them"):format(
+          path
+        ),
+        vim.log.levels.WARN
+      )
+      return true
+    end
     -- Foreign change with auto-reload on: go through the normal read flow,
     -- preserving the cursor. fcs_choice stays empty so the default handler
-    -- does nothing while ours is in flight.
+    -- does nothing while ours is in flight. The guard tick aborts the
+    -- completion if an edit slips in while the conversion runs.
+    local tick = vim.b[buf].changedtick
     vim.schedule(function()
       if vim.api.nvim_buf_is_valid(buf) then
-        M.read(buf, st.path, { preserve_cursor = true })
+        M.read(buf, st.path, { preserve_cursor = true, guard_tick = tick })
       end
     end)
     return false
@@ -375,7 +413,7 @@ function M.reload(buf)
     vim.notify("[jove] buffer has no notebook file to reload", vim.log.levels.WARN)
     return
   end
-  M.read(buf, path, { preserve_cursor = true })
+  M.read(buf, path, { preserve_cursor = true, guard_tick = vim.b[buf].changedtick })
 end
 
 return M

@@ -133,7 +133,7 @@ T["queue"]["sends the cell BODY (header excluded), keyed by content hash"] = fun
   local req = br.requests[1]
   MiniTest.expect.equality(req.method, "execute")
   MiniTest.expect.equality(req.params.code, "x = 1") -- direct send, no header
-  MiniTest.expect.equality(req.params.cell, h1) -- output-routing key
+  expect_truthy(vim.startswith(req.params.cell, h1 .. ":run:"))
   MiniTest.expect.equality(req.opts.timeout_ms, false)
 end
 
@@ -298,7 +298,7 @@ T["meta"]["execute_result output event carries the count before the reply"] = fu
 
   execute.run_cell(buf, 1)
   br:emit("output", {
-    cell = h1,
+    cell = br.requests[1].params.cell,
     kind = "execute_result",
     execution_count = 3,
     mime = { ["text/plain"] = "1" },
@@ -351,10 +351,12 @@ T["output seam"]["clear on running, push on output event"] = function()
   MiniTest.expect.equality(#calls.clear, 1)
   MiniTest.expect.equality(calls.clear[1].hash, h1)
 
-  br:emit(
-    "output",
-    { cell = h1, kind = "stream", name = "stdout", mime = { ["text/plain"] = "1" } }
-  )
+  br:emit("output", {
+    cell = br.requests[1].params.cell,
+    kind = "stream",
+    name = "stdout",
+    mime = { ["text/plain"] = "1" },
+  })
   MiniTest.expect.equality(#calls.push, 1)
   MiniTest.expect.equality(calls.push[1].hash, h1)
   MiniTest.expect.equality(calls.push[1].params.kind, "stream")
@@ -401,7 +403,7 @@ T["batch"]["run_above enqueues code cells up to and including the cursor"] = fun
   inject_kernel(br2, md)
   execute.run_all(md)
   MiniTest.expect.equality(#br2.requests, 1)
-  MiniTest.expect.equality(br2.requests[1].params.cell, cell.at(md, 3).hash)
+  expect_truthy(vim.startswith(br2.requests[1].params.cell, cell.at(md, 3).hash .. ":run:"))
   br2:reply({ status = "ok" })
 end
 
@@ -431,7 +433,7 @@ T["batch"]["run_selection sends selection text, keyed to the containing cell"] =
   execute.run_selection(buf)
   MiniTest.expect.equality(#br.requests, 1)
   MiniTest.expect.equality(br.requests[1].params.code, "x = 1")
-  MiniTest.expect.equality(br.requests[1].params.cell, h1) -- containing cell
+  expect_truthy(vim.startswith(br.requests[1].params.cell, h1 .. ":run:"))
   br:reply({ status = "ok" })
 end
 
@@ -534,6 +536,35 @@ T["signs"]["spinner appears while running and is removed on completion"] = funct
   for _, m in ipairs(after) do
     MiniTest.expect.equality(m[4].virt_text == nil, true)
   end
+end
+
+T["output seam"]["late events cannot cross rerun or reload boundaries"] = function()
+  local buf = make_buffer(LINES)
+  local br = fake_bridge()
+  inject_kernel(br, buf)
+  local pushed = 0
+  execute._output = function()
+    return {
+      clear = function() end,
+      push = function()
+        pushed = pushed + 1
+      end,
+    }
+  end
+  execute.run_cell(buf, 1)
+  local old = br.requests[1].params.cell
+  br:reply({ status = "ok" })
+  execute.run_cell(buf, 1)
+  local current = br.requests[1].params.cell
+  br:emit("output", { cell = old, kind = "stream", mime = {} })
+  MiniTest.expect.equality(pushed, 0)
+  br:emit("output", { cell = current, kind = "stream", mime = {} })
+  MiniTest.expect.equality(pushed, 1)
+  execute.reset(buf)
+  br:emit("output", { cell = current, kind = "stream", mime = {} })
+  br:reply({ status = "ok", execution_count = 77 })
+  MiniTest.expect.equality(pushed, 1)
+  MiniTest.expect.equality(execute.meta(buf, hashes(buf)), nil)
 end
 
 return T

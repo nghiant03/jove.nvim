@@ -11,6 +11,7 @@
 --                 "error", ...})
 local state = require("jove.state")
 local cell = require("jove.cell")
+local convert = require("jove.convert")
 
 local M = {}
 
@@ -162,83 +163,68 @@ function M.merge_into(nb, store, seen_hashes, meta, persist_counts)
     persist_counts = true
   end
   local merged = 0
+  local counts = {} -- sha -> occurrences so far (duplicate suffixing, cell.lua)
   for _, c in ipairs(nb.cells) do
-    if c.cell_type == "code" and c.source ~= nil then
-      local hash = cell.hash_source(c.source)
-      local entry = store and store[hash]
-      local m = persist_counts and meta and meta[hash] or nil
-      local count = m and type(m.count) == "number" and m.count or nil
-      -- Imported outputs are already on disk; rewriting them would lose counts.
-      -- A cleared entry is absent from the store and still persists as a deletion.
-      local from_disk = entry ~= nil and entry.from_disk == true
-      if not from_disk and entry and type(entry.raw) == "table" and #entry.raw > 0 then
-        local outs = {}
-        for _, params in ipairs(entry.raw) do
-          local out = M.to_nbformat(params)
-          if out then
-            if out.output_type == "execute_result" then
-              -- Attribute the session count to the result output too; when
-              -- counts are opted out, force null rather than the bridge count.
-              if persist_counts then
-                if count ~= nil then
-                  out.execution_count = count
+    if c.source ~= nil then
+      local sha = cell.hash_source(c.source)
+      counts[sha] = (counts[sha] or 0) + 1
+      if c.cell_type == "code" then
+        local hash = cell.dup_key(sha, counts[sha])
+        local entry = store and store[hash]
+        local m = persist_counts and meta and meta[hash] or nil
+        local count = m and type(m.count) == "number" and m.count or nil
+        -- Imported outputs are already on disk; rewriting them would lose counts.
+        -- A cleared entry is absent from the store and still persists as a deletion.
+        local from_disk = entry ~= nil and entry.from_disk == true
+        if not from_disk and entry and type(entry.raw) == "table" and #entry.raw > 0 then
+          local outs = {}
+          for _, params in ipairs(entry.raw) do
+            local out = M.to_nbformat(params)
+            if out then
+              if out.output_type == "execute_result" then
+                -- Attribute the session count to the result output too; when
+                -- counts are opted out, force null rather than the bridge count.
+                if persist_counts then
+                  if count ~= nil then
+                    out.execution_count = count
+                  end
+                else
+                  out.execution_count = vim.NIL
                 end
-              else
-                out.execution_count = vim.NIL
               end
+              outs[#outs + 1] = out
             end
-            outs[#outs + 1] = out
           end
+          c.outputs = outs
+          c.execution_count = persist_counts and (count or vim.NIL) or vim.NIL
+          merged = merged + 1
+        elseif not from_disk and seen_hashes and seen_hashes[hash] then
+          -- Session cleared this cell's outputs: persist the deletion
+          -- (`outputs` is an array, so an empty Lua table encodes correctly).
+          c.outputs = {}
+          c.execution_count = persist_counts and (count or vim.NIL) or vim.NIL
+          merged = merged + 1
+        elseif count ~= nil and c.execution_count ~= count then
+          -- A session run can update the count without producing new outputs.
+          -- from_disk guards output replacement, not these newer run counts.
+          c.execution_count = count
+          merged = merged + 1
         end
-        c.outputs = outs
-        c.execution_count = persist_counts and (count or vim.NIL) or vim.NIL
-        merged = merged + 1
-      elseif not from_disk and seen_hashes and seen_hashes[hash] then
-        -- Session cleared this cell's outputs: persist the deletion
-        -- (`outputs` is an array, so an empty Lua table encodes correctly).
-        c.outputs = {}
-        c.execution_count = persist_counts and (count or vim.NIL) or vim.NIL
-        merged = merged + 1
-      elseif count ~= nil and c.execution_count ~= count then
-        -- A session run can update the count without producing new outputs.
-        -- from_disk guards output replacement, not these newer run counts.
-        c.execution_count = count
-        merged = merged + 1
       end
     end
   end
   return merged
 end
 
----Atomic write (same pattern as convert.lua): temp file in the same
----directory, then rename over `path`.
----@param path string
----@param bytes string
----@return boolean, string?
-local function atomic_write(path, bytes)
-  local tmp = ("%s.jove-%s.tmp"):format(path, vim.uv.os_getpid())
-  local fd, ferr = io.open(tmp, "wb")
-  if not fd then
-    return false, ferr or ("cannot create " .. tmp)
-  end
-  fd:write(bytes)
-  fd:close()
-  local ok, rerr = os.rename(tmp, path)
-  if not ok then
-    os.remove(tmp)
-    return false, rerr or ("cannot rename " .. tmp)
-  end
-  return true
-end
-
 ---Merge session outputs into the file and update st.json and st.last_write
 ---to the merged bytes so FileChangedShell recognizes the write as our own.
----Call with fresh jupytext bytes from the write callback. Unmanaged buffers
+---Call with fresh jupytext bytes from the write flow. Unmanaged buffers
 ---and unchanged merges are no-ops; failures issue a warning.
 ---@param buf integer
 ---@param bytes string?  Fresh notebook JSON from the write flow; nil falls
 ---    back to st.json.
----@return boolean  -- true when a merged write happened
+---@return boolean ok    -- true when a merged write happened
+---@return string? err   -- failure reason (nil for both success and no-op)
 function M.export(buf, bytes)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
   local st = state.peek(buf)
@@ -283,9 +269,14 @@ function M.export(buf, bytes)
   -- steady-state saves (nothing run/cleared) true no-ops.
   if buf_seen then
     local fresh = {}
+    local counts = {}
     for _, c in ipairs(nb.cells or {}) do
-      if c.cell_type == "code" and c.source ~= nil then
-        fresh[cell.hash_source(c.source)] = true
+      if c.source ~= nil then
+        local sha = cell.hash_source(c.source)
+        counts[sha] = (counts[sha] or 0) + 1
+        if c.cell_type == "code" then
+          fresh[cell.dup_key(sha, counts[sha])] = true
+        end
       end
     end
     for hash in pairs(buf_seen) do
@@ -302,12 +293,12 @@ function M.export(buf, bytes)
   local ok, encoded = pcall(vim.json.encode, nb)
   if not ok then
     vim.notify("[jove] output export failed: cannot serialize notebook", vim.log.levels.WARN)
-    return false
+    return false, "cannot serialize notebook"
   end
-  local wok, werr = atomic_write(st.path, encoded)
+  local wok, werr = convert.atomic_write(st.path, encoded)
   if not wok then
     vim.notify("[jove] output export failed: " .. tostring(werr), vim.log.levels.WARN)
-    return false
+    return false, tostring(werr)
   end
 
   st.json = nb
@@ -331,9 +322,12 @@ end
 ---into the output store, matched by content hash, then replay them through
 ---output.import for rendering. No-op on non-jove buffers.
 ---
----Disk outputs replace the session store when present. An empty disk output
----set leaves session results intact. Imported hashes are tracked so clearing
----them later persists the deletion.
+---Disk is authoritative: the session store is reset even when the disk copy
+---has no outputs at all (an empty output set on disk means the cells ran
+---clean or were cleared elsewhere — stale session results must not survive
+---the reload and sneak back into the file on the next save). The tombstone
+---set is likewise rebuilt from what disk actually holds, and session
+---execution counts are dropped: the disk counts are the truth now.
 ---@param buf integer
 function M.import(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
@@ -343,54 +337,39 @@ function M.import(buf)
   end
 
   local by_hash = {}
+  local fresh_seen = {}
+  local counts = {} -- sha -> occurrences so far (duplicate suffixing, cell.lua)
   for _, c in ipairs(st.json.cells or {}) do
-    if
-      c.cell_type == "code"
-      and c.source ~= nil
-      and type(c.outputs) == "table"
-      and #c.outputs > 0
-    then
-      local hash = cell.hash_source(c.source)
-      local raws = {}
-      for _, nb_out in ipairs(c.outputs) do
-        local params = M.to_raw(nb_out)
-        if params then
-          raws[#raws + 1] = params
+    if c.source ~= nil then
+      local sha = cell.hash_source(c.source)
+      counts[sha] = (counts[sha] or 0) + 1
+      if c.cell_type == "code" and type(c.outputs) == "table" and #c.outputs > 0 then
+        local raws = {}
+        for _, nb_out in ipairs(c.outputs) do
+          local params = M.to_raw(nb_out)
+          if params then
+            raws[#raws + 1] = params
+          end
         end
-      end
-      if #raws > 0 then
-        by_hash[hash] = raws
-        mark_seen(buf, hash)
+        if #raws > 0 then
+          local hash = cell.dup_key(sha, counts[sha])
+          by_hash[hash] = raws
+          fresh_seen[hash] = true
+        end
       end
     end
   end
+
+  -- Reset the tombstone set to what this disk state carries: clears and runs
+  -- from before the reload must not leak into post-reload saves. Imported
+  -- hashes stay tracked so clearing them later persists the deletion.
+  seen[buf] = fresh_seen
+
+  require("jove.execute").reset(buf)
 
   local out = require("jove.output")
-  if next(by_hash) ~= nil then
-    out.clear(buf) -- reload semantics: disk wins over stale session entries
-  end
+  out.clear(buf, nil, { skip_dirty = true }) -- disk state replaces session state
   out.import(buf, by_hash)
-
-  -- Reconcile per-cell exec metadata with the freshly imported disk state:
-  -- a `count` recorded BEFORE this import is stale (the disk copy is the
-  -- new truth and `merge_into` would otherwise rewrite it on next save when
-  -- the session run produced no new outputs). Drop only `count`; leave
-  -- `elapsed_ms` since it is display-side and not persisted.
-  --
-  -- Only do this when disk actually had outputs: an empty disk copy is not
-  -- authoritative on counts (see M.import's store-reset asymmetry above),
-  -- so any session-recorded count still stands.
-  if next(by_hash) ~= nil and st.exec and st.exec.meta then
-    for hash in pairs(by_hash) do
-      local m = st.exec.meta[hash]
-      if m then
-        m.count = nil
-        if m.elapsed_ms == nil then
-          st.exec.meta[hash] = nil
-        end
-      end
-    end
-  end
 end
 
 return M

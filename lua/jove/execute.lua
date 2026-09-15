@@ -4,9 +4,9 @@
 --   * enqueue marks items "queued"; the pump starts the head item ("running")
 --     and the next item only starts once the previous execute's response
 --     arrives (ok or error; bridge death fails pending via bridge.lua).
---   * the bridge cell key is the cell's content hash (cell.hash) -- the
---     output-routing key per PROTOCOL.md. Selections route to the hash of the
---     cell containing the selection start.
+--   * the bridge cell key is unique per run. Routes resolve it to the cell's
+--     content/occurrence key; stale runs cannot append to a newer run's output.
+--     Selections route to the cell containing the selection start.
 --   * no kernel at enqueue time: notify + drop the queue (nothing stale runs
 --     when a kernel later appears). Kernel dying mid-queue: in-flight items
 --     fail with status "error" (the bridge answers kernel_not_running) and
@@ -24,6 +24,7 @@ local state = require("jove.state")
 local cell = require("jove.cell")
 
 local M = {}
+local next_run = 0
 
 -- Tests can replace the output backend via execute._output.
 -- Backends provide clear(buf, cell_hash) and push(buf, cell_hash, params).
@@ -59,7 +60,25 @@ local function ensure_exec(st)
     }
     st.exec = exec
   end
+  exec.routes = exec.routes or {}
+  exec.latest = exec.latest or {}
   return exec
+end
+
+---Invalidate executions when disk replaces the notebook. Old replies and
+---late IOPub events must not repopulate a freshly reloaded output store.
+function M.reset(buf)
+  local st = state.peek(buf)
+  local old = st and st.exec
+  if not old then
+    return
+  end
+  for _, unsub in ipairs(old.unsubs or {}) do
+    pcall(unsub)
+  end
+  st.exec = nil
+  local fresh = ensure_exec(st)
+  fresh.status_cbs = old.status_cbs or {}
 end
 
 ---Record per-run metadata for a cell (count from the bridge, elapsed from
@@ -125,15 +144,23 @@ local function ensure_attached(buf)
     if type(params) ~= "table" or type(params.cell) ~= "string" then
       return
     end
+    local current = state.peek(buf)
+    if not current or current.exec ~= exec or current.kernel ~= k then
+      return
+    end
+    local hash = exec.routes[params.cell]
+    if not hash or exec.latest[hash] ~= params.cell then
+      return -- output from an obsolete run or a pre-reload execution
+    end
     -- The bridge tags execute_result events with the kernel execution count;
     -- record it even when the shell reply (which may also carry it) is late.
     if params.kind == "execute_result" and type(params.execution_count) == "number" then
       local st2 = state.peek(buf)
-      set_meta(st2 and st2.exec, params.cell, params.execution_count, nil)
+      set_meta(st2 and st2.exec, hash, params.execution_count, nil)
     end
     local out = M._output()
     if out then
-      pcall(out.push, buf, params.cell, params)
+      pcall(out.push, buf, hash, params, { defer = true })
     end
   end
 
@@ -146,7 +173,7 @@ local function ensure_attached(buf)
       -- resurrect a phantom registry entry for a wiped buffer.
       local st2 = state.peek(buf)
       local exec2 = st2 and st2.exec
-      if exec2 and exec2.running then
+      if exec2 == exec and st2.kernel == k and exec2.running then
         local item = exec2.running
         exec2.running = nil
         set_status(buf, item.hash, "error")
@@ -201,9 +228,39 @@ function pump(buf)
   -- mid-run): peek the state and bail when the registry entry is gone --
   -- state.get here would resurrect a phantom entry.
   exec.start_hr[item.hash] = vim.uv.hrtime()
-  k.bridge:request("execute", { code = item.code, cell = item.hash }, function(result, err)
+  next_run = next_run + 1
+  local wire = item.hash .. ":run:" .. next_run
+  local previous = exec.latest[item.hash]
+  if previous then
+    exec.routes[previous] = nil
+  end
+  exec.latest[item.hash] = wire
+  exec.routes[wire] = item.hash
+  k.bridge:request("execute", { code = item.code, cell = wire }, function(result, err)
     local st2 = state.peek(buf)
     local exec2 = st2 and st2.exec
+    if exec2 ~= exec then
+      return
+    end
+    if st2.kernel ~= k then
+      if exec.running == item then
+        exec.running = nil
+        set_status(buf, item.hash, "error")
+        for _, queued in ipairs(exec.queue) do
+          set_status(buf, queued.hash, "error")
+        end
+        exec.queue = {}
+        vim.notify(NO_KERNEL_MSG, vim.log.levels.WARN)
+      end
+      exec.routes[wire] = nil
+      return
+    end
+    vim.defer_fn(function()
+      exec.routes[wire] = nil
+      if exec.latest[item.hash] == wire then
+        exec.latest[item.hash] = nil
+      end
+    end, 10000)
     if exec2 then
       -- Measure through the response handler, excluding time spent queued.
       local start = exec2.start_hr and exec2.start_hr[item.hash]
@@ -213,6 +270,11 @@ function pump(buf)
       end
       local count = (not err and type(result) == "table") and result.execution_count or nil
       set_meta(exec2, item.hash, count, elapsed)
+      if count ~= nil and out and out.mark_dirty then
+        -- A count-only run (no output events) still changes what the .ipynb
+        -- will persist; cells with outputs are already dirtied by push().
+        pcall(out.mark_dirty, buf)
+      end
       if exec2.running == item then
         exec2.running = nil
         local status = (not err and type(result) == "table" and result.status == "ok") and "ok"

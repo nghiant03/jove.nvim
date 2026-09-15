@@ -102,10 +102,10 @@ end
 
 T["hash"] = MiniTest.new_set()
 
-T["hash"]["normalizes trailing whitespace and trailing blank lines"] = function()
+T["hash"]["preserves significant whitespace within source lines"] = function()
   local clean = make_buffer({ "# %% a", "x = 1" })
   local dirty = make_buffer({ "# %% a", "x = 1  ", "", "" })
-  MiniTest.expect.equality(cell.all(clean)[1].hash, cell.all(dirty)[1].hash)
+  MiniTest.expect.equality(cell.all(clean)[1].hash == cell.all(dirty)[1].hash, false)
   release_buffer(clean)
   release_buffer(dirty)
 end
