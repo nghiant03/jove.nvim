@@ -299,6 +299,12 @@ to the cell border so the two stay visually separated:
   (close with `q` or `<Esc>`); the float shows the raw, undecorated lines.
 - Output longer than `output.max_lines` is truncated inline, with a trailer
   pointing at `:JoveOpenOutput` for the full view.
+- `output.max_bytes` defaults to 1 MiB per cell (minimum 1 KiB), measured
+  against serialized output events. Events beyond the limit are dropped;
+  a truncation marker is shown and saved with session outputs. Increase the
+  limit for large images or datasets. Imported disk outputs are capped for
+  display but their original disk payloads are preserved until the cell is
+  rerun or cleared. Live redraws are batched at roughly 16 ms intervals.
 - Error tracebacks are shown as plain text.
 - Image outputs (PNG/JPEG) render inline via `snacks.image` when available;
   otherwise a text placeholder is shown.
@@ -316,6 +322,9 @@ their content.
 
 The exact semantics:
 
+- **Outputs are notebook changes**: executing or clearing outputs marks the
+  notebook modified even when its source text is unchanged. A failed output
+  export leaves it modified so saving can be retried.
 - **Untouched cells** keep whatever jupytext preserved on disk, including
   their original execution counts.
 - **Cells re-run this session** get their disk outputs replaced by the
@@ -327,13 +336,18 @@ The exact semantics:
 - **Reload treats disk as truth**: `:JoveReload` (or an external change with
   `auto_reload = true`) re-imports outputs from the file; session-only
   outputs that were never saved are dropped.
+  Automatic reload skips notebooks with unsaved changes. `:JoveReload`
+  explicitly discards existing local changes, but aborts if source or outputs
+  change while the asynchronous read is running.
 - **One-time reformat**: the first save that merges session outputs
   re-encodes the whole notebook as compact JSON, so that diff can look large
   once. Subsequent saves only rewrite cells you actually ran or cleared.
 
-Known limitation: two cells with identical content share a content hash, so
-outputs and status signs attach to the first of them. Edit one of the cells
-to differentiate them.
+Identical cells have separate output/status keys using their occurrence in
+document order. These are content-based keys, not permanent notebook cell IDs:
+reordering or deleting identical cells can change their association. Save
+results before restructuring duplicates and rerun affected cells afterward.
+Whitespace within source lines is significant when matching results.
 
 ## Comparison
 
@@ -373,6 +387,32 @@ jove 0.2 replaced molten with a first-party kernel bridge:
 
 Bug reports, feature requests and pull requests are welcome on
 [GitHub](https://github.com/nghiant03/jove.nvim/issues).
+
+### Development checks
+
+Install Neovim >= 0.11, StyLua 2.1.0, Selene 0.31.0 and uv. From the
+repository root:
+
+```sh
+uv sync --project python --locked --extra dev
+git clone https://github.com/nvim-mini/mini.test .testdeps/mini.test
+git -C .testdeps/mini.test checkout 3cc4c29be99531b3fc4fb99f3fa964b492166728
+stylua --check .
+selene .
+uv run --project python --locked --extra dev ruff check python
+uv run --project python --locked --extra dev ruff format --check python
+uv run --project python --locked --extra dev bash scripts/run_tests.sh
+uv run --project python --locked --extra dev python -m pytest python/tests -q
+```
+
+The Lua suite uses temporary notebooks and includes real jupytext conversion
+and Python-kernel execution. The bridge suite also starts real kernels.
+CI uses `python/uv.lock` and a pinned mini.test revision; update the lock with
+`uv lock --project python` when changing development dependencies.
+
+`buffer.lua` coordinates asynchronous reads/writes, `persist.lua` merges
+notebook outputs, and `execute.lua` routes execution through `bridge.lua` to
+the Python sidecar. The wire contract is documented in [PROTOCOL.md](PROTOCOL.md).
 
 ## License
 
