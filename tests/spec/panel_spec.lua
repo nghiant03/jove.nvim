@@ -139,7 +139,9 @@ T["running_kernels"]["collects kernel buffers sorted by path"] = function()
   local running = panel.running_kernels()
   MiniTest.expect.equality(#running, 2)
   MiniTest.expect.equality(running[1].buf, buf_a)
-  MiniTest.expect.equality(running[1].path, "/tmp/jove_a.ipynb")
+  -- Compare against the resolved buffer name: Neovim canonicalizes buffer
+  -- names through symlinks, so on macOS /tmp/x becomes /private/tmp/x.
+  MiniTest.expect.equality(running[1].path, vim.api.nvim_buf_get_name(buf_a))
   MiniTest.expect.equality(running[1].kernel, "julia")
   MiniTest.expect.equality(running[1].status, "busy")
   MiniTest.expect.equality(running[1].alive, true)
