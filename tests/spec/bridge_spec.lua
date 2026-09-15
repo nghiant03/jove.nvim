@@ -282,4 +282,28 @@ T["lifecycle"]["sends shutdown request before killing the job"] = function()
   job.restore()
 end
 
+T["lifecycle"]["readiness timeout fails queued requests once"] = function()
+  local job = fake_job()
+  job.install()
+  local timeout = bridge_mod.ready_timeout_ms
+  bridge_mod.ready_timeout_ms = 10
+  local b = bridge_mod.new({ respawn = false }):start()
+  local replies = {}
+  b:request("list_kernelspecs", {}, function(_, err)
+    replies[#replies + 1] = err
+  end)
+  local expired = vim.wait(1000, function()
+    return #replies > 0
+  end)
+  job.exit(1)
+  vim.wait(30, function()
+    return false
+  end)
+  bridge_mod.ready_timeout_ms = timeout
+  job.restore()
+  MiniTest.expect.equality(expired, true)
+  MiniTest.expect.equality(job.stopped, true)
+  MiniTest.expect.equality(replies, { "bridge readiness timeout" })
+end
+
 return T

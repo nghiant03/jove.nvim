@@ -17,9 +17,20 @@ M.trace = false
 -- Auto-respawn tuning (module-level so tests can shorten the delays).
 M.respawn_backoff_ms = { 1000, 2000, 4000 }
 
+-- How long a spawned bridge may take to announce `ready` before it is
+-- considered wedged and killed (module-level so tests can shorten it).
+M.ready_timeout_ms = 20000
+
 local DEFAULT_TIMEOUT_MS = 15000
 local MAX_RESPAWNS = 3
 local SHUTDOWN_GRACE_MS = 1000
+
+local function cancel_timer(timer)
+  if timer and not timer:is_closing() then
+    timer:stop()
+    timer:close()
+  end
+end
 
 ---Directory of the plugin root (contains lua/ and python/).
 ---@return string
@@ -89,8 +100,11 @@ function M.new(opts)
   self._stopping = false
   self._shutdown_sent = false
   self._respawn_attempts = 0
+  self._started = false
   self._start_cb = nil
   self._stop_cbs = nil
+  self._ready_timer = nil
+  self._respawn_timer = nil
   return self
 end
 
@@ -108,6 +122,7 @@ function Bridge:start(cb)
     end
     return self
   end
+  self._started = true
   self._stopping = false
   self._shutdown_sent = false
   self._respawn_attempts = 0
@@ -143,6 +158,7 @@ function Bridge:_spawn()
       .. "jupyter_client (pip install jupyter_client ipykernel) — then :checkhealth jove%s"
     ):format(python, self:_stderr_tail())
     vim.notify(msg, vim.log.levels.ERROR)
+    self:_fail_pending(msg)
     local cb = self._start_cb
     self._start_cb = nil
     if cb then
@@ -156,6 +172,26 @@ function Bridge:_spawn()
   self._next_id = 1 -- ids are unique per bridge process
   self._ready = false
   self._rbuf = ""
+  -- Readiness deadline: a process that never announces `ready` (wedged
+  -- interpreter, blocked import) must not leave queued requests waiting
+  -- forever. Killing the job routes through _on_exit, which fails pending
+  -- and queued requests and applies the bounded respawn policy.
+  self._ready_timer = vim.defer_fn(function()
+    self._ready_timer = nil
+    if self._ready or not self._job then
+      return
+    end
+    local job = self._job
+    self:_fail_pending("bridge readiness timeout")
+    vim.notify(
+      ("[jove] bridge did not become ready within %dms; killing it%s"):format(
+        M.ready_timeout_ms,
+        self:_stderr_tail()
+      ),
+      vim.log.levels.ERROR
+    )
+    impl.jobstop(job)
+  end, M.ready_timeout_ms)
   local cb = self._start_cb
   self._start_cb = nil
   if cb then
@@ -166,9 +202,12 @@ function Bridge:_spawn()
 end
 
 ---Send a request. Before the bridge announces `ready`, requests are queued
----and flushed in order. `cb(result, err)` receives the decoded `result`
----(nil on error/timeout) and the decoded `error` table or a string reason
----("timeout after Nms", "bridge exited (code N)", ...).
+---and flushed in order; the readiness deadline (M.ready_timeout_ms) bounds
+---how long they can sit there. With no process running and no respawn
+---pending the request fails immediately instead of queueing forever.
+---`cb(result, err)` receives the decoded `result` (nil on error/timeout)
+---and the decoded `error` table or a string reason ("timeout after Nms",
+---"bridge exited (code N)", ...).
 ---@param method string
 ---@param params table?
 ---@param cb fun(result: table?, err: any)?
@@ -183,6 +222,15 @@ function Bridge:request(method, params, cb, opts)
   local req = { method = method, params = params or {}, cb = cb, timeout_ms = timeout }
   if self._ready then
     self:_send(req)
+  elseif self._started and self._job == nil and self._respawn_timer == nil then
+    -- Started but no process and none on the way: queueing would wait
+    -- forever. (Requests made before the first start() keep the legacy
+    -- queueing behavior.)
+    if cb then
+      vim.schedule(function()
+        cb(nil, "bridge not running")
+      end)
+    end
   else
     table.insert(self._queue, req)
   end
@@ -229,7 +277,7 @@ function Bridge:_send(req)
   if not ok then
     -- Stdin closed (process died mid-flight): fail immediately.
     if entry.timer then
-      entry.timer:stop()
+      cancel_timer(entry.timer)
     end
     self._pending[id] = nil
     if entry.cb then
@@ -287,7 +335,18 @@ end
 ---@return jove.bridge self
 function Bridge:stop(cb)
   self._stopping = true
+  -- Cancel any pending respawn and readiness deadline: stop is terminal.
+  if self._respawn_timer then
+    cancel_timer(self._respawn_timer)
+    self._respawn_timer = nil
+  end
+  if self._ready_timer then
+    cancel_timer(self._ready_timer)
+    self._ready_timer = nil
+  end
   if not self._job then
+    -- No process to reap: queued requests would otherwise wait forever.
+    self:_fail_pending("bridge stopped")
     if cb then
       vim.schedule(cb)
     end
@@ -415,6 +474,10 @@ function Bridge:_handle_line(line)
     if msg.event == "ready" then
       self._ready = true
       self._respawn_attempts = 0 -- survived long enough to announce itself
+      if self._ready_timer then
+        cancel_timer(self._ready_timer)
+        self._ready_timer = nil
+      end
       self:_flush_queue()
     end
     self:_dispatch(msg.event, msg.params)
@@ -436,7 +499,7 @@ function Bridge:_resolve_response(id, msg)
   end
   self._pending[id] = nil
   if entry.timer then
-    entry.timer:stop()
+    cancel_timer(entry.timer)
     entry.timer = nil
   end
   vim.schedule(function()
@@ -486,7 +549,7 @@ function Bridge:_fail_pending(reason)
   self._pending = {}
   for _, entry in pairs(pending) do
     if entry.timer then
-      entry.timer:stop()
+      cancel_timer(entry.timer)
       entry.timer = nil
     end
     if entry.cb then
@@ -541,6 +604,10 @@ end
 function Bridge:_on_exit(_, code)
   self._job = nil
   self._ready = false
+  if self._ready_timer then
+    cancel_timer(self._ready_timer)
+    self._ready_timer = nil
+  end
   self:_fail_pending(("bridge exited (code %d)"):format(code))
   local stop_cbs = self._stop_cbs or {}
   self._stop_cbs = nil
@@ -568,7 +635,10 @@ function Bridge:_on_exit(_, code)
     local delay = M.respawn_backoff_ms[attempts + 1] or M.respawn_backoff_ms[#M.respawn_backoff_ms]
     self._respawn_attempts = attempts + 1
     self:_trace(("unexpected exit (code %d); respawn in %dms"):format(code, delay))
-    vim.defer_fn(function()
+    -- Tracked so request() can tell "respawn coming" from "nothing running":
+    -- requests arriving during the backoff gap queue for the next process.
+    self._respawn_timer = vim.defer_fn(function()
+      self._respawn_timer = nil
       if self._job or self._stopping or self._shutdown_sent then
         return
       end
