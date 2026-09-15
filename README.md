@@ -136,6 +136,9 @@ process, either prepend that env's `bin/` to `vim.env.PATH` early in your
 | `:JoveClearOutput` | Clear outputs of the current cell |
 | `:JoveClearOutputs` | Clear all rendered outputs in this buffer |
 | `:JoveReload` | Reload the current notebook buffer from disk |
+| `:JoveVariables` | Toggle the variable inspector sidebar |
+| `:JoveKernelInfo` | Show kernel panel (current session, running kernels, installed kernelspecs) |
+| `:JoveToc` | Show a table of contents for the current notebook |
 
 Use `:checkhealth jove` to verify dependencies, versions, and conflicts.
 
@@ -234,6 +237,11 @@ require("jove.ui.panel").status()  -- e.g. "⚡ python3 · busy"
 
 It shows the kernelspec name and busy/idle state, and returns an empty
 string when no kernel is running.
+
+`:JoveKernelInfo` opens a centered float with three sections: the current
+session (kernel, status, and queue length), every running kernel across all
+open notebooks, and the installed kernelspecs (fetched asynchronously through
+the bridge, reusing a live kernel when one is available).
 
 ## Output rendering
 
