@@ -24,7 +24,8 @@ class Connection:
 
     def __init__(self, out: Any) -> None:
         self._out = out
-        self._queue: "queue.Queue[Any]" = queue.Queue()
+        self._queue: queue.Queue[Any] = queue.Queue(maxsize=256)
+        self._closed = threading.Event()
         self._thread = threading.Thread(
             target=self._writer, name="jove-bridge-writer", daemon=True
         )
@@ -32,17 +33,33 @@ class Connection:
 
     def _writer(self) -> None:
         while True:
-            item = self._queue.get()
-            if item is None:
-                break
+            try:
+                item = self._queue.get(timeout=0.1)
+            except queue.Empty:
+                if self._closed.is_set():
+                    break
+                continue
             try:
                 self._out.write(json.dumps(item) + "\n")
                 self._out.flush()
-            except Exception:
+            except Exception as exc:
+                self._closed.set()
+                print(f"jove bridge writer failed: {exc}", file=sys.stderr)
+                # Release retained payloads; producers stop queueing below.
+                while True:
+                    try:
+                        self._queue.get_nowait()
+                    except queue.Empty:
+                        break
                 break
 
     def send(self, msg: dict) -> None:
-        self._queue.put(msg)
+        while not self._closed.is_set():
+            try:
+                self._queue.put(msg, timeout=0.1)
+                return
+            except queue.Full:
+                continue  # bounded backpressure while the writer drains
 
     def send_event(self, event: str, params: dict) -> None:
         self.send({"event": event, "params": params})
@@ -55,7 +72,7 @@ class Connection:
 
     def close(self, timeout: float = 5.0) -> None:
         """Flush pending messages and stop the writer thread."""
-        self._queue.put(None)
+        self._closed.set()
         self._thread.join(timeout)
 
 
@@ -94,9 +111,7 @@ def _handle_line(conn: Connection, session: BridgeSession, line: str) -> bool:
         conn.send_error(reply_id, exc.code, exc.message)
         return False
     except Exception as exc:  # never let one request kill the bridge
-        conn.send_error(
-            reply_id, "internal_error", f"{type(exc).__name__}: {exc}"
-        )
+        conn.send_error(reply_id, "internal_error", f"{type(exc).__name__}: {exc}")
         return False
     if result is not DEFERRED:
         conn.send_result(reply_id, result)
