@@ -24,10 +24,8 @@ local M = {}
 
 M.ns = vim.api.nvim_create_namespace("jove-output")
 
--- Extmark priority for the inline output virt_lines. Must exceed the chrome
--- bottom-border priority (100): same-row virtual lines render in ascending
--- priority order, so this keeps the Output block below the `╰──╯` cell
--- bottom border — its `┌─ Out ─┐` frame sits directly adjacent, not inside.
+-- Highlight priority only; chrome uses a left-gravity bottom-border mark
+-- so it sorts before the right-gravity outside output at the same position.
 local RENDER_PRIORITY = 200
 
 -- Highlight groups (default links; users can override before setup()).
@@ -354,6 +352,7 @@ local function render_cell(buf, cell_hash)
   entry.extmark_id = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
     virt_lines = decorated,
     virt_lines_above = false,
+    right_gravity = not out_cfg.inside_border,
     priority = (not out_cfg.inside_border) and RENDER_PRIORITY or nil,
   })
 

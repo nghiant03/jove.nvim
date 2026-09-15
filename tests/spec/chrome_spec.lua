@@ -5,6 +5,78 @@ local state = require("jove.state")
 
 local T = MiniTest.new_set()
 
+T["code bottom border stays between source and output on screen"] = function()
+  local child = MiniTest.new_child_neovim()
+  child.start({ "-u", "scripts/minimal_init.lua" })
+  local ok, err = pcall(function()
+    for _, trailing_blank in ipairs({ false, true }) do
+      for _, output_first in ipairs({ false, true }) do
+        child.lua(
+          [[
+          local trailing_blank, output_first = ...
+          vim.cmd("enew!")
+          local buf = vim.api.nvim_get_current_buf()
+          local lines = { "# %%", "print(1)" }
+          if trailing_blank then lines[#lines + 1] = "" end
+          vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+          require("jove.state").get(buf).path = "fake.ipynb"
+          local chrome = require("jove.ui.chrome")
+          if not output_first then chrome.attach(buf) end
+          require("jove.output").push(buf, require("jove.cell").all(buf)[1].hash, {
+            kind = "stream", name = "stdout", mime = { ["text/plain"] = "hello" },
+          })
+          if output_first then chrome.attach(buf) end
+        ]],
+          { trailing_blank, output_first }
+        )
+        for _ = 1, 3 do
+          child.lua([[require("jove.ui.chrome").refresh(vim.api.nvim_get_current_buf())]])
+          local rows = child.get_screenshot().text
+          local code_row, bottom_row, output_row
+          for i, row in ipairs(rows) do
+            local text = table.concat(row)
+            if text:find("print(1)", 1, true) then
+              code_row = i
+            end
+            if text:find("╰", 1, true) then
+              bottom_row = i
+            end
+            if text:find("┌─ Out", 1, true) then
+              output_row = i
+            end
+          end
+          MiniTest.expect.equality(type(code_row), "number")
+          MiniTest.expect.equality(bottom_row, code_row + (trailing_blank and 2 or 1))
+          MiniTest.expect.equality(output_row, bottom_row + 1)
+        end
+        child.lua([[
+          require("jove").config.output.inside_border = true
+          local buf = vim.api.nvim_get_current_buf()
+          require("jove.output").refresh_cell(buf, require("jove.cell").all(buf)[1].hash)
+          require("jove.ui.chrome").refresh(buf)
+        ]])
+        local content_row, bottom_row
+        for i, row in ipairs(child.get_screenshot().text) do
+          local text = table.concat(row)
+          if text:find("hello", 1, true) then
+            content_row = i
+          end
+          if text:find("╰", 1, true) then
+            bottom_row = i
+          end
+        end
+        MiniTest.expect.equality(type(content_row), "number")
+        MiniTest.expect.equality(bottom_row, content_row + 1)
+        child.lua([[require("jove").config.output.inside_border = false]])
+      end
+    end
+  end)
+  child.stop()
+  if not ok then
+    error(err)
+  end
+end
+
 ---@param lines string[]
 ---@return integer buf
 local function make_buffer(lines)

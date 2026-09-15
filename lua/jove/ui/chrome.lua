@@ -319,11 +319,14 @@ function M.refresh(buf)
           { "╯", "JoveCellBorder" },
         }
       end
-      -- Anchored below the cell's last line, priority 100 so it sorts after
-      -- the output virt_lines anchored at the same row.
+      -- Left-gravity marks sort before right-gravity output at the same
+      -- position. Reverse this for legacy output inside the code border.
+      -- Highlight priority does not order virtual lines.
+      local out_cfg = require("jove").config.output or {}
       b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
         virt_lines_above = false,
         virt_lines = { bottom },
+        right_gravity = out_cfg.inside_border == true,
         priority = 100,
       })
     end

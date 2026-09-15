@@ -215,7 +215,7 @@ end
 
 T["priority"] = MiniTest.new_set()
 
-T["priority"]["output extmark sorts below the cell border (priority 200)"] = function()
+T["priority"]["outside output uses highlight priority 200"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hi" } })
