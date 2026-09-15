@@ -141,7 +141,7 @@ vim.api.nvim_create_user_command("JoveKernelInfo", function()
   end
   vim.keymap.set("n", "q", close, { buffer = float.buf, nowait = true, silent = true })
   vim.keymap.set("n", "<Esc>", close, { buffer = float.buf, nowait = true, silent = true })
-end, { desc = "Show kernel/session info in a float" })
+end, { desc = "Show kernel panel (current session, running kernels, installed kernelspecs)" })
 
 vim.api.nvim_create_user_command("JoveToc", function()
   require("jove.toc").pick(0)
