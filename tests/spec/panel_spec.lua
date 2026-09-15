@@ -235,6 +235,32 @@ T["installed_kernelspecs"]["starts a temporary bridge and stops it"] = function(
   job.restore()
 end
 
+T["installed_kernelspecs"]["reports a spawn failure when the bridge cannot start"] = function()
+  local bridge_mod_local = require("jove.bridge")
+  local real_jobstart = bridge_mod_local._impl.jobstart
+  bridge_mod_local._impl.jobstart = function()
+    return -1
+  end
+  make_buffer("/tmp/jove_spawn_fail.ipynb")
+
+  local got = {}
+  panel.installed_kernelspecs(function(specs, err)
+    got.specs = specs
+    got.err = err
+    got.called = true
+  end)
+  MiniTest.expect.equality(
+    vim.wait(200, function()
+      return got.called
+    end),
+    true
+  )
+  MiniTest.expect.equality(got.specs, nil)
+  MiniTest.expect.equality(type(got.err), "string")
+  MiniTest.expect.no_equality(got.err, "")
+  bridge_mod_local._impl.jobstart = real_jobstart
+end
+
 T["installed_kernelspecs"]["reports an error and still stops the temporary bridge"] = function()
   local job = fake_job()
   job.install()
@@ -316,6 +342,29 @@ T["info_float"]["ignores the async reply after the float buffer is wiped"] = fun
     return false
   end)
   MiniTest.expect.equality(ok, true)
+  job.restore()
+end
+
+T["info_float"]["ignores the async reply after the source notebook is wiped"] = function()
+  local job = fake_job()
+  job.install()
+  local buf = make_buffer("/tmp/jove_bufwipe.ipynb")
+  state.get(buf).kernel = stub_kernel("py", "idle", false)
+
+  local float = panel.info_float(buf)
+  created[#created + 1] = float.buf
+  vim.api.nvim_buf_delete(buf, { force = true })
+  MiniTest.expect.equality(vim.api.nvim_buf_is_valid(buf), false)
+
+  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout(
+    '{"id":1,"result":{"kernelspecs":{"python3":{"display_name":"Python 3","language":"python"}}}}\n'
+  )
+  local ok = pcall(vim.wait, 200, function()
+    return false
+  end)
+  MiniTest.expect.equality(ok, true)
+  MiniTest.expect.equality(has_line(buf_lines(float.buf), "(loading…)"), true)
   job.restore()
 end
 

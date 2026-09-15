@@ -153,7 +153,15 @@ function M.installed_kernelspecs(cb)
     temp:stop()
   end
 
-  temp:start()
+  -- Use the start callback only to surface spawn failure. On success the
+  -- callback would be a no-op, but the bridge still emits `cb(true)` via
+  -- vim.schedule — so requesting inside it would race the synchronous `ready`
+  -- event and the request would land after `_queue` was already flushed.
+  temp:start(function(ok, err)
+    if not ok then
+      cb(nil, tostring(err))
+    end
+  end)
   temp:request("list_kernelspecs", {}, function(result, err)
     stop_temp()
     if err then
@@ -253,7 +261,10 @@ function M.info_float(buf)
   }
 
   M.installed_kernelspecs(function(specs, err)
-    if not vim.api.nvim_buf_is_valid(fbuf) then
+    -- Both buffers must still exist: the float (already guarded) and the
+    -- source notebook. Wiping the notebook mid-flight leaves its registration
+    -- in `state`, but `nvim_buf_get_name(buf)` would raise Invalid buffer id.
+    if not vim.api.nvim_buf_is_valid(fbuf) or not vim.api.nvim_buf_is_valid(buf) then
       return
     end
     local updated = build_lines(buf, specs, err)
