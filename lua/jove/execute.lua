@@ -1,10 +1,8 @@
--- execute.lua: per-buffer FIFO execution queue over the buffer's one kernel
--- (PLAN.md Phase 4). Direct code send -- no visual-mode hack (fixes P4) --
--- and one cached cell.all pass per batch (fixes P7).
+-- Per-buffer FIFO execution queue. Each batch uses one cached cell-model lookup.
 --
 -- Queue semantics (strictly serial):
 --   * enqueue marks items "queued"; the pump starts the head item ("running")
---     and the next item only starts once the previous execute's RESPONSE
+--     and the next item only starts once the previous execute's response
 --     arrives (ok or error; bridge death fails pending via bridge.lua).
 --   * the bridge cell key is the cell's content hash (cell.hash) -- the
 --     output-routing key per PROTOCOL.md. Selections route to the hash of the
@@ -18,7 +16,7 @@
 --
 -- Kernel-handle subscription contract: listeners live on the bridge handle,
 -- which survives bridge respawn (handlers are per-handle in bridge.lua) but
--- is REPLACED by kernel.select/shutdown. ensure_attached() therefore
+-- is replaced by kernel.select/shutdown. ensure_attached() therefore
 -- re-subscribes whenever state.get(buf).kernel is a different entry than the
 -- last one attached; it is called lazily from enqueue, so no wiring outside
 -- this module is needed.
@@ -27,9 +25,8 @@ local cell = require("jove.cell")
 
 local M = {}
 
--- Output seam: the output UI is built in a parallel phase (jove.output).
--- Duck-typed contract: clear(buf, cell_hash), push(buf, cell_hash, params).
--- All calls are pcall-guarded; tests inject a stub via execute._output.
+-- Tests can replace the output backend via execute._output.
+-- Backends provide clear(buf, cell_hash) and push(buf, cell_hash, params).
 M._output = function()
   local ok, m = pcall(require, "jove.output")
   return ok and m or nil
@@ -208,8 +205,7 @@ function pump(buf)
     local st2 = state.peek(buf)
     local exec2 = st2 and st2.exec
     if exec2 then
-      -- Elapsed is measured at the response handler boundary (covers queue
-      -- wait excluded: start_hr is stamped just before the send).
+      -- Measure through the response handler, excluding time spent queued.
       local start = exec2.start_hr and exec2.start_hr[item.hash]
       local elapsed = start and (vim.uv.hrtime() - start) / 1e6 or nil
       if exec2.start_hr then
@@ -296,8 +292,7 @@ function M.run_cell(buf, lnum)
   enqueue(buf, { { hash = c.hash, code = code, lnum = c.start_lnum } })
 end
 
----Run all code cells above (and including, per the historical contract) the
----cell at `lnum` (default: cursor). One cell.all pass.
+---Run all code cells through the cell at `lnum` (default: cursor).
 ---@param buf integer
 ---@param lnum integer?
 function M.run_above(buf, lnum)
@@ -317,7 +312,7 @@ function M.run_above(buf, lnum)
   enqueue(buf, items)
 end
 
----Run every code cell in the buffer. One cell.all pass.
+---Run every code cell in the buffer.
 ---@param buf integer
 function M.run_all(buf)
   buf = norm_buf(buf)
@@ -376,7 +371,7 @@ function M.run_cell_and_advance(buf)
 end
 
 ---Forward to the kernel's interrupt. Queued-but-not-started items remain
----queued (documented choice): interrupt clears the shell channel; the
+---queued: interrupt clears the shell channel; the
 ---in-flight execute still returns (typically status "error" with the
 ---KeyboardInterrupt) and the pump continues.
 ---@param buf integer

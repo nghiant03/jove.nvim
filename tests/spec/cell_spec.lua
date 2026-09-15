@@ -1,4 +1,3 @@
--- cell_spec.lua: cell model parsing, caching, navigation, and textobjects.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local cell = require("jove.cell")
@@ -6,13 +5,11 @@ local keymaps = require("jove.keymaps")
 
 local T = MiniTest.new_set()
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
 end
 
----Create a scratch buffer with `lines` and register it as a jove buffer.
 ---@param lines string[]
 ---@return integer buf
 local function make_buffer(lines)
@@ -25,7 +22,6 @@ end
 
 ---@param buf integer
 local function release_buffer(buf)
-  -- BufWipeout cleanup drops the state entry too.
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 

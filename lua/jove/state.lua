@@ -1,24 +1,13 @@
--- state.lua: per-buffer registry for jove bookkeeping.
--- Replaces the scattered vim.b[buf].jove_json / vim.b[buf].jove_path usage;
--- the registry is a plain Lua table keyed by bufnr, cleaned up on BufWipeout.
+-- Per-buffer state, cleaned up on BufWipeout.
 local M = {}
 
 ---@class jove.BufferState
 ---@field path string?        Path of the .ipynb backing this buffer (set on successful read).
 ---@field json table?         Parsed .ipynb JSON, refreshed on read and write.
----@field last_write string?  Checksum of the bytes we last wrote (single-flight guard, Phase 1).
--- Reserved slots for future phases (populated by later modules, documented here):
---   cells   -- lua/jove/cell.lua      cell parse cache (Phase 2)
---   kernel  -- lua/jove/kernel.lua    bridge/kernel handle (Phase 3)
---   exec    -- lua/jove/execute.lua   { queue, running, status, status_cbs,
---                                        attached, unsubs,
---                                        start_hr[hash],
---                                        meta[hash] = { count, elapsed_ms } }
---                                                        (Phase 4 + Phase A)
---   outputs -- lua/jove/output.lua    per-cell output store (Phase 5)
---   front_matter -- lua/jove/buffer.lua    `# ---`...`# ---` block
---                                              stripped from the buffer on read,
---                                              prepended on write ([]|nil)
+---@field last_write string?  Checksum of the last written bytes, used to suppress self-triggered reloads.
+-- Module-owned slots: cells (cell.lua), kernel (kernel.lua), exec (execute.lua),
+-- outputs (output.lua), and front_matter (buffer.lua). Front matter is removed
+-- from the displayed buffer and restored on write.
 
 ---@type table<integer, jove.BufferState>
 local registry = {}

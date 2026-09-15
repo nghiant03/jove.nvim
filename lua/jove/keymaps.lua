@@ -1,8 +1,4 @@
--- keymaps.lua: cell navigation + run entry points over lua/jove/execute.lua.
--- Navigation and run ranges come from the cached cell model in lua/jove/cell.lua
--- (one parse per buffer version, no per-cell full-buffer line fetches).
--- Execution itself is the per-buffer FIFO queue in execute.lua (no molten,
--- no visual-mode hack).
+-- Cell navigation and execution mappings for notebook buffers.
 local cell = require("jove.cell")
 local execute = require("jove.execute")
 local state = require("jove.state")
@@ -33,27 +29,22 @@ function M.prev_cell()
   jump(-1)
 end
 
----Run the cell containing the cursor (direct code send via execute.lua).
 function M.run_cell()
   execute.run_cell(vim.api.nvim_get_current_buf())
 end
 
----Run every code cell from the top of the buffer up to the cursor.
 function M.run_above()
   execute.run_above(vim.api.nvim_get_current_buf())
 end
 
----Run every code cell in the buffer.
 function M.run_all()
   execute.run_all(vim.api.nvim_get_current_buf())
 end
 
----Run the visual selection as one unit (x-mode mapping).
 function M.run_selection()
   execute.run_selection(vim.api.nvim_get_current_buf())
 end
 
----Run the cursor cell, then jump to the next cell header.
 function M.run_cell_and_advance()
   execute.run_cell_and_advance(vim.api.nvim_get_current_buf())
 end
@@ -87,9 +78,6 @@ function M.apply(keymap)
     })
   end
 
-  -- Built-in per-buffer setup: `ic`/`ac` cell text-objects, `[c`/`]c` cell
-  -- motions (cfg.cell_motions), run_and_advance + run_selection mappings.
-  -- Registered as ONE FileType autocmd alongside the user keymaps below.
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
     pattern = patterns,
@@ -142,7 +130,6 @@ function M.apply(keymap)
           })
         end
 
-        -- Status rendering (gutter signs + spinner) for this buffer.
         require("jove.ui").attach(ev.buf)
       end
     end,

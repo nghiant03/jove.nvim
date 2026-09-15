@@ -1,4 +1,4 @@
-"""Bridge protocol conformance tests (PROTOCOL.md, PLAN.md §5).
+"""Bridge protocol conformance tests.
 
 Launches ``python -m jove_bridge`` as a subprocess and speaks the JSON-lines
 protocol directly — no Neovim involved. Kernel tests exercise a real
@@ -43,8 +43,6 @@ class BridgeProcess:
         self._next_id = 0
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
-
-    # -- plumbing -----------------------------------------------------------
 
     def _read_stdout(self) -> None:
         assert self.proc.stdout is not None
@@ -104,8 +102,6 @@ class BridgeProcess:
                         + json.dumps(self.messages[since:], indent=1)[:4000]
                     )
                 self._cond.wait(remaining)
-
-    # -- protocol helpers ------------------------------------------------------
 
     def wait_ready(self, timeout=REQ_TIMEOUT) -> dict:
         msg = self.wait(lambda m: m.get("event") == "ready", timeout)
@@ -194,7 +190,6 @@ def kernel(bridge):
     return bridge
 
 
-# -- lifecycle ---------------------------------------------------------------
 
 
 def test_ready_and_list_kernelspecs(bridge):
@@ -237,7 +232,6 @@ def test_protocol_error_then_recover(bridge):
     bridge.send_line("this is not json {{{")
     ev = bridge.wait_event("protocol_error", since=0)
     assert isinstance(ev["params"], dict) and ev["params"]
-    # The bridge must stay alive and keep answering.
     msg = bridge.request("list_kernelspecs")
     assert "python3" in msg["result"]["kernelspecs"]
 
@@ -250,7 +244,6 @@ def test_start_kernel_status_sequence(bridge):
     assert "idle" in statuses
 
 
-# -- execute -------------------------------------------------------------------
 
 
 def test_execute_stream(kernel):
@@ -374,7 +367,6 @@ def test_interrupt(kernel):
     assert result["status"] == "error"
     assert result["ename"] == "KeyboardInterrupt"
 
-    # Kernel recovered and answers again.
     kernel.wait_status("idle", since=since)
     msg = kernel.request("execute", {"code": "print('alive')", "cell": "after"})
     assert msg["result"].get("status") == "ok"
@@ -405,7 +397,6 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
     msg = kernel.request("interrupt")
     assert msg["result"] == {}
 
-    # Exactly one response per request, both error results.
     sleep_reply = kernel.wait_response(rid_sleep, since=since, timeout=60)
     assert sleep_reply["result"]["status"] == "error"
     assert sleep_reply["result"]["ename"] == "KeyboardInterrupt"
@@ -429,7 +420,6 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
         assert len(errs) == 1, f"expected exactly one error output for {cell!r}"
         assert errs[0]["mime"]["text/plain"]
 
-    # Kernel recovered and answers again.
     msg = kernel.request("execute", {"code": "print('alive')", "cell": "after"})
     assert msg["result"].get("status") == "ok"
 
@@ -453,7 +443,6 @@ def test_restart(bridge):
     assert result["ename"] == "NameError"
 
 
-# -- teardown -----------------------------------------------------------------
 
 
 def test_shutdown_exits_zero(bridge):
@@ -471,10 +460,8 @@ def test_stdin_eof_exits_zero(bridge):
     assert rc == 0
 
 
-# -- unit: exactly-one-response under kernel death during submit (M3) ---------
-#
-# The e2e subprocess path cannot hit the death-during-execute window
-# deterministically, so these exercise BridgeSession in-process with fakes.
+# Use in-process fakes to reproduce kernel death during request submission
+# deterministically; subprocess timing cannot reliably hit that window.
 
 
 class _FakeConn:

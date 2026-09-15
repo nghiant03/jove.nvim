@@ -1,6 +1,4 @@
--- vars_spec.lua: variable-inspector sidebar interaction, against a stubbed
--- bridge (the real `variables` orchestration lives in jove.bridge and is
--- covered by the Python/e2e specs).
+-- Sidebar interaction with a stubbed bridge; Python tests cover variable inspection.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local vars = require("jove.ui.vars")
@@ -9,7 +7,6 @@ local T = MiniTest.new_set()
 
 local created, real_variables, saved_config_variables
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)

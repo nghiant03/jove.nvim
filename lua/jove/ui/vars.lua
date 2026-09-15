@@ -1,4 +1,4 @@
--- ui/vars.lua: variable-inspector sidebar (Phase D).
+-- Variable-inspector sidebar.
 --
 -- `:JoveVariables` toggles a right-hand split listing the running kernel's
 -- user-namespace variables as `name  type  value`. The data comes from the
@@ -7,8 +7,7 @@
 --
 -- Auto-refresh (config.variables.auto_refresh) subscribes to the per-cell
 -- status callback already exposed by lua/jove/execute.lua (M.on_status) and
--- re-queries once a cell reaches a terminal state. Lane A owns execute.lua;
--- this lane only reads its public `on_status` API.
+-- re-queries once a cell reaches a terminal state.
 local state = require("jove.state")
 
 local M = {}
@@ -32,7 +31,6 @@ local function norm_buf(buf)
   return buf
 end
 
----Defensive config read (Lane A owns init.lua and may not declare this key).
 ---@return {width: integer, auto_refresh: boolean}
 local function config()
   local ok, jove = pcall(require, "jove")
@@ -80,7 +78,7 @@ local function flatten(s)
   return out
 end
 
----Format variable records into sidebar lines. Pure; safe to unit test.
+---Format variable records into sidebar lines.
 ---@param vars table[]  { {name, type, value, size}, ... }
 ---@param width integer  Target display width.
 ---@return string[]

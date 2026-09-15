@@ -1,4 +1,3 @@
--- config_spec.lua: setup() validation and idempotency.
 local MiniTest = require("mini.test")
 local jove = require("jove")
 
@@ -30,7 +29,6 @@ T["setup"]["accepts valid opts"] = function()
   MiniTest.expect.equality(jove.config.jupytext, "/usr/local/bin/jupytext")
   MiniTest.expect.equality(jove.config.auto_kernel, false)
   MiniTest.expect.equality(jove.config.keymap.run_cell, "<leader>rc")
-  -- Unspecified fields keep their defaults.
   MiniTest.expect.equality(jove.config.auto_import_outputs, defaults.auto_import_outputs)
 end
 
@@ -55,7 +53,6 @@ T["setup"]["shim: warns on unknown top-level option (molten-era or typo)"] = fun
     notes[1].msg,
     "[jove] unknown option 'molten' (molten-era or typo?) — check :h jove-config"
   )
-  -- Permissive: the option still merges, nothing errors.
   MiniTest.expect.equality(jove.config.molten, {})
 end
 
@@ -74,7 +71,6 @@ T["setup"]["shim: warns on unknown keymap member; validates known ones still"] =
     "[jove] unknown option 'keymap.bogus' (molten-era or typo?) — check :h jove-config"
   )
   MiniTest.expect.equality(jove.config.keymap.bogus, "x")
-  -- Known keymap members are still validated: a bad type still errors.
   MiniTest.expect.error(function()
     jove.setup({ keymap = { run_cell = 42 } })
   end)
@@ -93,17 +89,13 @@ T["setup"]["shim: silent for a fully-valid setup; warns once per key"] = functio
   })
   MiniTest.expect.equality(#notes, 0)
 
-  -- Second setup with the same unknown key: warns only once per key.
   jove.setup({ molten = {} })
   jove.setup({ molten = {} })
   vim.notify = orig
   MiniTest.expect.equality(#notes, 1)
 end
 
--- Structural pin: the DEFAULTS table must be fully covered by the shim's
--- allowlists (KNOWN_KEYS + KNOWN_KEYMAP_KEYS). Feeding the defaults back as
--- opts must produce ZERO warnings — a future key added to config without
--- updating the allowlists fails here instead of shipping a false warning.
+-- Reusing defaults as options catches new config keys missing from the allowlists.
 T["setup"]["shim: defaults table itself raises zero warnings"] = function()
   local notes = {}
   local orig = vim.notify
@@ -125,14 +117,12 @@ T["setup"]["bridge_python: string type check"] = function()
   MiniTest.expect.error(function()
     jove.setup({ bridge_python = true })
   end)
-  -- Failed setup must not corrupt the stored default.
   MiniTest.expect.equality(jove.config.bridge_python, defaults.bridge_python)
 end
 
 T["setup"]["bridge_python: merge behavior"] = function()
   jove.setup({ bridge_python = "/opt/venv/bin/python" })
   MiniTest.expect.equality(jove.config.bridge_python, "/opt/venv/bin/python")
-  -- A later setup() without the key keeps the previously merged value.
   jove.setup({ jupytext = "/other/jupytext" })
   MiniTest.expect.equality(jove.config.bridge_python, "/opt/venv/bin/python")
   MiniTest.expect.equality(jove.config.jupytext, "/other/jupytext")
@@ -214,7 +204,6 @@ T["setup"]["raises on invalid opt types"] = function()
   MiniTest.expect.error(function()
     jove.setup("not a table")
   end)
-  -- Failed setup must not corrupt the stored config.
   MiniTest.expect.equality(jove.config.jupytext, defaults.jupytext)
 end
 

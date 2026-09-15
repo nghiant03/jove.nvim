@@ -1,4 +1,4 @@
--- ui/panel.lua: kernel/session status for the statusline (and a future float).
+-- Kernel and session status for the statusline and info float.
 local state = require("jove.state")
 
 local M = {}
@@ -27,7 +27,7 @@ function M.status(buf)
   return ("⚡ %s · %s"):format(k.name, busy and "busy" or "idle")
 end
 
----Session info table for a future float: kernel name/status + queue length.
+---Kernel name, status, and queue length for the info float.
 ---@param buf integer?
 ---@return {kernel: string?, status: string?, queue_len: integer}
 function M.info(buf)

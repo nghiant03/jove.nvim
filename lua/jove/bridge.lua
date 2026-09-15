@@ -1,10 +1,5 @@
--- bridge.lua: stdio JSON-lines client for `python -m jove_bridge`.
--- The wire contract lives in PROTOCOL.md; this module is the Neovim side.
--- One bridge process manages exactly one kernel, so kernel.lua creates one
--- handle per buffer. The module is a factory, not a singleton:
---   local b = require("jove.bridge").new()
---   b:start(function(ok, err) ... end)
---   b:request("execute", { code = "1", cell = "h" }, function(result, err) end)
+-- JSON-lines client for `python -m jove_bridge`.
+-- Each handle owns one bridge process and kernel; kernel.lua creates one per buffer.
 local M = {}
 
 -- Indirection over the vim.fn job APIs so tests can inject fakes.
@@ -29,7 +24,6 @@ local SHUTDOWN_GRACE_MS = 1000
 ---Directory of the plugin root (contains lua/ and python/).
 ---@return string
 local function plugin_root()
-  -- bridge.lua sits at <root>/lua/jove/bridge.lua; walk up three levels.
   local src = debug.getinfo(1, "S").source:sub(2)
   return vim.fn.fnamemodify(src, ":h:h:h")
 end
@@ -326,8 +320,7 @@ end
 local VARIABLES_TIMEOUT_MS = 5000
 
 ---Resolve the running kernel's language for `buf`, if it can be determined.
----Lane A sets `entry.language` after start_kernel; before that (or on older
----checkouts) fall back to the notebook's kernelspec language. nil = unknown.
+---Fall back to notebook metadata before the running kernel's language is known.
 ---@param buf integer
 ---@return string?
 local function language_of(buf)
@@ -387,10 +380,6 @@ function M.variables(buf, cb)
     respond(result)
   end, { timeout_ms = VARIABLES_TIMEOUT_MS })
 end
-
--- -------------------------------------------------------------------------
--- Internals
--- -------------------------------------------------------------------------
 
 ---@private
 function Bridge:_on_stdout(_, data)
@@ -565,7 +554,6 @@ function Bridge:_on_exit(_, code)
     if expected then
       return
     end
-    -- Unexpected exit: respawn with backoff, then give up loudly.
     if self._opts.respawn == false or attempts >= MAX_RESPAWNS then
       self._respawn_attempts = 0
       vim.notify(
@@ -589,8 +577,7 @@ function Bridge:_on_exit(_, code)
   end)
 end
 
----TRACE-gated wire/debug logging (never INFO: trace output is only visible
----with an explicit `trace` opt or `require("jove.bridge").trace = true`).
+---Log wire traffic when tracing is enabled on the module or handle.
 ---@private
 ---@param msg string
 function Bridge:_trace(msg)

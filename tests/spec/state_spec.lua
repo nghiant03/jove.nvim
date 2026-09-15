@@ -1,10 +1,8 @@
--- state_spec.lua: per-buffer registry lifecycle.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 
 local T = MiniTest.new_set()
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
@@ -65,7 +63,6 @@ T["clear"]["removes the entry"] = function()
   state.get(buf).path = "/tmp/smoke.ipynb"
   state.clear(buf)
   expect_truthy(state.peek(buf) == nil)
-  -- get() after clear() yields a fresh, empty state table.
   local fresh = state.get(buf)
   expect_truthy(type(fresh) == "table")
   MiniTest.expect.equality(fresh.path, nil)

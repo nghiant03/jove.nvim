@@ -1,9 +1,7 @@
 -- ui/init.lua: cell status rendering (gutter signs + running-cell spinner).
 -- Reacts to execute.lua status transitions via M.on_status; attach() is
 -- idempotent per buffer (keymaps.apply calls it from the FileType autocmd).
--- ok/error signs stay in place until the next run of that cell; error first
--- lines / output bodies are output.lua's business -- this module only does
--- status chrome.
+-- Completed-run signs remain until the next run; output.lua renders output bodies.
 local cell = require("jove.cell")
 
 local execute = require("jove.execute")
@@ -164,7 +162,6 @@ function M.on_status(buf, hash, status)
 
   local sign = require("jove").config.signs[status]
   if sign then
-    -- One extmark per cell hash, updated in place on transitions.
     local id = vim.api.nvim_buf_set_extmark(buf, ns, lnum - 1, 0, {
       id = b.marks[hash],
       sign_text = sign .. " ",
@@ -197,7 +194,6 @@ function M.attach(buf)
   end)
 end
 
--- Drop bookkeeping (timers!) when a buffer goes away.
 vim.api.nvim_create_autocmd("BufWipeout", {
   group = vim.api.nvim_create_augroup("jove_ui", { clear = false }),
   pattern = "*",

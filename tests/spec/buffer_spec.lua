@@ -17,7 +17,6 @@ local T = MiniTest.new_set({
   },
 })
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
@@ -34,7 +33,6 @@ end
 
 local FIXTURE = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "smoke.ipynb")
 
----Copy the fixture into a fresh temp dir; never touches the repo.
 ---@return string path
 local function tmp_copy_fixture()
   local dir = vim.fn.tempname()
@@ -45,7 +43,6 @@ local function tmp_copy_fixture()
   return path
 end
 
----Read a file back from disk synchronously (test-side helper only).
 ---@param path string
 ---@return string?
 local function read_disk(path)
@@ -130,21 +127,17 @@ T["read via BufReadCmd"]["strips jupytext front matter from the buffer"] = funct
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  -- No `# ---` line should appear in the buffer.
   for _, l in ipairs(lines) do
     MiniTest.expect.equality(l:match("^# %-%-") ~= nil, false)
   end
-  -- Stashed front matter looks like a `# ---`-terminated block.
   local fm = state.get(buf).front_matter
   expect_truthy(type(fm) == "table" and #fm >= 2 and fm[1] == "# ---")
   close_notebook(buf)
 end
 
 T["read via BufReadCmd"]["trailing empty cell gets a body line"] = function()
-  -- Synthesize a notebook whose last cell is empty (`source = []`), like the
-  -- workshop notebook that motivated this guard. jupytext emits such a cell
-  -- as a bare trailing `# %%` header with no body; without the guard chrome
-  -- would render zero visible rows and the cell would be inaccessible.
+  -- jupytext emits a trailing empty cell as a bare header. It needs a body
+  -- line to remain accessible when chrome conceals the header.
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
   local path = vim.fs.joinpath(dir, "trailing.ipynb")
@@ -177,9 +170,7 @@ T["read via BufReadCmd"]["trailing empty cell gets a body line"] = function()
 
   local buf = open_notebook(path)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  -- Last line is the appended body separator (empty string).
   MiniTest.expect.equality(lines[#lines], "")
-  -- Second-to-last is the trailing cell's `# %%` header.
   MiniTest.expect.equality(lines[#lines - 1]:match("^# %%") ~= nil, true)
   close_notebook(buf)
 end
@@ -191,7 +182,6 @@ T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] 
   local buf = open_notebook(path)
   local ncells = #state.get(buf).json.cells
 
-  -- Edit a code line inside the notebook.
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local edit_at
   for i, l in ipairs(lines) do
@@ -218,7 +208,6 @@ T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] 
   end, 10)
   expect_truthy(settled)
 
-  -- On-disk file is a valid notebook with all cells, including the edit.
   local bytes = read_disk(path)
   local ok, nb = pcall(vim.json.decode, bytes)
   expect_truthy(ok)
@@ -234,7 +223,6 @@ T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] 
   end
   expect_truthy(found_edited)
 
-  -- state.json was refreshed from the on-disk bytes; last_write recorded.
   MiniTest.expect.equality(state.get(buf).json, nb)
   MiniTest.expect.equality(state.get(buf).last_write, vim.fn.sha256(bytes))
 
@@ -245,7 +233,6 @@ T["write via BufWriteCmd"]["coalesces two rapid writes (single-flight)"] = funct
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
-  -- Spy on convert.write to observe flight start/completion counts.
   local orig = convert.write
   local started, finished = 0, 0
   convert.write = function(p, l, cb)
@@ -272,7 +259,6 @@ T["write via BufWriteCmd"]["coalesces two rapid writes (single-flight)"] = funct
   expect_truthy(settled)
   convert.write = orig
 
-  -- Final disk content is consistent with the buffer and fully settled.
   local bytes = read_disk(path)
   expect_truthy(bytes ~= nil)
   local ok, nb = pcall(vim.json.decode, bytes)
@@ -288,12 +274,9 @@ T["write round-trips"] = MiniTest.new_set()
 T["write round-trips"]["preserves kernelspec even with stripped front matter on write"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
-  -- Snapshot original kernelspec.
   local orig_ks = state.get(buf).json.metadata.kernelspec
-  -- Edit a cell then save via :w (BufWriteCmd).
   vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "# touch" })
   vim.cmd("write")
-  -- Wait for the single-flight write to settle.
   local done = vim.wait(30000, function()
     local st = state.peek(buf)
     return st ~= nil and st.last_write ~= nil and not vim.bo[buf].modified
@@ -329,7 +312,6 @@ T["changed_shell"]["auto-reloads a foreign change, preserving the cursor"] = fun
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
-  -- Move the cursor somewhere recognizable.
   vim.api.nvim_win_set_cursor(0, { 3, 0 })
   local cursor_before = vim.api.nvim_win_get_cursor(0)
 

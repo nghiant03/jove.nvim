@@ -1,4 +1,4 @@
--- output.lua: per-cell output store + extmark render engine (Phase 5).
+-- Per-cell output storage and extmark rendering.
 --
 -- Store shape (the `outputs` slot reserved in lua/jove/state.lua):
 --   state.get(buf).outputs = {
@@ -168,16 +168,10 @@ local function decorate(buf, shown, ctx)
   local cfg = require("jove").config
   local out_cfg = (cfg and cfg.output) or {}
   local width = win_width(buf)
-  -- Default guide inherited from the legacy layout: without it content would
-  -- touch the box rails and feel cramped. Users can still set `guide = false`
-  -- or any custom string (same option as the legacy header-rail path).
   local guide = out_cfg.guide == nil and "▎ " or out_cfg.guide
   local guide_hl = ctx.has_error and "JoveOutputGuideError" or "JoveOutputGuide"
   apply_output_hl(out_cfg.hl)
 
-  -- Legacy "inside_border" mode: keep the original header rule + guide rail
-  -- layout so users who opt out of the new boxed layout see no behaviour
-  -- change.
   if out_cfg.inside_border then
     local decorated = {}
     if out_cfg.header ~= false then
@@ -241,7 +235,6 @@ local function decorate(buf, shown, ctx)
 
   local decorated = {}
 
-  -- Top frame: `┌─ Out[n] ─...─┐` (JoveOutputBorder).
   local prefix = "┌─ "
   local label = type(ctx.count) == "number" and ("Out[%d] "):format(ctx.count) or "Out "
   local header_used = vim.fn.strdisplaywidth(prefix) + vim.fn.strdisplaywidth(label)
@@ -256,12 +249,8 @@ local function decorate(buf, shown, ctx)
   top[#top + 1] = { "┐", "JoveOutputBorder" }
   decorated[#decorated + 1] = top
 
-  -- Content lines: `│ [guide] text   │` — left/right rails in the distinct
-  -- border group, the optional guide sits between the rail and the text.
-  -- Padding spaces extend the line so the right rail aligns with the closing
-  -- `┐` corner; the padding is applied unconditionally so the box is always
-  -- the full window width regardless of `output.hl` (which only tints, it
-  -- does not size the frame).
+  -- Pad to the window width even without a background highlight so the
+  -- right rail aligns with the frame corners.
   for _, line in ipairs(shown) do
     local new_line = {}
     new_line[#new_line + 1] = { "│", "JoveOutputBorder" }
@@ -286,7 +275,6 @@ local function decorate(buf, shown, ctx)
     decorated[#decorated + 1] = new_line
   end
 
-  -- Bottom frame: `└─ ... ─┘` (JoveOutputBorder).
   local bottom = { { "└", "JoveOutputBorder" } }
   if width > 2 then
     bottom[#bottom + 1] = { string.rep("─", width - 2), "JoveOutputBorder" }
@@ -308,7 +296,6 @@ local function render_cell(buf, cell_hash)
     return
   end
 
-  -- Drop the previous rendering first so re-renders never duplicate.
   image.clear(buf, cell_hash)
   if entry.extmark_id then
     pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id)
@@ -502,7 +489,6 @@ function M.open_float(buf, lnum)
     end
   end
 
-  -- Treesitter highlighting when the source filetype maps to a parser.
   local ft = vim.bo[buf].filetype
   if ft ~= "" then
     vim.bo[fbuf].filetype = ft
@@ -541,7 +527,7 @@ function M.open_float(buf, lnum)
   return win
 end
 
----Bulk attach stored outputs keyed by cell hash (Phase III persistence).
+---Attach stored outputs keyed by cell hash.
 ---@param buf integer
 ---@param outputs_by_hash table<string, table[]>  hash → list of output event params
 function M.import(buf, outputs_by_hash)
@@ -556,9 +542,8 @@ function M.import(buf, outputs_by_hash)
     end
     for hash, events in pairs(outputs_by_hash or {}) do
       local entry = get_entry(st, hash)
-      -- Provenance: entries created here hold DISK content transiting the
-      -- store (persist.import), not session results — persist.merge_into
-      -- must not rewrite them or null their execution_count.
+      -- Imported outputs are already on disk. Preserve their execution counts
+      -- by excluding them from session-output merges.
       entry.from_disk = true
       for _, params in ipairs(events or {}) do
         entry.raw[#entry.raw + 1] = params

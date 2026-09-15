@@ -1,16 +1,13 @@
--- mime_spec.lua: mime bundle normalization into renderable chunk lists.
 local MiniTest = require("mini.test")
 local mime = require("jove.mime")
 
 local T = MiniTest.new_set()
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
 end
 
----First chunk of a given kind, or nil.
 ---@param chunks table[]
 ---@param kind string
 ---@return table?
@@ -251,20 +248,14 @@ T["html_table"]["returns nil when there is no table"] = function()
 end
 
 T["html_table"]["returns full rows so the float can show every row"] = function()
-  -- `mime.html_table` produces lines that go straight into `entry.chunks`,
-  -- consumed both inline (truncated by `output.max_lines`) and by the
-  -- :JoveOpenOutput float (always untruncated). The cell renderer must
-  -- therefore return every row, not a capped subset with an ellipsis.
+  -- The float needs every row; only the inline renderer may truncate output.
   local rows = {}
   for i = 1, 30 do
     rows[#rows + 1] = ("<tr><td>%d</td><td>x</td></tr>"):format(i)
   end
   local lines = mime.html_table("<table>" .. table.concat(rows) .. "</table>")
-  -- 30 body rows, no trailing ellipsis row.
   expect_truthy(#lines == 30)
   MiniTest.expect.equality(lines[#lines], "30  x")
-  -- Every rendered row still carries the row's value (sanity: no truncation
-  -- skipped any in the middle).
   expect_truthy(lines[15]:find("15", 1, true) ~= nil)
 end
 

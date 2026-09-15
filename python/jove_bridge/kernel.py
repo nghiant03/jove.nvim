@@ -34,8 +34,6 @@ class KernelController:
         self.km: Optional[KernelManager] = None
         self.client: Any = None
 
-    # -- state ------------------------------------------------------------
-
     @property
     def running(self) -> bool:
         return self.client is not None
@@ -50,8 +48,6 @@ class KernelController:
             raise KernelError("kernel_not_running", "start a kernel first")
         return self.km
 
-    # -- kernelspecs -------------------------------------------------------
-
     def list_kernelspecs(self) -> dict:
         specs = {}
         for name, info in self._specs.get_all_specs().items():
@@ -61,8 +57,6 @@ class KernelController:
                 "language": str(spec.get("language") or ""),
             }
         return specs
-
-    # -- lifecycle ----------------------------------------------------------
 
     def require_kernelspec(self, kernelspec: str) -> None:
         """Raise ``kernelspec_not_found`` unless the spec exists."""
@@ -142,8 +136,6 @@ class KernelController:
                 pass
         if km is not None:
             self._kill_quiet(km)
-
-    # -- helpers ------------------------------------------------------------
 
     @staticmethod
     def _kill_quiet(km: KernelManager) -> None:

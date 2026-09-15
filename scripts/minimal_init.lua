@@ -5,10 +5,8 @@
 local this_file = debug.getinfo(1).source:sub(2)
 local root = vim.fs.dirname(vim.fs.dirname(this_file))
 
--- Make the plugin itself available on the runtimepath.
 vim.opt.runtimepath:prepend(root)
 
--- Make the vendored mini.test dependency available on the runtimepath.
 vim.opt.runtimepath:prepend(vim.fs.joinpath(root, ".testdeps", "mini.test"))
 
 -- Keep test runs hermetic.

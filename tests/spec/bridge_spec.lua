@@ -1,14 +1,9 @@
--- bridge_spec.lua: bridge.lua line buffering, queue-before-ready, request
--- routing, and respawn behavior — against an injected fake jobstart.
 local MiniTest = require("mini.test")
 local bridge_mod = require("jove.bridge")
 
 local T = MiniTest.new_set()
 
--- ---------------------------------------------------------------------------
--- Fake job plumbing: installs itself into the module's impl seam and lets
--- tests drive stdout/exit events by hand.
--- ---------------------------------------------------------------------------
+-- Inject job callbacks so tests can control stdout delivery and process exits.
 
 ---@return table
 local function fake_job()
@@ -48,7 +43,6 @@ local function fake_job()
     job.opts.on_stdout(job.id, vim.split(chunk, "\n", { plain = true }))
   end
 
-  ---Feed one stderr chunk (same split shape).
   function job.stderr(chunk)
     job.opts.on_stderr(job.id, vim.split(chunk, "\n", { plain = true }))
   end
@@ -137,7 +131,7 @@ T["requests"]["queue before ready, flush in order, route by id"] = function()
   b:request("execute", { code = "1", cell = "h1" }, function(result)
     got.exec = result
   end)
-  MiniTest.expect.equality(#job.sent, 0) -- nothing sent before ready
+  MiniTest.expect.equality(#job.sent, 0)
 
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
@@ -266,7 +260,7 @@ T["lifecycle"]["does not respawn after user-initiated stop"] = function()
   vim.wait(200, function()
     return stopped
   end)
-  MiniTest.expect.equality(job.spawn_count, 1) -- no respawn
+  MiniTest.expect.equality(job.spawn_count, 1)
   MiniTest.expect.equality(b:is_ready(), false)
   job.restore()
 end

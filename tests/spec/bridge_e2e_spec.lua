@@ -1,9 +1,5 @@
--- bridge_e2e_spec.lua: end-to-end against the REAL sidecar.
--- Spawns `python3 -m jove_bridge` (via bridge.lua's own spawn logic,
--- PYTHONPATH=<repo>/python), walks PROTOCOL.md lifecycle: ready ->
--- list_kernelspecs -> start_kernel -> execute with a stream output -> stop.
--- Skips (keeps the lua suite green) when python deps or the sidecar package
--- are missing; the pytest conformance suite remains the protocol contract.
+-- Integration tests using the Python sidecar. Skipped when its dependencies
+-- or package are unavailable; Python tests cover protocol conformance.
 local MiniTest = require("mini.test")
 local bridge_mod = require("jove.bridge")
 
@@ -52,7 +48,6 @@ T["sidecar"]["ready -> kernelspecs -> start_kernel -> execute -> stop"] = functi
   )
   MiniTest.expect.equality(ready_params and ready_params.protocol, 1)
 
-  -- list_kernelspecs must report at least the default python3 spec.
   local ks, ks_err
   b:request("list_kernelspecs", {}, function(r, e)
     ks, ks_err = r, e
@@ -86,7 +81,6 @@ T["sidecar"]["ready -> kernelspecs -> start_kernel -> execute -> stop"] = functi
   MiniTest.expect.equality(ex_err, nil)
   MiniTest.expect.equality(ex_res.status, "ok")
 
-  -- The output event for our cell key must be a stdout stream saying 42.
   local found
   for _, o in ipairs(outputs) do
     if o.cell == "e2e-cell" and o.kind == "stream" then
@@ -99,7 +93,6 @@ T["sidecar"]["ready -> kernelspecs -> start_kernel -> execute -> stop"] = functi
   MiniTest.expect.equality(type(found), "table")
   MiniTest.expect.equality(found and found.name, "stdout")
 
-  -- stop(): shutdown request, then the bridge exits on its own.
   b:stop()
   MiniTest.expect.equality(
     vim.wait(10000, function()

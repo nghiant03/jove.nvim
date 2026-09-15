@@ -1,6 +1,6 @@
 -- ui/image.lua: optional snacks.image integration for inline image outputs.
 --
--- snacks is NEVER required at module load time: availability is probed with
+-- snacks is loaded on demand: availability is probed with
 -- pcall on every use so the plugin can appear mid-session. Without it (or with
 -- config `output.images = false`) output.lua renders a text placeholder and we
 -- notify at most once per session with an install hint.

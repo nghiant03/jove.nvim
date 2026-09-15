@@ -1,4 +1,4 @@
--- toc.lua: notebook outline from markdown-cell headings (Phase F).
+-- Notebook outline from markdown-cell headings.
 --
 -- Markdown cells are stored by jupytext as `# %% [markdown]` followed by
 -- comment-prefixed lines, so `# Header` in the source appears as
@@ -105,7 +105,6 @@ function M.pick(buf)
     if not choice then
       return
     end
-    -- Jump in the window currently showing `buf`, if any.
     local target
     for _, w in ipairs(vim.api.nvim_list_wins()) do
       if vim.api.nvim_win_get_buf(w) == buf then

@@ -1,13 +1,10 @@
--- convert_spec.lua: async jupytext wrappers exercised against the real binary.
--- mini.test cases are synchronous, so every async call is driven to
--- completion with a done-callback + vim.wait polling pattern (a timeout
--- fails the case).
+-- Exercise the real jupytext binary. Synchronous test cases wait for async
+-- callbacks with vim.wait; a timeout fails the case.
 local MiniTest = require("mini.test")
 local convert = require("jove.convert")
 
 local T = MiniTest.new_set()
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
@@ -15,7 +12,6 @@ end
 
 local FIXTURE = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "smoke.ipynb")
 
----Copy the fixture into a fresh temp dir; never touches the repo.
 ---@return string path
 local function tmp_copy_fixture()
   local dir = vim.fn.tempname()
@@ -26,7 +22,6 @@ local function tmp_copy_fixture()
   return path
 end
 
----Read a file back from disk synchronously (test-side helper only).
 ---@param path string
 ---@return string?
 local function read_disk(path)
@@ -122,8 +117,7 @@ T["write"]["existing path: jupytext writes the file, Lua only reads it back"] = 
   end)
   MiniTest.expect.equality(werr, nil)
 
-  -- The returned bytes ARE the on-disk bytes: jupytext --update wrote the
-  -- file itself and convert only read it back (no Lua-side rewrite, P2).
+  -- jupytext --update owns the write; convert returns the bytes it reads back.
   local disk = read_disk(path)
   expect_truthy(disk ~= nil)
   MiniTest.expect.equality(bytes, disk)
@@ -149,7 +143,6 @@ T["write"]["new path: converts via stdout and writes atomically"] = function()
   MiniTest.expect.equality(werr, nil)
   expect_truthy(type(bytes) == "string" and #bytes > 0)
 
-  -- The file now exists on disk with exactly the bytes we returned.
   local disk = read_disk(path)
   expect_truthy(disk ~= nil)
   MiniTest.expect.equality(bytes, disk)
@@ -157,7 +150,6 @@ T["write"]["new path: converts via stdout and writes atomically"] = function()
   expect_truthy(ok)
   expect_truthy(#nb.cells > 0)
 
-  -- Atomic write left no temp files behind.
   local entries = vim.fn.readdir(dir)
   MiniTest.expect.equality(#entries, 1)
   MiniTest.expect.equality(entries[1], "fresh.ipynb")

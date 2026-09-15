@@ -1,4 +1,3 @@
--- chrome_spec.lua: Phase B cell chrome (concealment, rules, active cell).
 local MiniTest = require("mini.test")
 local chrome = require("jove.ui.chrome")
 local state = require("jove.state")
@@ -130,7 +129,6 @@ local function rule_texts(buf)
   return out
 end
 
----First active-cell highlight mark, or nil.
 ---@param buf integer
 ---@return table?
 local function active_mark(buf)
@@ -306,7 +304,6 @@ T["borders"]["top rule uses box corners and cell index"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
   chrome.refresh(buf)
   local texts = rule_texts(buf)
-  -- Two top rules present:
   MiniTest.expect.equality(#texts, 2)
   MiniTest.expect.equality(any_contains(texts, "╭─"), true)
   MiniTest.expect.equality(any_contains(texts, "╮"), true)
@@ -318,7 +315,6 @@ end
 T["borders"]["bottom border drawn below cell end"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
   chrome.refresh(buf)
-  -- Walk every extmark and find one with virt_lines starting with "╰".
   local found = false
   for _, m in ipairs(marks(buf)) do
     local d = m[4]
@@ -343,7 +339,6 @@ T["borders"]["borders = false disables the bottom border but keeps the top"] = f
   cfg.ui = { borders = false }
   local buf = make_buffer({ "# %% a", "x1" })
   chrome.refresh(buf)
-  -- Exactly one rule (top), none below.
   local below = 0
   for _, m in ipairs(marks(buf)) do
     local d = m[4]
@@ -352,7 +347,6 @@ T["borders"]["borders = false disables the bottom border but keeps the top"] = f
     end
   end
   MiniTest.expect.equality(below, 0)
-  -- Top rule still has ╭─ corner.
   MiniTest.expect.equality(any_contains(rule_texts(buf), "╭─"), true)
   cfg.ui = saved
   release_buffer(buf)
@@ -406,7 +400,7 @@ T["border_hl"]["table value passes attrs straight to nvim_set_hl"] = function()
   chrome.refresh(buf)
   local got = vim.api.nvim_get_hl(0, { name = "JoveCellBorder" })
   MiniTest.expect.equality(got.fg, 0xff9e64)
-  MiniTest.expect.equality(got.link, nil) -- table form: not a link
+  MiniTest.expect.equality(got.link, nil)
   cfg.ui = saved
   release_buffer(buf)
 end

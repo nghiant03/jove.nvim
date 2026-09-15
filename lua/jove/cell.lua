@@ -3,19 +3,15 @@
 --
 -- A cell is a block of lines opened by a jupytext `# %%` header line (either
 -- exactly `# %%` or `# %% ...`, e.g. `# %% [markdown]`). Lines before the
--- first header belong to a synthetic first cell starting at line 1 (matching
--- the historical cell_range() behavior in keymaps.lua, which treated
--- pre-header lines as part of the first cell); the last cell always extends
+-- first header belong to a synthetic first cell starting at line 1; the last cell extends
 -- to the end of the buffer. Synthetic cells have no `header` line and kind
 -- "code".
 --
 -- Cell identity: `hash` is the sha256 hex digest (vim.fn.sha256) of the
--- normalized cell BODY. Normalization: the header line is excluded; each body
+-- normalized cell body. Normalization: the header line is excluded; each body
 -- line has its trailing whitespace stripped; trailing empty lines are dropped;
 -- the rest is joined with "\n". Jupytext's py:percent round-trip loses
--- jupytext cell ids, so this content hash is the identity key Phase 6
--- (persist.lua) will use to match cells to outputs across jupytext
--- round-trips.
+-- jupytext cell ids, so persist.lua matches cells to outputs by content hash.
 --
 -- Cache: the parsed list is stored per buffer in state.get(buf).cells =
 --   { list = <cell list>, tick = <vim.b[buf].changedtick at parse time> }
@@ -212,9 +208,7 @@ function M.prev(buf, lnum)
   return nil
 end
 
----[start, end] lnum range (1-based, inclusive) of the cell containing `lnum`,
----compatible with the pre-refactor cell_range() contract in keymaps.lua; nil
----when `lnum` is outside the buffer.
+---Inclusive, 1-based line range of the cell containing `lnum`; nil outside the buffer.
 ---@param buf integer
 ---@param lnum integer
 ---@return integer?, integer?

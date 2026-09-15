@@ -1,4 +1,4 @@
-"""Variable-inspector bridge tests (Phase D).
+"""Variable-inspector bridge tests.
 
 Unit tests drive :meth:`BridgeSession._finish_variables` with a recording fake
 connection, and the ``variables`` submit path with a fake client. The e2e test

@@ -20,7 +20,6 @@ local flights = {}
 
 ---Split a leading `# ---` ... `# ---` front-matter block from `lines`.
 ---Returns front (the block, including both `# ---` markers) and rest, or nil if absent.
----Matches lines[1] == "# ---" and a later closing `# ---`.
 ---@param lines string[]
 ---@return string[]?, string[]
 local function split_front(lines)
@@ -149,14 +148,8 @@ function M.read(buf, path, opts)
       -- shows only real cell content and the space is reclaimed.
       local front, rest = split_front(lines)
 
-      -- Guarantee the last cell has at least one body line. jupytext's
-      -- py:percent emits a trailing empty ipynb cell as a bare `# %%` header
-      -- with no body, and `chrome.lua` conceals the header line; the cell
-      -- would therefore render with zero visible rows (no rule, no border,
-      -- nowhere to enter the cell, and `G` lands on the concealed tag).
-      -- Appending one empty line gives it the same shape jupytext gives
-      -- middle-empty cells (header + blank separator) and round-trips back
-      -- to an empty ipynb source on save.
+      -- A trailing empty cell needs a body line because chrome conceals its header.
+      -- The blank line keeps it accessible and saves back to an empty source.
       if rest[#rest] and rest[#rest]:match("^# %%") then
         rest[#rest + 1] = ""
       end
@@ -176,9 +169,8 @@ function M.read(buf, path, opts)
         restore_cursor(buf, cursor, rest)
       end
 
-      -- Schedule kernel init + output import after BufRead* autocmds settle.
-      -- Output import is NOT gated on auto_kernel: importing persisted
-      -- outputs works (and is wanted) without a running kernel too.
+      -- Wait for BufRead* autocmds to settle. Persisted outputs can be imported
+      -- independently of kernel startup.
       if cfg.auto_kernel then
         vim.schedule(function()
           if vim.api.nvim_buf_is_valid(buf) then
@@ -246,26 +238,16 @@ local function start_write(buf, path, tick, lines)
         vim.bo[buf].modified = false
       end
 
-      -- NOTE: user BufWritePost autocmds observe the jupytext-written file
-      -- BEFORE the outputs merge — persist.export below runs synchronously
-      -- in this same callback, after this event has fired.
+      -- BufWritePost observes the jupytext-written file before session outputs merge.
       vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
 
       if cfg.auto_export_outputs and not flight.dirty then
-        -- Merge session outputs into the fresh JSON on disk, matched by cell
-        -- content hash (P3). persist.export atomically writes the merged
-        -- bytes and refreshes st.json + st.last_write to them, so our own
-        -- merged write still suppresses FileChangedShell below. Synchronous
-        -- on purpose: we are already on the main loop inside the write
-        -- callback, and the checksum must be updated before this callback
-        -- yields.
-        -- Final flight only: when a coalesced write is pending
-        -- (flight.dirty), this flight's merged file would be overwritten by
-        -- the replay anyway — the replayed (final) flight exports instead.
+        -- Export synchronously so the checksum matches the merged file before
+        -- yielding to FileChangedShell. Only the final write exports outputs;
+        -- a pending replay would overwrite an intermediate merge.
         persist.export(buf, bytes)
       end
 
-      -- Replay the latest request captured while this flight was running.
       if flight.dirty then
         flight.dirty = false
         local ptick = flight.pending_tick
@@ -364,7 +346,6 @@ function M.changed_shell(buf, path)
   fd:close()
 
   if st.last_write and bytes and vim.fn.sha256(bytes) == st.last_write then
-    -- Our own last write echoed back to us: suppress silently.
     return true
   end
 

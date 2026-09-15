@@ -1,5 +1,4 @@
--- output_spec.lua: per-cell output store, extmark rendering, truncation,
--- toggle, clear, import. No kernel/bridge involved — push() is called directly.
+-- Drive output events directly without a kernel or bridge.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local cell = require("jove.cell")
@@ -23,7 +22,6 @@ local T = MiniTest.new_set({
   },
 })
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
@@ -42,11 +40,9 @@ end
 
 ---@param buf integer
 local function release_buffer(buf)
-  -- BufWipeout cleanup drops the state entry too.
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
----First cell's hash (the fixtures below use a single interesting cell).
 ---@param buf integer
 ---@param idx integer?
 ---@return string
@@ -78,9 +74,7 @@ local function starts_with(s, prefix)
   return s:sub(1, #prefix) == prefix
 end
 
----`s:sub(-1)` only returns the LAST BYTE of a multi-byte glyph (the rail
----chars we use are 3-byte UTF-8), so a direct `ends_with(s, "│")` check loses
----the comparison. Use byte-width math against the suffix instead.
+---Compare the full suffix byte length because border glyphs are multibyte UTF-8.
 ---@param suffix string
 ---@return boolean
 local function ends_with(s, suffix)
@@ -152,7 +146,6 @@ T["push"]["appends incrementally without duplicating the extmark"] = function()
   )
   expect_truthy(starts_with(t[4], "└"))
   expect_truthy(second.extmark_id == first.extmark_id)
-  -- exactly one extmark in the output namespace for the whole buffer
   MiniTest.expect.equality(#vim.api.nvim_buf_get_extmarks(buf, output.ns, 0, -1, {}), 1)
   release_buffer(buf)
 end
@@ -253,15 +246,12 @@ T["decoration"]["guide = false omits the inner padding rail"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hi" } })
-  -- Outside-border layout: top frame + content (rails, no inner padding) +
-  -- bottom frame. The content row wraps the text with the two rails and
-  -- pads to window width; with `guide = false` only `hi` sits between them.
   local t = texts(extmark_of(buf, hash).virt_lines)
   MiniTest.expect.equality(#t, 3)
   expect_truthy(starts_with(t[2], "│"))
   expect_truthy(ends_with(t[2], "│"))
   expect_truthy(t[2]:find("hi", 1, true) ~= nil)
-  expect_truthy(t[2]:find("▎", 1, true) == nil) -- no inner rail
+  expect_truthy(t[2]:find("▎", 1, true) == nil)
   jove.config.output.guide = orig
   release_buffer(buf)
 end
@@ -273,8 +263,6 @@ T["decoration"]["custom guide string is used verbatim between rails"] = function
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hi" } })
   local t = texts(extmark_of(buf, hash).virt_lines)
-  -- [1] top frame, [2] content row: outer rail + custom guide + text +
-  -- outer rail. The custom `│ ` then `hi` => `││ hi│` between outer rails.
   expect_truthy(starts_with(t[2], "││"))
   expect_truthy(ends_with(t[2], "│"))
   expect_truthy(t[2]:find("hi", 1, true) ~= nil)
@@ -283,9 +271,6 @@ T["decoration"]["custom guide string is used verbatim between rails"] = function
 end
 
 T["decoration"]["error output switches the inner padding rail to JoveOutputGuideError"] = function()
-  -- Force the default guide so this test is independent of any prior case
-  -- (preceding tests set + restore jove.config.output.guide at function
-  -- boundaries, but mini.test doesn't snapshot config between cases).
   local orig = jove.config.output.guide
   jove.config.output.guide = "▎ "
   local buf = make_buffer({ "# %% a", "1/0" })
@@ -399,7 +384,6 @@ T["truncation"]["caps virt_lines at output.max_lines with a float trailer"] = fu
   expect_truthy(starts_with(t[6], "└"))
 
   jove.config.output.max_lines = orig
-  -- Re-render at restored config shows everything again on next push.
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "done" } })
   ext = extmark_of(buf, hash)
   MiniTest.expect.equality(#texts(ext.virt_lines), 13) -- top + 11 content + bottom
@@ -528,7 +512,6 @@ T["open_float"]["shows untruncated output and closes on demand"] = function()
     expect_truthy(not starts_with(l, "▎ "))
   end
 
-  -- q closes the float and restores the previous window.
   vim.api.nvim_set_current_win(win)
   vim.api.nvim_feedkeys("q", "mx", false)
   expect_truthy(not vim.api.nvim_win_is_valid(win))
@@ -543,7 +526,7 @@ T["open_float"]["returns nil when there is nothing to show"] = function()
   MiniTest.expect.equality(output.open_float(buf, 1), nil) -- no outputs at all
   output.push(buf, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "x" } })
   expect_truthy(output.open_float(buf, 1) ~= nil)
-  vim.cmd("silent! close") -- tidy: close the float we just opened
+  vim.cmd("silent! close")
   release_buffer(buf)
 end
 

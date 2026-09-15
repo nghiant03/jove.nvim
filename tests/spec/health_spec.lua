@@ -1,11 +1,9 @@
--- health_spec.lua: :checkhealth jove smoke tests + pure helper behavior.
 local MiniTest = require("mini.test")
 local health = require("jove.health")
 
 local T = MiniTest.new_set()
 
----Capture all vim.health output (health.lua holds the vim.health table, so
----field stubs are visible to it), run fn, restore.
+---Stub fields on the shared vim.health table so health.lua sees the replacements.
 ---@param fn fun()
 ---@return table calls  -- {start = {...}, ok = {...}, ...} lists of messages
 local function capture_health(fn)
@@ -32,8 +30,6 @@ T["check"]["runs headless without error and emits a jove section"] = function()
     health.check()
   end)
   MiniTest.expect.equality(calls.start, { "jove" })
-  -- The section contains at least the nvim-floor OK line and the jupytext
-  -- and sidecar probes (all present in this environment).
   MiniTest.expect.equality(#calls.ok >= 3, true)
 end
 

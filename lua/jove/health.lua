@@ -1,9 +1,4 @@
--- health.lua: :checkhealth jove
--- Inventory: Neovim floor (0.11), jupytext, bridge python (resolved exactly
--- like bridge.lua resolves it), jupyter_client/ipykernel importability,
--- jove_bridge sidecar import probe (cheap `python -c "import jove_bridge"`
--- — never spawns the sidecar or lists kernelspecs), snacks.image (info-only),
--- jupytext.nvim conflict, molten leftover warning.
+-- Dependency and configuration checks for :checkhealth jove.
 local M = {}
 
 local h = vim.health
@@ -12,7 +7,6 @@ local h = vim.health
 ---exposed; health needs the same <root>/python for the sidecar probe).
 ---@return string
 local function plugin_root()
-  -- health.lua sits at <root>/lua/jove/health.lua; walk up three levels.
   local src = debug.getinfo(1, "S").source:sub(2)
   return vim.fn.fnamemodify(src, ":h:h:h")
 end
@@ -61,14 +55,12 @@ end
 function M.check()
   h.start("jove")
 
-  -- Neovim floor (0.11+).
   if vim.fn.has("nvim-0.11") ~= 1 then
     h.error(("Neovim >= 0.11 required (found %s)."):format(tostring(vim.version())))
   else
     h.ok("Neovim " .. tostring(vim.version()))
   end
 
-  -- jupytext (conversion engine).
   local ver = require("jove.convert").version()
   if ver then
     h.ok("jupytext: " .. ver)
@@ -139,14 +131,12 @@ function M.check()
     )
   end
 
-  -- Conflicting .ipynb plugin.
   if vim.g.loaded_jupytext == 1 or package.loaded["jupytext"] then
     h.error("jupytext.nvim is loaded; jove.nvim refuses to attach handlers. Disable one.")
   else
     h.ok("no conflicting .ipynb plugin detected")
   end
 
-  -- Molten leftovers (obsolete since the v2 rewrite).
   if vim.g.loaded_molten == 1 or vim.fn.exists(":MoltenInit") == 2 then
     h.warn("molten-nvim is loaded; jove no longer uses it — remove it (see README migration)")
   end

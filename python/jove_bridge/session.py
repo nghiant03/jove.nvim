@@ -21,10 +21,8 @@ from typing import Any, Callable, Optional
 
 from .kernel import KernelController, KernelError
 
-# Helper function definitions (prefixed with ``_`` so the namespace listing
-# filter hides them) that isolate per-variable inspection failures. A broken
-# ``repr``/``len`` (e.g. a zero-dimensional NumPy array, whose ``__len__``
-# exists but raises TypeError) must not discard the whole variable list.
+# Isolate repr/len failures so one object cannot discard the variable listing.
+# Underscore-prefixed helpers are hidden from the listing.
 _VARIABLES_HELPERS = (
     "def _jv_repr(v):\n"
     "    try:\n"
@@ -38,14 +36,8 @@ _VARIABLES_HELPERS = (
     "        return None\n"
 )
 
-# Single-line expression evaluated in the *user* namespace (via ipykernel's
-# user_expressions) to snapshot non-dunder, non-module globals as a JSON
-# string. Kept self-contained (only builtins: globals/type/repr/len/exec/
-# Exception/__import__) so it never depends on user imports. The helper defs
-# live in the user namespace under ``_`` names and are filtered out. Values are
-# truncated with repr()[:120]; `size` is len() when the object supports it,
-# else null. Each item is inspected in isolation: repr failures yield
-# '<repr failed>' and len failures yield null instead of aborting the listing.
+# Evaluated via user_expressions in the kernel's user namespace. Use builtins
+# and explicit imports so inspection does not depend on the user's imports.
 VARIABLES_EXPR = (
     "exec(" + repr(_VARIABLES_HELPERS) + ", globals()) or __import__('json').dumps(["
     "{'name': _jv_n, 'type': type(_jv_v).__name__, "
@@ -60,11 +52,8 @@ VARIABLES_EXPR = (
 # poll thread (e.g. execute waits for the shell-channel execute_reply).
 DEFERRED = object()
 
-# How long an answered execute's msg_id stays resolvable for late iopub
-# messages. ZMQ gives no cross-socket ordering guarantee, so a cell's last
-# iopub outputs (stream/error) can be delivered *after* the shell
-# execute_reply was processed and the pending entry popped; within this
-# window they are still tagged to the originating cell instead of dropped.
+# ZMQ does not order messages across sockets. Retain cell routing for this
+# many seconds after a shell reply so late iopub outputs can still be delivered.
 LATE_IOPUB_GRACE = 10.0
 
 
@@ -112,8 +101,6 @@ class BridgeSession:
         # Set once the kernel confirmed our iopub subscription (iopub_welcome,
         # ipykernel >= 7): from this point iopub delivery is dependable.
         self._iopub_live = threading.Event()
-
-    # -- request dispatch ---------------------------------------------------
 
     def dispatch(self, method: str, params: Any, reply_id: int) -> Any:
         """Handle one protocol request; returns a result dict or DEFERRED."""
@@ -164,12 +151,8 @@ class BridgeSession:
                 f"{method}: {key!r} is required and must be a {name}",
             )
 
-    # -- methods ------------------------------------------------------------
-
     def start_kernel(self, kernelspec: str) -> dict:
-        # Validate before touching anything: a typo'd spec must not kill the
-        # running kernel's in-flight requests (kernelspec_not_found leaves
-        # the current kernel untouched).
+        # Validate first so an invalid spec leaves the running kernel and requests intact.
         self.kernel.require_kernelspec(kernelspec)
         # The existing kernel is being replaced; its in-flight requests will
         # never come back on the new kernel, so fail them now.
@@ -209,8 +192,6 @@ class BridgeSession:
             ),
         )
 
-    # -- variable inspector (Phase D) --------------------------------------
-
     def variables(self, reply_id: int) -> Any:
         """Snapshot user-namespace variables (python kernels only).
 
@@ -227,10 +208,8 @@ class BridgeSession:
             reply_id,
             lambda client: client.execute(
                 "",
-                # NOTE: silent=True makes ipykernel return an EMPTY
-                # user_expressions dict (verified against ipykernel 7), so
-                # the probe must run non-silent. Empty code emits no output;
-                # store_history=False keeps it out of the kernel history.
+                # ipykernel 7 drops user_expressions with silent=True. Empty code
+                # avoids output; store_history=False keeps the probe out of history.
                 silent=False,
                 store_history=False,
                 user_expressions={"__jove__": VARIABLES_EXPR},
@@ -349,8 +328,6 @@ class BridgeSession:
         self._shutting_down = True
         self.kernel.shutdown()
 
-    # -- poll thread ----------------------------------------------------------
-
     def poll_forever(self) -> None:
         """Worker loop: drain iopub + shell, watch for kernel death."""
         while not self._stop.is_set():
@@ -386,8 +363,6 @@ class BridgeSession:
             self._check_alive()
             if not progress:
                 self._stop.wait(0.05)
-
-    # -- message handlers -------------------------------------------------------
 
     def _handle_iopub(self, msg: dict) -> None:
         msg_type = msg.get("msg_type")
@@ -490,8 +465,7 @@ class BridgeSession:
             return
         msg_type = msg.get("msg_type")
         content = msg.get("content") or {}
-        # Phase D: the variables probe answers from its execute_reply's
-        # user_expressions instead of the generic execute handling below.
+        # Variable probes return user_expressions rather than an execution status.
         if pending.kind == "variables":
             self._finish_variables(pending, msg_type, content)
             return
@@ -549,8 +523,6 @@ class BridgeSession:
             self.kernel.mark_dead()
             self._fail_pending("kernel_not_running", "kernel died")
 
-    # -- helpers ---------------------------------------------------------------
-
     def _probe_ready(self, timeout: float = 25.0) -> bool:
         """Wait until the kernel is reachable and iopub is dependable.
 
@@ -591,7 +563,6 @@ class BridgeSession:
             self._iopub_live.set()  # no welcome support; proceed optimistically
         remaining = deadline - time.monotonic()
         if not self._ready.wait(max(remaining, 0.0)):
-            # Kernel never confirmed readiness.
             with self._lock:
                 self.pending.pop(msg_id, None)
             self._ready.set()

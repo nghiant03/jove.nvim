@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# run_tests.sh: run the mini.test suite headless.
-# Exits non-zero if any test case fails (mini.test's stdout reporter uses
-# `:cquit 1` on failure, `:cquit 0` on success).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

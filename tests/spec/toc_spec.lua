@@ -1,4 +1,3 @@
--- toc_spec.lua: markdown heading extraction + jump-to-heading for :JoveToc.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local toc = require("jove.toc")

@@ -1,6 +1,5 @@
--- convert.lua: async jupytext CLI wrappers (stdio only, no temp files).
--- All hot paths (read/write) are async: they never block the editor on
--- jupytext or on disk I/O; `version()` stays synchronous (health check only).
+-- Asynchronous jupytext conversion with atomic writes for new notebooks.
+-- version() is synchronous for health checks.
 local M = {}
 
 local function jupytext_bin()
@@ -75,7 +74,7 @@ local function split_lines(out)
 end
 
 ---Read .ipynb at `path` and return py:percent lines, asynchronously.
----Never blocks; the callback runs on the main loop.
+---Callbacks may run in a fast-event context; schedule buffer or window API calls.
 ---@param path string
 ---@param cb fun(lines: string[]?, err: string?)
 function M.read(path, cb)
@@ -98,8 +97,7 @@ end
 
 ---Convert py:percent buffer text back to ipynb JSON at `path`, asynchronously.
 ---When `path` already exists, jupytext --update --output <path> merges and
----writes the file itself; we only read the bytes back (no Lua-side second
----write, plan bug P2). When it does not exist (new buffer), jupytext prints
+---writes the file itself; we only read the bytes back. For new files, jupytext prints
 ---the notebook to stdout and Lua writes the bytes atomically (temp file +
 ---rename). The callback receives the on-disk bytes on success.
 ---@param path string

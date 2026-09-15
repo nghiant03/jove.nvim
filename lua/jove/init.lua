@@ -188,11 +188,8 @@ end
 function M.setup(opts)
   vim.validate("opts", opts, "table", true)
 
-  -- Deprecation shim: warn (once per key) about unknown options BEFORE the
-  -- merge; setup stays permissive (no error, validation unchanged).
   warn_unknown_opts(opts)
 
-  -- Validate the merged config so defaults and user opts are both covered.
   local merged = vim.tbl_deep_extend("force", M.config, opts or {})
   validate_config(merged)
 

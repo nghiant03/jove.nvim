@@ -41,15 +41,7 @@ local function html_to_text(html)
   return (t:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
--- -------------------------------------------------------------------------
--- Phase C: HTML table -> aligned plain-text renderer.
---
--- pandas' `DataFrame.style` (and plain `df.to_html()`) emit a full HTML
--- document with an injected <style> block; the naive tag-stripper in
--- html_to_text() turns that into an unreadable wall of CSS. The parser below
--- pulls out the first <table>, reads its <tr>/<th>/<td> cells, and renders
--- them as fixed-width columns so the output stays readable inline.
--- -------------------------------------------------------------------------
+-- Extract tables separately so pandas style blocks do not appear as preview text.
 
 ---Collapse an HTML fragment to a single cell string: <br> -> space, drop
 ---tags, decode entities, squeeze whitespace.
@@ -239,12 +231,7 @@ function M.html_table(html)
   end
 
   local lines = {}
-  -- Emit the full table here: these lines end up in `entry.chunks`, which is
-  -- the single source of truth for both inline virt_lines and the
-  -- `:JoveOpenOutput` float. Inline display caps visible lines via
-  -- `output.max_lines` (see output.lua's `truncate`), and the float reads
-  -- `entry.chunks` untruncated; capping here would silently drop rows from
-  -- the full-output float.
+  -- Keep every row for :JoveOpenOutput. Only the inline renderer applies max_lines.
   for _, r in ipairs(rows) do
     lines[#lines + 1] = format_row(r)
     if r.header then

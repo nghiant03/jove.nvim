@@ -1,10 +1,8 @@
--- persist.lua: native output persistence without molten (Phase 6).
+-- Notebook output persistence.
 -- Session outputs (the store in state.get(buf).outputs, fed by bridge
 -- `output` events) are merged into the .ipynb JSON on write, matched to
--- cells by CONTENT hash: jupytext py:percent round-trips drop cell ids, so
--- sha256(normalized source) is the only stable identity (plan P3). On read,
+-- cells by content hash because jupytext py:percent round-trips drop cell ids. On read,
 -- the inverse mapping replays the stored outputs back through output.import
--- -- write -> reload -> outputs survive.
 --
 -- Both directions convert between the two representations:
 --   raw params   (bridge `output` event shape, PROTOCOL.md -- what the
@@ -16,14 +14,9 @@ local cell = require("jove.cell")
 
 local M = {}
 
--- Tombstone bookkeeping ("seen this session"): hashes that had outputs at
--- any point this session -- imported from disk on read, present in the
--- output store at export time. output.lua's clear() only nils store entries
--- (verified), so persist.lua tracks this itself: at export, a hash that is
--- seen but no longer in the store means the user CLEARED the outputs this
--- session, and the deletion is persisted as `outputs: []` (otherwise
--- jupytext-preserved disk outputs would resurrect on reload). The set lives
--- per buffer and dies with the buffer (BufWipeout below).
+-- Track hashes with imported or exported outputs. If a tracked hash disappears
+-- from the store, persist an empty output array so cleared outputs cannot return
+-- on reload. Each buffer's set is removed on BufWipeout.
 ---@type table<integer, table<string, boolean>>
 local seen = {}
 
@@ -45,13 +38,6 @@ local function mark_seen(buf, hash)
   end
   set[hash] = true
 end
-
----Tombstone-precedence helper used by merge_into (the exact rule, verbatim):
----session clear > session outputs > disk. At export, a code cell whose hash
----(1) has session outputs in the store gets them written; (2) is in the
----session seen-set but NOT in the store gets `outputs = []` and
----`execution_count = null` (the session cleared it -- deletion persists);
----(3) is unseen by the session gets disk truth (jupytext-preserved) untouched.
 
 ---Empty-dict helper: empty Lua tables encode as `[]` (array), which nbformat
 ---rejects for object-typed fields like metadata/data. Returns `t` when it is
@@ -156,26 +142,12 @@ function M.to_raw(nb)
   return nil
 end
 
----Merge session outputs into a parsed notebook (mutates code cells in
----place): each code cell's source is hashed and the tombstone precedence
----rule (see near the top of this file) decides the outcome:
----session outputs REPLACE the cell's `outputs`; a seen-but-cleared hash is
----tombstoned to `outputs = []`; unseen cells keep whatever jupytext
----`--update` preserved. Replaced/tombstoned cells also get
----`execution_count = null` (the session result carries no count).
----Store entries flagged `from_disk` (output.import: disk content transiting
----the store, not session results) are SKIPPED entirely — their outputs are
----already on disk; rewriting them would null execution counts on every save.
----`meta` carries the execute module's per-hash run metadata
----({ count?, elapsed_ms? }); when a run cell's count is known it is written
----as the cell's (and its execute_result outputs') execution_count, replacing
----the null. A cell with a meta entry but no session outputs/seen entry (e.g.
----`x = 1`: run metadata, no output) still gets its count written. Without
----meta counts stay `vim.NIL` (unchanged behavior).
----`persist_counts` (default true) gates ALL count writing: when false the
----count lookup is skipped and execute_result outputs have their
----execution_count forced to null (opting out must not leak the bridge count
----into result outputs).
+---Merge outputs into notebook code cells in place, matched by source hash.
+---Session outputs replace disk outputs; tracked hashes cleared from the store
+---get empty output arrays. Imported entries and unseen cells retain disk outputs.
+---Run metadata supplies counts, including for cells that produced no output.
+---Replaced or cleared outputs use null counts when metadata is unavailable or
+---`persist_counts` is false; result-output counts follow the same rule.
 ---@param nb table?
 ---@param store table?  -- state.outputs: hash → {raw = {...}, from_disk?}
 ---@param seen_hashes table?  -- hash → true, "had outputs this session"
@@ -196,10 +168,8 @@ function M.merge_into(nb, store, seen_hashes, meta, persist_counts)
       local entry = store and store[hash]
       local m = persist_counts and meta and meta[hash] or nil
       local count = m and type(m.count) == "number" and m.count or nil
-      -- Disk content transiting the store (output.import tags entries
-      -- from_disk) is skipped entirely: its outputs are already on disk,
-      -- and rewriting them would null execution counts on every save. A
-      -- CLEARED entry is gone from the store and still tombstones below.
+      -- Imported outputs are already on disk; rewriting them would lose counts.
+      -- A cleared entry is absent from the store and still persists as a deletion.
       local from_disk = entry ~= nil and entry.from_disk == true
       if not from_disk and entry and type(entry.raw) == "table" and #entry.raw > 0 then
         local outs = {}
@@ -230,11 +200,8 @@ function M.merge_into(nb, store, seen_hashes, meta, persist_counts)
         c.execution_count = persist_counts and (count or vim.NIL) or vim.NIL
         merged = merged + 1
       elseif count ~= nil and c.execution_count ~= count then
-        -- Meta-only cell (ran, produced no outputs): persist just the count.
-        -- Deliberately NOT gated on from_disk: from_disk only guards output
-        -- rewriting (disk content already correct), while a session run that
-        -- reported a count is new truth. Only touches the file when the
-        -- on-disk value actually changes, so steady-state saves stay no-ops.
+        -- A session run can update the count without producing new outputs.
+        -- from_disk guards output replacement, not these newer run counts.
         c.execution_count = count
         merged = merged + 1
       end
@@ -264,18 +231,10 @@ local function atomic_write(path, bytes)
   return true
 end
 
----Merge session outputs into the notebook on disk and refresh buffer.lua's
----checksum bookkeeping. Call from the write flow with the fresh jupytext
----bytes. Checksum discipline: the merged write changes the file AFTER
----buffer.lua recorded `st.last_write` for the jupytext bytes, so this
----updates `st.json` and `st.last_write` to the MERGED bytes -- the
----FileChangedShell self-trigger suppression keeps working.
----No-op (silent) when the buffer is not jove-managed, when there is nothing
----session-side to persist (no outputs, no tombstones, no run-count metadata),
----or when the merge changes nothing (a pure open→save: from_disk store
----entries are skipped and the seen-set is pruned to the fresh JSON, so
----nothing merges and the file is not rewritten); failures notify WARN, never
----crash the write.
+---Merge session outputs into the file and update st.json and st.last_write
+---to the merged bytes so FileChangedShell recognizes the write as our own.
+---Call with fresh jupytext bytes from the write callback. Unmanaged buffers
+---and unchanged merges are no-ops; failures issue a warning.
 ---@param buf integer
 ---@param bytes string?  Fresh notebook JSON from the write flow; nil falls
 ---    back to st.json.
@@ -372,15 +331,9 @@ end
 ---into the output store, matched by content hash, then replay them through
 ---output.import for rendering. No-op on non-jove buffers.
 ---
----Store reset semantics (deliberate asymmetry): when the disk copy HAS
----outputs (by_hash non-empty), previous store contents are cleared first --
----on reload the disk copy is the source of truth, so session-only outputs
----that were never persisted do not survive, and disk outputs win over stale
----session entries. When the disk copy has NO outputs (by_hash empty), the
----session store is left untouched: clearing it would only destroy
----in-session results that nothing on disk could restore. Hashes imported
----from disk are also recorded in the tombstone seen-set (they had outputs
----this session), so a later session clear persists as deletion.
+---Disk outputs replace the session store when present. An empty disk output
+---set leaves session results intact. Imported hashes are tracked so clearing
+---them later persists the deletion.
 ---@param buf integer
 function M.import(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf

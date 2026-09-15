@@ -26,7 +26,7 @@ local function describe_err(err)
   return tostring(err)
 end
 
----Actionable message for bridge/dependency failures (plan §6.2).
+---Report bridge or dependency failures with setup instructions.
 ---@param err any
 local function notify_bridge_unavailable(err)
   vim.notify(

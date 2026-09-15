@@ -1,4 +1,4 @@
--- chrome.lua: cell chrome for jove buffers (PLAN.md Phase B).
+-- Cell header concealment, borders, and active-cell highlighting.
 --
 -- Responsibilities:
 --   * conceal cell headers (`# %%`) with `conceal_lines = ""` extmarks;
@@ -9,7 +9,7 @@
 --     optional closing border below the cell;
 --   * highlight the body of the cell under the cursor (`JoveActiveCell`).
 --
--- Everything is opt-in through `config.ui` (read defensively; a missing
+-- Rendering is configured through `config.ui` (read defensively; a missing
 -- `ui` table falls back to the documented defaults). The module never assumes
 -- a kernel exists: buffers with no execute state still get rules with an
 -- "unread" glyph and no count/elapsed.
@@ -129,7 +129,7 @@ local function cell_status(buf, hash)
   return exec and exec.status and exec.status[hash] or nil
 end
 
----Execution metadata for a cell hash from the cross-lane contract:
+---Execution metadata recorded by execute.lua:
 ---state.get(buf).exec.meta[hash] = { count = <int|nil>, elapsed_ms = <number|nil> }.
 ---@param buf integer
 ---@param hash string
@@ -441,7 +441,6 @@ function M.detach(buf)
   bufs[buf] = nil
 end
 
--- Drop bookkeeping when a buffer goes away.
 vim.api.nvim_create_autocmd("BufWipeout", {
   group = vim.api.nvim_create_augroup("jove_cell_chrome_wipeout", { clear = true }),
   pattern = "*",

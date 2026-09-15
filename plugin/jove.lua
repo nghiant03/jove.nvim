@@ -1,5 +1,5 @@
 -- jove.nvim: native .ipynb editing via jupytext + a first-party kernel bridge.
--- This file only registers autocmds; configuration lives in lua/jove/init.lua.
+-- Registers notebook autocmds and commands; configuration lives in lua/jove/init.lua.
 
 if vim.g.loaded_jove == 1 then
   return

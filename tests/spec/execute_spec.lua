@@ -1,6 +1,4 @@
--- execute_spec.lua: FIFO queue semantics, direct code send, status
--- transitions, sign placement, and the output seam -- against an injected
--- fake kernel/bridge (execute only ever sees state.get(buf).kernel.bridge).
+-- Inject a bridge through state.get(buf).kernel.bridge to control replies and events.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local cell = require("jove.cell")
@@ -11,7 +9,6 @@ local T = MiniTest.new_set()
 
 local LINES = { "# %% a", "x = 1", "# %% b", "y = 2", "# %% c", "z = 3" }
 
----mini.test has no truthy expectation; assert identity against true.
 ---@param cond any
 local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
@@ -45,7 +42,6 @@ local function fake_bridge()
       fn(params)
     end
   end
-  ---Answer the in-flight (head) request.
   function br:reply(result, err)
     local req = table.remove(self.requests, 1)
     req.cb(result, err)
@@ -110,11 +106,11 @@ T["queue"]["runs serially: next request only after previous reply"] = function()
   inject_kernel(br, buf)
 
   execute.run_all(buf)
-  MiniTest.expect.equality(#br.requests, 1) -- one in flight
+  MiniTest.expect.equality(#br.requests, 1)
   MiniTest.expect.equality(execute.queue_len(buf), 2)
 
   br:reply({ status = "ok" })
-  MiniTest.expect.equality(#br.requests, 1) -- second started
+  MiniTest.expect.equality(#br.requests, 1)
   MiniTest.expect.equality(execute.queue_len(buf), 1)
 
   br:reply({ status = "ok" })
@@ -138,7 +134,7 @@ T["queue"]["sends the cell BODY (header excluded), keyed by content hash"] = fun
   MiniTest.expect.equality(req.method, "execute")
   MiniTest.expect.equality(req.params.code, "x = 1") -- direct send, no header
   MiniTest.expect.equality(req.params.cell, h1) -- output-routing key
-  MiniTest.expect.equality(req.opts.timeout_ms, false) -- no execute timeout
+  MiniTest.expect.equality(req.opts.timeout_ms, false)
 end
 
 T["queue"]["no kernel: notifies and drops the queue"] = function()
@@ -169,7 +165,6 @@ T["queue"]["kernel gone mid-queue: remaining items dropped as error"] = function
   br:reply({ status = "ok" }) -- first finishes; pump sees no kernel
   MiniTest.expect.equality(execute.queue_len(buf), 0)
   MiniTest.expect.equality(notes[1].msg:find("No kernel", 1, true) ~= nil, true)
-  -- Dropped items must not be stuck on "queued" forever.
   MiniTest.expect.equality(execute.status(buf, h2), "error")
   MiniTest.expect.equality(execute.status(buf, h3), "error")
 end
@@ -239,7 +234,7 @@ T["status"]["error response marks the cell error and keeps pumping"] = function(
   execute.run_all(buf)
   br:reply(nil, { code = "kernel_not_running", message = "start a kernel first" })
   MiniTest.expect.equality(execute.status(buf, h1), "error")
-  MiniTest.expect.equality(#br.requests, 1) -- pump continued
+  MiniTest.expect.equality(#br.requests, 1)
 end
 
 T["status"]["kernel_status dead clears the in-flight item"] = function()
@@ -252,7 +247,7 @@ T["status"]["kernel_status dead clears the in-flight item"] = function()
   MiniTest.expect.equality(execute.status(buf, h1), "running")
   br:emit("kernel_status", { status = "dead" })
   MiniTest.expect.equality(execute.status(buf, h1), "error")
-  MiniTest.expect.equality(execute.queue_len(buf), 1) -- drain continues
+  MiniTest.expect.equality(execute.queue_len(buf), 1)
 end
 
 T["status"]["on_status callback fires and unsubscribes"] = function()
@@ -274,7 +269,7 @@ T["status"]["on_status callback fires and unsubscribes"] = function()
   unsub()
   execute.run_cell(buf, 1)
   br:reply({ status = "ok" })
-  MiniTest.expect.equality(#seen, 3) -- no events after unsub
+  MiniTest.expect.equality(#seen, 3)
   MiniTest.expect.equality(seen[3].status, "ok")
 end
 
@@ -327,7 +322,6 @@ T["meta"]["unknown count stays nil; elapsed still recorded (json shape)"] = func
   local m = execute.meta(buf, h1)
   MiniTest.expect.equality(m.count == nil, true)
   MiniTest.expect.equality(type(m.elapsed_ms), "number")
-  -- meta is a plain encodable table (UI reads it directly).
   local encoded = vim.json.encode(m)
   expect_truthy(encoded:find('"elapsed_ms"', 1, true) ~= nil)
   expect_truthy(encoded:find('"count"', 1, true) == nil)
@@ -392,8 +386,8 @@ T["batch"]["run_above enqueues code cells up to and including the cursor"] = fun
   inject_kernel(br, buf)
   local h1, h2, h3 = hashes(buf)
 
-  execute.run_above(buf, 5) -- cursor on cell c's header: historical
-  -- contract is `header <= cursor`, so cell c is included.
+  execute.run_above(buf, 5) -- Cursor on cell c's header.
+  -- run_above includes a code cell whose header is at the cursor.
   MiniTest.expect.equality(execute.status(buf, h1), "running")
   MiniTest.expect.equality(execute.status(buf, h2), "queued")
   MiniTest.expect.equality(execute.status(buf, h3), "queued")
@@ -402,7 +396,6 @@ T["batch"]["run_above enqueues code cells up to and including the cursor"] = fun
   br:reply({ status = "ok" })
   MiniTest.expect.equality(#br.requests, 0)
 
-  -- A markdown cell is never enqueued, even before the cursor.
   local md = make_buffer({ "# %% [markdown]", "text", "# %% code", "q = 1" })
   local br2 = fake_bridge()
   inject_kernel(br2, md)
@@ -455,7 +448,6 @@ T["advance"]["run_cell_and_advance moves to the next header"] = function()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 3) -- "# %% b"
   br:reply({ status = "ok" })
 
-  -- Last cell: runs but stays put.
   vim.api.nvim_win_set_cursor(0, { 5, 0 })
   execute.run_cell_and_advance(buf)
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 5)
@@ -477,9 +469,9 @@ T["attach"]["resubscribes when the kernel handle is replaced"] = function()
   inject_kernel(brB, buf)
   execute.run_cell(buf, 3)
   MiniTest.expect.equality(#brB.requests, 1)
-  MiniTest.expect.equality(#brA.requests, 0) -- nothing new on the old bridge
-  MiniTest.expect.equality(brA.unsubs, 0) -- A's subscriptions were dropped
-  expect_truthy(brB.handlers.output ~= nil) -- B's are live
+  MiniTest.expect.equality(#brA.requests, 0)
+  MiniTest.expect.equality(brA.unsubs, 0)
+  expect_truthy(brB.handlers.output ~= nil)
   brB:reply({ status = "ok" })
 end
 
