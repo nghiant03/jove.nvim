@@ -19,6 +19,10 @@ local T = MiniTest.new_set({
   -- defaults so subsequent cases are independent of any leaked config.
   hooks = {
     pre_case = default_output,
+    -- Drop any snacks.image stub so later cases see the real (absent) module.
+    post_case = function()
+      package.loaded["snacks.image"] = nil
+    end,
   },
 })
 
@@ -184,6 +188,77 @@ T["push"]["renders a text placeholder for image chunks"] = function()
   MiniTest.expect.equality(#t, 3)
   expect_truthy(starts_with(t[2], "│▎ [image:"))
   expect_truthy(ends_with(t[2], "│"))
+  release_buffer(buf)
+end
+
+---Stub `snacks.image` in package.loaded so jove's image layer sees a fake
+---placement API. Returns the recorded placement.new calls and closed handles.
+---@param supported boolean?  Value returned by the stub's supports(); default true
+local function stub_snacks(supported)
+  local calls, closed = {}, {}
+  package.loaded["snacks.image"] = {
+    supports = function()
+      return supported ~= false
+    end,
+    placement = {
+      new = function(b, src, opts)
+        calls[#calls + 1] = { buf = b, src = src, opts = opts }
+        local handle = {}
+        function handle.close(self)
+          closed[#closed + 1] = self
+        end
+        return handle
+      end,
+    },
+  }
+  return calls, closed
+end
+
+T["images"] = MiniTest.new_set()
+
+T["images"]["places chunks via snacks.image.placement anchored at the cell end"] = function()
+  local calls = stub_snacks()
+  local buf = make_buffer({ "# %% a", "import matplotlib", "plt.plot()" })
+  local hash = cell_hash(buf)
+  local end_lnum = cell.all(buf)[1].end_lnum
+  local data =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = data } })
+
+  MiniTest.expect.equality(#calls, 1)
+  MiniTest.expect.equality(calls[1].buf, buf)
+  -- snacks.image.Pos is (1,0)-indexed; inline outputs anchor at the cell's
+  -- last real line because virt_lines have no buffer row of their own.
+  MiniTest.expect.equality(calls[1].opts.pos, { end_lnum, 0 })
+  MiniTest.expect.equality(calls[1].opts.inline, true)
+  expect_truthy(ends_with(calls[1].src, ".png"))
+  MiniTest.expect.equality(vim.uv.fs_stat(calls[1].src).size, #vim.base64.decode(data))
+  release_buffer(buf)
+end
+
+T["images"]["re-render closes the previous placement instead of stacking grids"] = function()
+  local calls, closed = stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "note" } })
+
+  MiniTest.expect.equality(#calls, 2)
+  MiniTest.expect.equality(#closed, 1)
+  release_buffer(buf)
+end
+
+T["images"]["keeps the placeholder when the terminal lacks the kitty protocol"] = function()
+  stub_snacks(false)
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  expect_truthy(t[2]:find("[image:", 1, true) ~= nil)
   release_buffer(buf)
 end
 

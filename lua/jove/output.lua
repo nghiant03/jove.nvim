@@ -420,7 +420,7 @@ local function render_cell(buf, cell_hash)
     has_error = has_error,
   })
   -- A header line shifts every content line (and thus any image placeholder)
-  -- down by one: keep the image layer's base_row offsets in sync.
+  -- down by one: keep the image layer's dedup indexes in sync.
   local header_offset = (#shown > 0 and out_cfg.header ~= false) and 1 or 0
 
   entry.extmark_id = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
@@ -430,16 +430,16 @@ local function render_cell(buf, cell_hash)
     priority = (not out_cfg.inside_border) and RENDER_PRIORITY or nil,
   })
 
-  -- Real image placement (no-op without snacks.image; placeholder stays then).
   if #images > 0 then
     local visible = {}
     for _, e in ipairs(images) do
       if e.index <= max then
-        visible[#visible + 1] = { chunk = e.chunk, index = e.index + header_offset }
+        visible[#visible + 1] =
+          { chunk = e.chunk, index = e.index + header_offset, row = c.end_lnum }
       end
     end
     if #visible > 0 then
-      pcall(image.render, buf, cell_hash, visible, { base_row = c.end_lnum })
+      pcall(image.render, buf, cell_hash, visible)
     end
   end
 end

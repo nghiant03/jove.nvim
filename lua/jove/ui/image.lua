@@ -8,8 +8,8 @@ local M = {}
 
 local MIME_EXT = { ["image/png"] = "png", ["image/jpeg"] = "jpg" }
 
--- Placement bookkeeping: placed[buf] = { [cell_hash] = { ["<index>:<path>"] = true } }
----@type table<integer, table<string, table<string, boolean>>>
+-- Placement bookkeeping: placed[buf] = { [cell_hash] = { ["<index>:<path>"] = placement } }
+---@type table<integer, table<string, table<string, table>>>
 local placed = {}
 
 local notified = false
@@ -29,11 +29,24 @@ local function ensure_wipeout_cleanup()
   })
 end
 
+---Load snacks.image, requiring the parent "snacks" first when needed: the
+---submodule reads the global `Snacks` at load time, which only the parent's
+---init sets — so a bare require fails when snacks is installed but its
+---setup() has not run yet.
+---@return table? snacks
+local function load()
+  pcall(require, "snacks")
+  local ok, snacks = pcall(require, "snacks.image")
+  if ok and type(snacks) == "table" then
+    return snacks
+  end
+  return nil
+end
+
 ---True when snacks.image is loadable right now.
 ---@return boolean
 function M.available()
-  local ok = pcall(require, "snacks.image")
-  return ok
+  return load() ~= nil
 end
 
 ---True when image rendering is both enabled in config and possible.
@@ -74,35 +87,56 @@ function M.decode(chunk)
   vim.fn.mkdir(dir, "p")
   local path =
     vim.fs.joinpath(dir, ("%s.%s"):format(vim.fn.sha256(chunk.data), MIME_EXT[chunk.mime] or "bin"))
-  vim.fn.writefile({ decoded }, path, "b")
+  local fd = vim.uv.fs_open(path, "w", 384) -- 0600
+  if not fd then
+    return nil
+  end
+  local written = vim.uv.fs_write(fd, decoded, 0)
+  vim.uv.fs_close(fd)
+  if written ~= #decoded then
+    pcall(vim.uv.fs_unlink, path)
+    return nil
+  end
   chunk.image_path = path
   return path
 end
 
----Feature-detect a usable snacks.image placement function and call it.
+---Place one image via snacks.image.placement (feature-detected so snacks API
+---drift degrades to the text placeholder instead of an error).
 ---@param buf integer
----@param row integer  1-based buffer line for the image
+---@param row integer  1-based buffer line the image anchors at
 ---@param path string
----@return boolean
+---@return table? placement  snacks placement handle on success
 local function place(buf, row, path)
-  local ok, snacks = pcall(require, "snacks.image")
-  if not ok or type(snacks) ~= "table" then
-    return false
+  local snacks = load()
+  if not snacks then
+    return nil
   end
-  if type(snacks.place_at) == "function" then
-    return pcall(snacks.place_at, buf, row - 1, 0, path, {})
-  elseif type(snacks.place) == "function" then
-    return pcall(snacks.place, { buf = buf, row = row - 1, col = 0, src = path })
+  if type(snacks.supports) == "function" and not snacks.supports(path) then
+    return nil
   end
-  return false
+  local placement = snacks.placement
+  if type(placement) ~= "table" or type(placement.new) ~= "function" then
+    return nil
+  end
+  local ok2, handle = pcall(placement.new, buf, path, {
+    pos = { row, 0 },
+    inline = true,
+  })
+  if ok2 then
+    return handle
+  end
+  return nil
 end
 
 ---Place image chunks on `buf`.
 ---@param buf integer        Target buffer (cell buffer or output float).
 ---@param cell_hash string   Identity used for placement bookkeeping.
----@param image_chunks table List of { chunk = <image chunk>, index = <int> };
----   `index` is the 1-based line offset from `opts.base_row` where the chunk's
----   anchor line was rendered.
+---@param image_chunks table List of { chunk = <image chunk>, index = <int>, row = <int>? };
+---   `row` is an explicit 1-based anchor line: inline outputs anchor every
+---   image at the cell's last real line because virt_lines have no buffer row
+---   of their own. Without `row` the anchor is `opts.base_row + index` (the
+---   output float, where the placeholder is a real line).
 ---@param opts table?        { base_row = <int, 1-based buffer row for index 0; default 1> }
 function M.render(buf, cell_hash, image_chunks, opts)
   ensure_wipeout_cleanup()
@@ -127,9 +161,10 @@ function M.render(buf, cell_hash, image_chunks, opts)
     if path then
       local key = ("%d:%s"):format(entry.index, path)
       if not for_cell[key] then
-        local row = base_row + entry.index
-        if place(buf, row, path) then
-          for_cell[key] = true
+        local row = entry.row or (base_row + entry.index)
+        local handle = place(buf, row, path)
+        if handle then
+          for_cell[key] = handle
         end
       end
     end
@@ -138,7 +173,8 @@ function M.render(buf, cell_hash, image_chunks, opts)
   for_buf[cell_hash] = for_cell
 end
 
----Forget placement records (records die with the buffer via BufWipeout too).
+---Close placement handles and forget the records (records also die with the
+---buffer via BufWipeout).
 ---@param buf integer
 ---@param cell_hash string?
 function M.clear(buf, cell_hash)
@@ -146,9 +182,22 @@ function M.clear(buf, cell_hash)
   if not for_buf then
     return
   end
+  local function close_cell(for_cell)
+    for _, handle in pairs(for_cell) do
+      if type(handle) == "table" and type(handle.close) == "function" then
+        pcall(handle.close, handle)
+      end
+    end
+  end
   if cell_hash then
-    for_buf[cell_hash] = nil
+    if for_buf[cell_hash] then
+      close_cell(for_buf[cell_hash])
+      for_buf[cell_hash] = nil
+    end
   else
+    for _, for_cell in pairs(for_buf) do
+      close_cell(for_cell)
+    end
     placed[buf] = nil
   end
 end
