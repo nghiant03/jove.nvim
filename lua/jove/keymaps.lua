@@ -72,7 +72,12 @@ function M.apply(keymap)
       callback = function(ev)
         local entry = state.peek(ev.buf)
         if entry and entry.path then
-          vim.keymap.set(mode or "n", lhs, rhs, vim.tbl_extend("force", opts, { buffer = ev.buf }))
+          vim.keymap.set(
+            mode or "n",
+            lhs,
+            rhs,
+            vim.tbl_extend("force", opts, { buffer = ev.buf, desc = desc })
+          )
         end
       end,
     })
@@ -96,7 +101,7 @@ function M.apply(keymap)
               end,
               vim.tbl_extend("force", opts, {
                 buffer = ev.buf,
-                desc = "jove: select cell " .. (kind == "i" and "body" or "whole"),
+                desc = kind == "i" and "Jove: Select Cell Body" or "Jove: Select Whole Cell",
               })
             )
           end
@@ -107,26 +112,26 @@ function M.apply(keymap)
           vim.keymap.set("n", "]c", M.next_cell, {
             buffer = ev.buf,
             silent = true,
-            desc = "jove: next cell",
+            desc = "Jove: Next Cell",
           })
           vim.keymap.set("n", "[c", M.prev_cell, {
             buffer = ev.buf,
             silent = true,
-            desc = "jove: prev cell",
+            desc = "Jove: Previous Cell",
           })
         end
         if cfg.keymap.run_and_advance then
           vim.keymap.set("n", cfg.keymap.run_and_advance, M.run_cell_and_advance, {
             buffer = ev.buf,
             silent = true,
-            desc = "jove: run cell and advance",
+            desc = "Jove: Run Cell and Advance",
           })
         end
         if cfg.keymap.run_selection then
           vim.keymap.set("x", cfg.keymap.run_selection, M.run_selection, {
             buffer = ev.buf,
             silent = true,
-            desc = "jove: run selection",
+            desc = "Jove: Run Selection",
           })
         end
 
@@ -135,9 +140,9 @@ function M.apply(keymap)
     end,
   })
 
-  map(keymap.run_cell, M.run_cell, "jove: run cell")
-  map(keymap.next_cell, M.next_cell, "jove: next cell")
-  map(keymap.prev_cell, M.prev_cell, "jove: prev cell")
+  map(keymap.run_cell, M.run_cell, "Jove: Run Cell")
+  map(keymap.next_cell, M.next_cell, "Jove: Next Cell")
+  map(keymap.prev_cell, M.prev_cell, "Jove: Previous Cell")
 end
 
 return M

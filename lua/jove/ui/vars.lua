@@ -195,21 +195,21 @@ function M.open(buf)
 
   sessions[buf] = { win = win, fbuf = fbuf, vars = {}, unsupported = nil, unsub = nil }
 
-  local function map(lhs, fn)
-    vim.keymap.set("n", lhs, fn, { buffer = fbuf, nowait = true, silent = true })
+  local function map(lhs, fn, desc)
+    vim.keymap.set("n", lhs, fn, { buffer = fbuf, nowait = true, silent = true, desc = desc })
   end
   map("q", function()
     M.close(buf)
-  end)
+  end, "Jove: Close Variable Inspector")
   map("<Esc>", function()
     M.close(buf)
-  end)
+  end, "Jove: Close Variable Inspector")
   map("r", function()
     M.refresh(buf)
-  end)
+  end, "Jove: Refresh Variables")
   map("<CR>", function()
     M.inspect(buf)
-  end)
+  end, "Jove: Inspect Variable")
 
   -- Keep the session table from leaking when the scratch buffer goes away.
   -- Unsubscribe the status listener before clearing: the same listener is
@@ -321,8 +321,18 @@ function M.show_float(text)
       pcall(vim.api.nvim_win_close, win, true)
     end
   end
-  vim.keymap.set("n", "q", close, { buffer = fbuf, nowait = true, silent = true })
-  vim.keymap.set("n", "<Esc>", close, { buffer = fbuf, nowait = true, silent = true })
+  vim.keymap.set(
+    "n",
+    "q",
+    close,
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Float" }
+  )
+  vim.keymap.set(
+    "n",
+    "<Esc>",
+    close,
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Float" }
+  )
   return win
 end
 

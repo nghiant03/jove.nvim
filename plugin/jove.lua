@@ -139,8 +139,18 @@ vim.api.nvim_create_user_command("JoveKernelInfo", function()
       pcall(vim.api.nvim_win_close, win, true)
     end
   end
-  vim.keymap.set("n", "q", close, { buffer = float.buf, nowait = true, silent = true })
-  vim.keymap.set("n", "<Esc>", close, { buffer = float.buf, nowait = true, silent = true })
+  vim.keymap.set(
+    "n",
+    "q",
+    close,
+    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
+  )
+  vim.keymap.set(
+    "n",
+    "<Esc>",
+    close,
+    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
+  )
 end, { desc = "Show kernel panel (current session, running kernels, installed kernelspecs)" })
 
 vim.api.nvim_create_user_command("JoveToc", function()

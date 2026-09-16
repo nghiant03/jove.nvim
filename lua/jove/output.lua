@@ -632,8 +632,18 @@ function M.open_float(buf, lnum)
       vim.api.nvim_win_close(win, true)
     end
   end
-  vim.keymap.set("n", "q", close, { buffer = fbuf, nowait = true, silent = true })
-  vim.keymap.set("n", "<Esc>", close, { buffer = fbuf, nowait = true, silent = true })
+  vim.keymap.set(
+    "n",
+    "q",
+    close,
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Float" }
+  )
+  vim.keymap.set(
+    "n",
+    "<Esc>",
+    close,
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Float" }
+  )
 
   if #images > 0 then
     pcall(image.render, fbuf, c.hash, images, { base_row = 0 })
