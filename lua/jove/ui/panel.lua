@@ -278,4 +278,30 @@ function M.info_float(buf)
   return { buf = fbuf, lines = lines, opts = opts }
 end
 
+---Open the kernel info float (see `info_float`) with `q`/`<Esc>` closing it.
+---@param buf integer?
+---@return integer win
+function M.show_info(buf)
+  local float = M.info_float(buf)
+  local win = vim.api.nvim_open_win(float.buf, true, float.opts)
+  local function close()
+    if vim.api.nvim_win_is_valid(win) then
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+  end
+  vim.keymap.set(
+    "n",
+    "q",
+    close,
+    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
+  )
+  vim.keymap.set(
+    "n",
+    "<Esc>",
+    close,
+    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
+  )
+  return win
+end
+
 return M

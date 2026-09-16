@@ -113,10 +113,7 @@ vim.api.nvim_create_user_command("JoveOpenOutput", function()
 end, { desc = "Open the current cell's outputs in a float" })
 
 vim.api.nvim_create_user_command("JoveClearOutput", function()
-  local c = require("jove.cell").at(0, vim.fn.line("."))
-  if c then
-    require("jove.output").clear(0, c.hash)
-  end
+  require("jove.output").clear_at_cursor(0)
 end, { desc = "Clear outputs of the current cell" })
 
 vim.api.nvim_create_user_command("JoveClearOutputs", function()
@@ -132,25 +129,7 @@ vim.api.nvim_create_user_command("JoveVariables", function()
 end, { desc = "Toggle the variable inspector sidebar" })
 
 vim.api.nvim_create_user_command("JoveKernelInfo", function()
-  local float = require("jove.ui.panel").info_float(0)
-  local win = vim.api.nvim_open_win(float.buf, true, float.opts)
-  local function close()
-    if vim.api.nvim_win_is_valid(win) then
-      pcall(vim.api.nvim_win_close, win, true)
-    end
-  end
-  vim.keymap.set(
-    "n",
-    "q",
-    close,
-    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
-  )
-  vim.keymap.set(
-    "n",
-    "<Esc>",
-    close,
-    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
-  )
+  require("jove.ui.panel").show_info(0)
 end, { desc = "Show kernel panel (current session, running kernels, installed kernelspecs)" })
 
 vim.api.nvim_create_user_command("JoveToc", function()

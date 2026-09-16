@@ -542,6 +542,15 @@ function M.clear(buf, cell_hash, opts)
   end)
 end
 
+---Clear outputs of the cell under the cursor (no-op outside cells).
+---@param buf integer
+function M.clear_at_cursor(buf)
+  local c = require("jove.cell").at(buf, vim.fn.line("."))
+  if c then
+    M.clear(buf, c.hash)
+  end
+end
+
 ---Per-cell fold: show/hide the rendered virt_lines of the cell at `lnum`.
 ---@param buf integer
 ---@param lnum integer?  Defaults to the cursor line of the current window.
