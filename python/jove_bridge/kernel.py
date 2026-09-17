@@ -1,6 +1,6 @@
 """Kernel lifecycle management (a thin jupyter_client wrapper).
 
-The bridge owns exactly one kernel per process (PROTOCOL.md). This module
+The bridge owns exactly one kernel per process. This module
 knows nothing about the wire protocol; it raises :class:`KernelError` with a
 protocol error code and lets the caller translate.
 """
@@ -18,7 +18,7 @@ SHUTDOWN_GRACE = 5.0
 
 
 class KernelError(Exception):
-    """Error carrying a protocol error code (PROTOCOL.md "Error codes")."""
+    """Error carrying a protocol error code."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)

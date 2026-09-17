@@ -1,5 +1,5 @@
 -- kernel.lua: per-buffer kernel lifecycle over the Python stdio bridge.
--- One bridge process per buffer (PROTOCOL.md: one kernel per bridge).
+-- One bridge process per buffer (one kernel per bridge).
 -- Resolution order for the kernelspec: notebook metadata -> active
 -- conda/venv name -> vim.ui.select picker.
 local state = require("jove.state")
@@ -182,7 +182,7 @@ local function attach_wipeout(buf, entry)
         st.kernel = nil
       end
       -- stop() sends `shutdown` (short grace) and falls back to jobstop,
-      -- which kills the kernel with the bridge (PROTOCOL.md lifecycle).
+      -- which kills the kernel with the bridge.
       entry.bridge:stop()
     end,
   })
@@ -320,7 +320,7 @@ function M.restart(buf)
 end
 
 ---Shut the kernel down and drop the handle. Bridge-side shutdown implies
----process exit (PROTOCOL.md), but the bridge is stopped explicitly too, so a
+---process exit, but the bridge is stopped explicitly too, so a
 ---missing/failed reply or a half-initialized entry can never leak a process.
 ---@param buf integer
 ---@param cb fun(err: string?)?

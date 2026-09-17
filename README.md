@@ -412,7 +412,7 @@ CI uses `python/uv.lock` and a pinned mini.test revision; update the lock with
 
 `buffer.lua` coordinates asynchronous reads/writes, `persist.lua` merges
 notebook outputs, and `execute.lua` routes execution through `bridge.lua` to
-the Python sidecar. The wire contract is documented in [PROTOCOL.md](PROTOCOL.md).
+the Python sidecar.
 
 ## License
 

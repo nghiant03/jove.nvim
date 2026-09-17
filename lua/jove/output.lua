@@ -463,7 +463,7 @@ end
 ---Silent no-op when the buffer is not jove-managed (no state entry) or wiped.
 ---@param buf integer
 ---@param cell_hash string
----@param params table  `output` event params (PROTOCOL.md)
+---@param params table  `output` event params
 function M.push(buf, cell_hash, params, opts)
   safe(function()
     buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf

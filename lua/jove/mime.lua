@@ -1,5 +1,5 @@
--- mime.lua: normalize an output event's mime bundle (see PROTOCOL.md `output`
--- params) into an ordered, renderable chunk list for lua/jove/output.lua.
+-- mime.lua: normalize an output event's mime bundle (`output` event params)
+-- into an ordered, renderable chunk list for lua/jove/output.lua.
 --
 -- A chunk is a plain table:
 --   { kind = "text",  mime = <str>, text = <str>, hl_group = <str>? }
@@ -310,7 +310,7 @@ function M.render_error(params)
 end
 
 ---Normalize one output event's params into an ordered chunk list.
----@param params table?  `output` event params (PROTOCOL.md)
+---@param params table?  `output` event params
 ---@return table[] chunks
 function M.render(params)
   params = params or {}

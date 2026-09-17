@@ -242,7 +242,7 @@ end
 function Bridge:_send(req)
   local id = self._next_id
   self._next_id = id + 1
-  -- PROTOCOL.md: the bridge replies to `shutdown`, then exits 0 by itself.
+  -- The bridge replies to `shutdown`, then exits 0 by itself.
   -- Remember that so its exit isn't mistaken for a crash (and respawns).
   if req.method == "shutdown" then
     self._shutdown_sent = true

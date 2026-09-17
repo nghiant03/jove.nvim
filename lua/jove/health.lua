@@ -111,12 +111,12 @@ function M.check()
   end
   local sres = run({ python, "-c", "import jove_bridge" }, 10000, { PYTHONPATH = pythonpath })
   if sres.code == 0 then
-    h.ok("bridge sidecar importable (python/jove_bridge; wire contract: PROTOCOL.md)")
+    h.ok("bridge sidecar importable (python/jove_bridge)")
   else
     h.error(
       (
         "bridge sidecar `jove_bridge` not importable with PYTHONPATH=%s — the plugin's "
-        .. "python/ package must be intact (wire contract: PROTOCOL.md)"
+        .. "python/ package must be intact"
       ):format(pythonpath)
     )
   end

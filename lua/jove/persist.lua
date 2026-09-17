@@ -5,7 +5,7 @@
 -- the inverse mapping replays the stored outputs back through output.import
 --
 -- Both directions convert between the two representations:
---   raw params   (bridge `output` event shape, PROTOCOL.md -- what the
+--   raw params   (bridge `output` event shape -- what the
 --                 output store's `raw` lists hold, what mime.render draws)
 --   nbformat v4  ({output_type = "stream"|"execute_result"|"display_data"|
 --                 "error", ...})
@@ -109,7 +109,7 @@ function M.to_nbformat(params)
       output_type = "error",
       ename = params.ename or "",
       evalue = params.evalue or "",
-      traceback = params.traceback or {}, -- ANSI raw, per PROTOCOL.md; a list, so [] is valid
+      traceback = params.traceback or {}, -- ANSI raw; a list, so [] is valid
     }
   end
   return nil

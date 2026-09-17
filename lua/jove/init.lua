@@ -1,5 +1,5 @@
 -- jove: native .ipynb editing for Neovim, backed by jupytext and a
--- first-party Python kernel bridge (see PROTOCOL.md).
+-- first-party Python kernel bridge.
 local M = {}
 
 ---@class jove.Config

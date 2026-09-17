@@ -483,9 +483,9 @@ class BridgeSession:
                 if status in ("abort", "aborted") and pending.cell is not None:
                     # An interrupt with queued execute requests aborts them:
                     # the reply carries no ename/evalue/traceback and *no*
-                    # iopub error message is published. PROTOCOL.md makes an
-                    # error result imply an error-kind output event, so
-                    # synthesize one here.
+                    # iopub error message is published. An error result
+                    # implies an error-kind output event, so synthesize one
+                    # here.
                     self._emit_error_output(pending.cell, ename, evalue, tb_lines)
                 err_result = {
                     "status": "error",
