@@ -157,6 +157,20 @@ T["setup"]["output: nested validation and partial merge"] = function()
   MiniTest.expect.equality(jove.config.output.images, defaults.output.images)
 end
 
+T["setup"]["output.image_max_width/height: optional numbers"] = function()
+  MiniTest.expect.error(function()
+    jove.setup({ output = { image_max_width = "wide" } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ output = { image_max_height = true } })
+  end)
+  MiniTest.expect.equality(jove.config.output.image_max_width, defaults.output.image_max_width)
+  MiniTest.expect.equality(jove.config.output.image_max_height, defaults.output.image_max_height)
+  jove.setup({ output = { image_max_width = 120, image_max_height = 10 } })
+  MiniTest.expect.equality(jove.config.output.image_max_width, 120)
+  MiniTest.expect.equality(jove.config.output.image_max_height, 10)
+end
+
 T["setup"]["ui.border_hl: accepts string or table; rejects other types"] = function()
   jove.setup({ ui = { border_hl = "MyBorder" } })
   MiniTest.expect.equality(jove.config.ui.border_hl, "MyBorder")

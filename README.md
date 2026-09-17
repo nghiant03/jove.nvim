@@ -157,6 +157,8 @@ require("jove").setup({
   output = {
     max_lines = 50,             -- inline output truncation limit
     images = true,              -- render images via snacks.image when available
+    image_max_width = 80,       -- cap rendered image width in terminal cells (nil disables)
+    image_max_height = 40,      -- cap rendered image height in terminal cells (nil disables)
     header = true,              -- draw the Output block's `┌─ Out[n] ─┐` top frame; false renders content + guide rail only
     guide = "▎ ",               -- per-line inner output rail (between the left border and the text); false disables it
     inside_border = false,      -- render output inside the cell border instead of its own bordered block below it

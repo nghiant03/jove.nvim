@@ -8,6 +8,8 @@ local jove = require("jove")
 local function default_output()
   jove.config.output.max_lines = 50
   jove.config.output.images = true
+  jove.config.output.image_max_width = 80
+  jove.config.output.image_max_height = 40
   jove.config.output.header = true
   jove.config.output.guide = "▎ "
   jove.config.output.inside_border = false
@@ -232,6 +234,8 @@ T["images"]["places chunks via snacks.image.placement anchored at the cell end"]
   -- last real line because virt_lines have no buffer row of their own.
   MiniTest.expect.equality(calls[1].opts.pos, { end_lnum, 0 })
   MiniTest.expect.equality(calls[1].opts.inline, true)
+  MiniTest.expect.equality(calls[1].opts.max_width, 80)
+  MiniTest.expect.equality(calls[1].opts.max_height, 40)
   expect_truthy(ends_with(calls[1].src, ".png"))
   MiniTest.expect.equality(vim.uv.fs_stat(calls[1].src).size, #vim.base64.decode(data))
   release_buffer(buf)
@@ -247,6 +251,36 @@ T["images"]["re-render closes the previous placement instead of stacking grids"]
 
   MiniTest.expect.equality(#calls, 2)
   MiniTest.expect.equality(#closed, 1)
+  release_buffer(buf)
+end
+
+T["images"]["passes the configured size caps to snacks.image.placement"] = function()
+  local calls = stub_snacks()
+  jove.config.output.image_max_width = 120
+  jove.config.output.image_max_height = 10
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+
+  MiniTest.expect.equality(#calls, 1)
+  MiniTest.expect.equality(calls[1].opts.max_width, 120)
+  MiniTest.expect.equality(calls[1].opts.max_height, 10)
+  release_buffer(buf)
+end
+
+T["images"]["omits the size caps from placement opts when unset"] = function()
+  local calls = stub_snacks()
+  jove.config.output.image_max_width = nil
+  jove.config.output.image_max_height = nil
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+
+  MiniTest.expect.equality(#calls, 1)
+  MiniTest.expect.equality(calls[1].opts.max_width, nil)
+  MiniTest.expect.equality(calls[1].opts.max_height, nil)
   release_buffer(buf)
 end
 

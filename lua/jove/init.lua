@@ -14,7 +14,11 @@ local M = {}
 ---@field cell_motions boolean           Map [c / ]c cell motions on jove buffers.
 ---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.
 ---@field output table                   Output rendering options:
----  | { max_lines, max_bytes, images, header, guide, inside_border, hl }.
+---  | { max_lines, max_bytes, images, image_max_width, image_max_height,
+---  | header, guide, inside_border, hl }.
+---  | image_max_width/image_max_height: cap rendered image size in terminal
+---  | cells (number|nil, nil disables); aspect ratio is preserved and images
+---  | smaller than the cap keep their natural size.
 ---  | max_bytes: per-cell payload cap in bytes (default 1 MiB); streamed
 ---  | tails beyond it are dropped and a truncation marker is shown/persisted.
 ---  | header: draw the Output block's `┌─ Out[n] ─┐` top frame below each
@@ -55,6 +59,8 @@ M.config = {
     max_lines = 50,
     max_bytes = 1048576, -- per-cell payload cap; tails beyond it are dropped with a marker
     images = true,
+    image_max_width = 80,
+    image_max_height = 40,
     header = true,
     guide = "▎ ",
     inside_border = false,
@@ -168,6 +174,8 @@ local function validate_config(cfg)
   vim.validate("output.max_lines", cfg.output.max_lines, "number")
   vim.validate("output.max_bytes", cfg.output.max_bytes, "number")
   vim.validate("output.images", cfg.output.images, "boolean")
+  vim.validate("output.image_max_width", cfg.output.image_max_width, "number", true)
+  vim.validate("output.image_max_height", cfg.output.image_max_height, "number", true)
   vim.validate("output.header", cfg.output.header, "boolean")
   vim.validate("output.guide", cfg.output.guide, is_keymap_lhs) -- string-or-false
   vim.validate("output.inside_border", cfg.output.inside_border, "boolean")

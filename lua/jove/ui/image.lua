@@ -119,10 +119,17 @@ local function place(buf, row, path)
   if type(placement) ~= "table" or type(placement.new) ~= "function" then
     return nil
   end
-  local ok2, handle = pcall(placement.new, buf, path, {
-    pos = { row, 0 },
-    inline = true,
-  })
+  local cfg = require("jove").config
+  local opts = { pos = { row, 0 }, inline = true }
+  -- Without max_width/max_height snacks fits the image into the whole window,
+  -- which balloons small-DPI outputs to full screen; cap the box in cells.
+  if cfg.output and type(cfg.output.image_max_width) == "number" then
+    opts.max_width = cfg.output.image_max_width
+  end
+  if cfg.output and type(cfg.output.image_max_height) == "number" then
+    opts.max_height = cfg.output.image_max_height
+  end
+  local ok2, handle = pcall(placement.new, buf, path, opts)
   if ok2 then
     return handle
   end
