@@ -46,6 +46,9 @@ Notes:
 
 ## Layout and architecture
 
+- CI (`.github/workflows/ci.yml`) runs stylua, selene, the mini.test suite on
+  Neovim v0.11.4 + stable (Linux/macOS), ruff check/format, and bridge pytest
+  on Python 3.10 + 3.13. Lowest supported targets: Neovim 0.11, Python 3.10.
 - `plugin/jove.lua` - startup entry: registers `BufReadCmd`/`BufWriteCmd`/
   `FileChangedShell` on `*.ipynb` and all `:Jove*` commands. Config lives in
   `lua/jove/init.lua` (`require("jove").setup`), NOT here.
