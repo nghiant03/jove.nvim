@@ -96,15 +96,12 @@ T["ordering"]["text/plain bundled with an image becomes the image's fallback"] =
     mime = { ["image/png"] = "iVBORw0KGgo=", ["text/plain"] = "<Figure size 100x100>" },
   })
   MiniTest.expect.equality(#chunks, 1)
-  MiniTest.expect.equality(
-    chunks[1],
-    {
-      kind = "image",
-      mime = "image/png",
-      data = "iVBORw0KGgo=",
-      fallback = "<Figure size 100x100>",
-    }
-  )
+  MiniTest.expect.equality(chunks[1], {
+    kind = "image",
+    mime = "image/png",
+    data = "iVBORw0KGgo=",
+    fallback = "<Figure size 100x100>",
+  })
 end
 
 T["ordering"]["text/plain without an image stays a standalone chunk"] = function()
