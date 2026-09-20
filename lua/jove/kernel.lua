@@ -1,14 +1,9 @@
--- kernel.lua: per-buffer kernel lifecycle over the Python stdio bridge.
--- One bridge process per buffer (one kernel per bridge).
--- Resolution order for the kernelspec: notebook metadata -> active
--- conda/venv name -> vim.ui.select picker.
+-- Kernel lifecycle over the Python stdio bridge.
 local state = require("jove.state")
 local bridge_mod = require("jove.bridge")
 
 local M = {}
 
--- Buffer-local BufWipeout cleanup hooks live in their own augroup so a
--- replaced kernel can clear its predecessor's hook without touching others.
 local wipe_group = vim.api.nvim_create_augroup("jove_kernel_wipeout", { clear = false })
 
 ---@param buf integer
@@ -26,7 +21,6 @@ local function describe_err(err)
   return tostring(err)
 end
 
----Report bridge or dependency failures with setup instructions.
 ---@param err any
 local function notify_bridge_unavailable(err)
   vim.notify(
@@ -44,7 +38,6 @@ local function notify_no_kernel()
   vim.notify("[jove] No kernel running", vim.log.levels.INFO)
 end
 
----Return the kernelspec.name from the buffer's cached JSON, if any.
 ---@param buf integer
 ---@return string?
 local function kernelspec_name(buf)
@@ -60,7 +53,6 @@ local function kernelspec_name(buf)
   return nil
 end
 
----Best-effort guess of the active python environment name.
 ---@return string?
 local function active_env_name()
   local conda = vim.env.CONDA_DEFAULT_ENV
@@ -74,7 +66,6 @@ local function active_env_name()
   return nil
 end
 
----Sorted kernelspec names for the picker.
 ---@param specs table<string, {display_name: string?, language: string?}>
 ---@return string[]
 local function spec_names(specs)
@@ -86,8 +77,6 @@ local function spec_names(specs)
   return names
 end
 
----Pick a kernelspec: metadata -> env -> picker (metadata/env skipped when
----`force` is set, i.e. the user explicitly asked to choose).
 ---@param specs table<string, {display_name: string?, language: string?}>
 ---@param metadata_name string?
 ---@param force boolean
@@ -109,8 +98,6 @@ local function resolve_kernelspec(specs, metadata_name, force, cb)
     cb(nil)
     return
   end
-  -- A modal picker can't be shown without a UI (headless nvim, batch runs);
-  -- blocking on it there would hang the process — treat as canceled instead.
   if #vim.api.nvim_list_uis() == 0 then
     cb(nil)
     return
@@ -126,27 +113,18 @@ local function resolve_kernelspec(specs, metadata_name, force, cb)
   end)
 end
 
----Start a kernel on `entry.bridge` and drive `entry.status` from events.
 ---@param buf integer
 ---@param entry {bridge: jove.bridge, name: string?, language: string?, status: string}
 ---@param name string
 ---@param spec table?  -- kernelspec (carries `language`)
 local function start_kernel(buf, entry, name, spec)
   entry.name = name
-  -- Lowercased kernelspec language (e.g. "python"), consumed by the UI
-  -- inspector; preserved across restarts when no fresh spec is known.
   if spec and type(spec.language) == "string" and spec.language ~= "" then
     entry.language = spec.language:lower()
   end
   entry.status = "starting"
-  -- Kernel process spawn can be slow on cold caches; give it more than the
-  -- default request timeout.
   entry.bridge:request("start_kernel", { kernelspec = name }, function(_, err)
     if err then
-      -- Dispose the whole handle, not just the name: with a retained dead
-      -- entry, init() would no-op ("kernel handle exists") and shutdown()
-      -- would report "No kernel running" without cleaning up — leaving no
-      -- way to recover short of replacing the kernel or wiping the buffer.
       entry.name = nil
       entry.status = "dead"
       local st = state.peek(buf)
@@ -159,15 +137,9 @@ local function start_kernel(buf, entry, name, spec)
         vim.log.levels.ERROR
       )
     end
-    -- On success, kernel_status events drive entry.status from here on.
   end, { timeout_ms = 30000 })
 end
 
----Register a buffer-local BufWipeout hook that tears the kernel+bridge down
----when the buffer goes away (state.lua cannot do this: kernel requires state,
----so state must not require kernel). Buffer-local autocmds die with the
----buffer, and the predecessor's hook is cleared when a kernel is replaced,
----making this idempotent per buffer.
 ---@param buf integer
 ---@param entry {bridge: jove.bridge, name: string?, language: string?, status: string}
 local function attach_wipeout(buf, entry)
@@ -176,20 +148,15 @@ local function attach_wipeout(buf, entry)
     group = wipe_group,
     buffer = buf,
     callback = function(ev)
-      -- Drop the state slot first so late callbacks see a detached entry.
       local st = state.peek(ev.buf)
       if st and st.kernel == entry then
         st.kernel = nil
       end
-      -- stop() sends `shutdown` (short grace) and falls back to jobstop,
-      -- which kills the kernel with the bridge.
       entry.bridge:stop()
     end,
   })
 end
 
----Initialize (bridge + kernel) for a buffer. No-op when a kernel handle
----already exists. `opts.force` shows the picker even if metadata/env match.
 ---@param buf integer
 ---@param opts {force: boolean?}?
 function M.init(buf, opts)
@@ -202,8 +169,6 @@ function M.init(buf, opts)
 
   local b = bridge_mod.new({ bridge_python = require("jove").config.bridge_python })
   local entry = { bridge = b, name = nil, language = nil, status = "starting", _last_name = nil }
-  -- Reserve the slot up front so concurrent init() calls can't double-start;
-  -- cleaned up on every failure path below.
   st.kernel = entry
   attach_wipeout(buf, entry)
 
@@ -213,9 +178,6 @@ function M.init(buf, opts)
     end
   end)
 
-  -- Bridge death: the kernel dies with it (one kernel per bridge). Clear the
-  -- name so available() reports false and init() can be called again; keep
-  -- the last kernelspec for a single bounded recovery attempt on respawn.
   b:on("dead", function()
     local was_running = entry.name
     entry.status = "dead"
@@ -231,8 +193,6 @@ function M.init(buf, opts)
     end
   end)
 
-  -- Bridge respawned and is ready again: restart the previous kernelspec
-  -- (single attempt; start_kernel failure marks the entry dead + notifies).
   b:on("ready", function()
     if st.kernel ~= entry or entry.name or not entry._last_name then
       return
@@ -251,12 +211,11 @@ function M.init(buf, opts)
     if not ok then
       st.kernel = nil
     end
-    -- Spawn failures were already notified by bridge.lua; nothing to queue.
   end)
 
   b:request("list_kernelspecs", {}, function(result, err)
     if st.kernel ~= entry then
-      return -- buffer wiped or kernel replaced meanwhile
+      return
     end
     if not result or type(result.kernelspecs) ~= "table" then
       cleanup()
@@ -268,7 +227,6 @@ function M.init(buf, opts)
         return
       end
       if not name then
-        -- Picker canceled / no kernelspecs: drop the idle bridge.
         cleanup()
         return
       end
@@ -277,7 +235,6 @@ function M.init(buf, opts)
   end)
 end
 
----True when the buffer has a started kernel on a live bridge.
 ---@param buf integer
 ---@return boolean
 function M.available(buf)
@@ -310,8 +267,6 @@ function M.restart(buf)
     return
   end
   k.status = "restarting"
-  -- Restart must outlast the sidecar's kernel-readiness probe (same as
-  -- start_kernel's 30s) or it times out before the kernel is up.
   k.bridge:request("restart", {}, function(_, err)
     if err then
       vim.notify("[jove] restart failed: " .. describe_err(err), vim.log.levels.ERROR)
@@ -319,9 +274,6 @@ function M.restart(buf)
   end, { timeout_ms = 30000 })
 end
 
----Shut the kernel down and drop the handle. Bridge-side shutdown implies
----process exit, but the bridge is stopped explicitly too, so a
----missing/failed reply or a half-initialized entry can never leak a process.
 ---@param buf integer
 ---@param cb fun(err: string?)?
 function M.shutdown(buf, cb)
@@ -337,17 +289,10 @@ function M.shutdown(buf, cb)
     end
     return
   end
-  -- Dispose the slot unconditionally: entries without a running kernel
-  -- (failed start, bridge dead) must still release their bridge so init()
-  -- can recover and :JoveShutdownKernel stays the universal escape hatch.
   st.kernel = nil
-  -- Shutdown also cancels any pending auto-restart (bridge-dead window):
-  -- the user asked for the kernel to be gone.
   k._last_name = nil
   if k.name and k.bridge:is_alive() then
     k.bridge:request("shutdown", {}, function(_, err)
-      -- Belt and braces: the bridge should exit 0 by itself after replying;
-      -- stop() covers a wedged or already-dead process too.
       k.bridge:stop()
       if cb then
         cb(err and describe_err(err) or nil)
@@ -364,8 +309,6 @@ function M.shutdown(buf, cb)
   end
 end
 
----Force the kernel picker, replacing any existing kernel (old one is shut
----down first).
 ---@param buf integer
 function M.select(buf)
   buf = norm_buf(buf)

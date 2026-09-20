@@ -1,11 +1,10 @@
--- Cell navigation and execution mappings for notebook buffers.
+-- Cell navigation and execution mappings.
 local cell = require("jove.cell")
 local execute = require("jove.execute")
 local state = require("jove.state")
 
 local M = {}
 
----Jump to the next/previous cell header from the cursor.
 ---@param dir 1|-1
 local function jump(dir)
   local buf = vim.api.nvim_get_current_buf()
@@ -49,9 +48,6 @@ function M.run_cell_and_advance()
   execute.run_cell_and_advance(vim.api.nvim_get_current_buf())
 end
 
----Apply user-configured keymaps. Called from setup().
----Idempotent: the augroup is created with clear=true so repeated setup() calls
----replace the previous autocmds instead of stacking duplicates.
 ---@param keymap table<string, string|false>
 function M.apply(keymap)
   if not keymap then

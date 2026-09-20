@@ -1,6 +1,3 @@
--- jove.nvim: native .ipynb editing via jupytext + a first-party kernel bridge.
--- Registers notebook autocmds and commands; configuration lives in lua/jove/init.lua.
-
 if vim.g.loaded_jove == 1 then
   return
 end
@@ -11,7 +8,6 @@ if vim.fn.has("nvim-0.11") ~= 1 then
   return
 end
 
--- Refuse to load alongside jupytext.nvim to avoid duplicate BufReadCmd.
 if vim.g.loaded_jupytext == 1 or package.loaded["jupytext"] then
   vim.notify(
     "[jove] jupytext.nvim detected; jove.nvim will not register handlers. "
@@ -43,9 +39,6 @@ vim.api.nvim_create_autocmd({ "FileChangedShell" }, {
   group = group,
   pattern = { "*.ipynb" },
   callback = function(ev)
-    -- true: the change is our own last write -> suppress silently.
-    -- false: config.auto_reload is on and a reload was scheduled -> nothing
-    -- else to do (v:fcs_choice stays empty, so the default handler no-ops).
     if require("jove.buffer").changed_shell(ev.buf, ev.match) ~= nil then
       return
     end

@@ -12,7 +12,6 @@ local function norm_buf(buf)
   return buf
 end
 
----Basename when `path` is absolute, otherwise the path unchanged.
 ---@param path string
 ---@return string
 local function short_path(path)
@@ -22,8 +21,6 @@ local function short_path(path)
   return path
 end
 
----Statusline component: "⚡ python3 · busy" while a kernel runs, "" when none.
----Busy covers busy/starting/restarting; idle/idle-ish statuses show idle.
 ---@param buf integer?
 ---@return string
 function M.status(buf)
@@ -37,7 +34,6 @@ function M.status(buf)
   return ("⚡ %s · %s"):format(k.name, busy and "busy" or "idle")
 end
 
----Kernel name, status, and queue length for the info float.
 ---@param buf integer?
 ---@return {kernel: string?, status: string?, queue_len: integer}
 function M.info(buf)
@@ -58,7 +54,6 @@ end
 ---@field status string?
 ---@field alive boolean
 
----Every buffer carrying a kernel slot, sorted by path for a stable listing.
 ---@return jove.ui.RunningKernel[]
 function M.running_kernels()
   local out = {}
@@ -90,10 +85,6 @@ end
 ---@field display_name string
 ---@field language string?
 
----Fetch installed kernelspecs. Reuses a live kernel bridge when one exists
----(current buffer first, then any buffer), otherwise starts a temporary
----bridge that is always stopped. `cb(specs, err)` receives a name-sorted
----array or `(nil, err_string)`.
 ---@param cb fun(specs: jove.ui.Kernelspec[]?, err: string?)
 function M.installed_kernelspecs(cb)
   local bridge_mod = require("jove.bridge")
@@ -153,10 +144,6 @@ function M.installed_kernelspecs(cb)
     temp:stop()
   end
 
-  -- Use the start callback only to surface spawn failure. On success the
-  -- callback would be a no-op, but the bridge still emits `cb(true)` via
-  -- vim.schedule — so requesting inside it would race the synchronous `ready`
-  -- event and the request would land after `_queue` was already flushed.
   temp:start(function(ok, err)
     if not ok then
       cb(nil, tostring(err))
@@ -233,10 +220,6 @@ local function build_lines(buf, specs, err)
   return lines
 end
 
----Build (but do not open) a three-section float: the current session, every
----running kernel, and the installed kernelspecs (fetched asynchronously via
----the bridge). The caller opens it with `nvim_open_win(fbuf, true, opts)`;
----`q`/`<Esc>` close. Centered, ~80% of the editor width, sized to content.
 ---@param buf integer?
 ---@return {buf: integer, lines: string[], opts: table}
 function M.info_float(buf)
@@ -261,9 +244,6 @@ function M.info_float(buf)
   }
 
   M.installed_kernelspecs(function(specs, err)
-    -- Both buffers must still exist: the float (already guarded) and the
-    -- source notebook. Wiping the notebook mid-flight leaves its registration
-    -- in `state`, but `nvim_buf_get_name(buf)` would raise Invalid buffer id.
     if not vim.api.nvim_buf_is_valid(fbuf) or not vim.api.nvim_buf_is_valid(buf) then
       return
     end
@@ -278,7 +258,6 @@ function M.info_float(buf)
   return { buf = fbuf, lines = lines, opts = opts }
 end
 
----Open the kernel info float (see `info_float`) with `q`/`<Esc>` closing it.
 ---@param buf integer?
 ---@return integer win
 function M.show_info(buf)

@@ -1,24 +1,18 @@
--- JSON-lines client for `python -m jove_bridge`.
--- Each handle owns one bridge process and kernel; kernel.lua creates one per buffer.
+-- JSON-lines client jove_bridge python package.
 local M = {}
 
--- Indirection over the vim.fn job APIs so tests can inject fakes.
 local impl = {
   jobstart = vim.fn.jobstart,
-  jobsend = vim.fn.jobsend,
+  jobsend = vim.fn.chansend,
   jobstop = vim.fn.jobstop,
 }
 
-M._impl = impl -- test seam; do not use outside tests
+M._impl = impl
 
--- Module-level trace flag; a per-handle `trace` opt ORs with this.
 M.trace = false
 
--- Auto-respawn tuning (module-level so tests can shorten the delays).
 M.respawn_backoff_ms = { 1000, 2000, 4000 }
 
--- How long a spawned bridge may take to announce `ready` before it is
--- considered wedged and killed (module-level so tests can shorten it).
 M.ready_timeout_ms = 20000
 
 local DEFAULT_TIMEOUT_MS = 15000
@@ -32,16 +26,13 @@ local function cancel_timer(timer)
   end
 end
 
----Directory of the plugin root (contains lua/ and python/).
 ---@return string
 local function plugin_root()
   local src = debug.getinfo(1, "S").source:sub(2)
   return vim.fn.fnamemodify(src, ":h:h:h")
 end
 
----Resolve the interpreter used to run the bridge: an active conda prefix or
----virtualenv wins, then the configured value (default "python3").
----@param cfg_value string?  Value of the `bridge_python` config key.
+---@param cfg_value string?
 ---@return string
 function M.resolve_python(cfg_value)
   local candidates = {}
@@ -80,8 +71,6 @@ M.Bridge = Bridge
 ---@return jove.bridge
 function M.new(opts)
   opts = opts or {}
-  -- Store timeout_ms raw: `false` must stay `false` (disable), nil falls back
-  -- to the module default at request time.
   local self = setmetatable({}, Bridge)
   self._opts = {
     bridge_python = opts.bridge_python,
@@ -89,9 +78,9 @@ function M.new(opts)
     trace = opts.trace,
     respawn = opts.respawn,
   }
-  self._handlers = {} -- event -> handler[]
-  self._pending = {} -- request id -> {cb, timer}
-  self._queue = {} -- requests captured before `ready`
+  self._handlers = {}
+  self._pending = {} 
+  self._queue = {}
   self._next_id = 1
   self._ready = false
   self._job = nil
@@ -108,9 +97,6 @@ function M.new(opts)
   return self
 end
 
----Spawn the bridge process. `cb(ok, err)` fires once per start() call on
----spawn success or failure (not on readiness — requests queue until the
----bridge announces `ready`).
 ---@param cb fun(ok: boolean, err: string?)?
 ---@return jove.bridge self
 function Bridge:start(cb)
@@ -169,13 +155,9 @@ function Bridge:_spawn()
     return
   end
   self._job = jobid
-  self._next_id = 1 -- ids are unique per bridge process
+  self._next_id = 1
   self._ready = false
   self._rbuf = ""
-  -- Readiness deadline: a process that never announces `ready` (wedged
-  -- interpreter, blocked import) must not leave queued requests waiting
-  -- forever. Killing the job routes through _on_exit, which fails pending
-  -- and queued requests and applies the bounded respawn policy.
   self._ready_timer = vim.defer_fn(function()
     self._ready_timer = nil
     if self._ready or not self._job then
@@ -201,13 +183,6 @@ function Bridge:_spawn()
   end
 end
 
----Send a request. Before the bridge announces `ready`, requests are queued
----and flushed in order; the readiness deadline (M.ready_timeout_ms) bounds
----how long they can sit there. With no process running and no respawn
----pending the request fails immediately instead of queueing forever.
----`cb(result, err)` receives the decoded `result` (nil on error/timeout)
----and the decoded `error` table or a string reason ("timeout after Nms",
----"bridge exited (code N)", ...).
 ---@param method string
 ---@param params table?
 ---@param cb fun(result: table?, err: any)?
@@ -223,9 +198,6 @@ function Bridge:request(method, params, cb, opts)
   if self._ready then
     self:_send(req)
   elseif self._started and self._job == nil and self._respawn_timer == nil then
-    -- Started but no process and none on the way: queueing would wait
-    -- forever. (Requests made before the first start() keep the legacy
-    -- queueing behavior.)
     if cb then
       vim.schedule(function()
         cb(nil, "bridge not running")
@@ -242,8 +214,6 @@ end
 function Bridge:_send(req)
   local id = self._next_id
   self._next_id = id + 1
-  -- The bridge replies to `shutdown`, then exits 0 by itself.
-  -- Remember that so its exit isn't mistaken for a crash (and respawns).
   if req.method == "shutdown" then
     self._shutdown_sent = true
   end
@@ -252,7 +222,7 @@ function Bridge:_send(req)
     entry.timer = vim.defer_fn(function()
       entry.timer = nil
       if self._pending[id] ~= entry then
-        return -- already answered
+        return
       end
       self._pending[id] = nil
       self:_trace(("timeout after %dms: %s"):format(req.timeout_ms, req.method))
@@ -264,9 +234,6 @@ function Bridge:_send(req)
     end, req.timeout_ms)
   end
   self._pending[id] = entry
-  -- vim.json.encode({}) == "[]" (Lua can't tell an empty object from an
-  -- array), and the sidecar rejects non-object params; omit empty params —
-  -- the sidecar defaults them to {}.
   local payload = { id = id, method = req.method }
   if next(req.params) ~= nil then
     payload.params = req.params
@@ -275,7 +242,6 @@ function Bridge:_send(req)
   self:_trace("> " .. line)
   local ok, err = pcall(impl.jobsend, self._job, line .. "\n")
   if not ok then
-    -- Stdin closed (process died mid-flight): fail immediately.
     if entry.timer then
       cancel_timer(entry.timer)
     end
@@ -288,8 +254,6 @@ function Bridge:_send(req)
   end
 end
 
----Subscribe to an event (`ready`, `kernel_status`, `output`, `dead`, ...).
----Returns an unsubscribe function.
 ---@param event string
 ---@param handler fun(params: table?)
 ---@return fun()
@@ -310,32 +274,25 @@ function Bridge:on(event, handler)
   end
 end
 
----True once the bridge announced `ready` and its job is still running.
 ---@return boolean
 function Bridge:is_ready()
   return self._ready and self._job ~= nil
 end
 
----True while the job exists (including during respawn backoff gaps this is
----false — callers treat a dead bridge as "kernel gone").
 ---@return boolean
 function Bridge:is_alive()
   return self._job ~= nil
 end
 
----Raw stderr text accumulated from the bridge process (debugging aid).
 ---@return string
 function Bridge:stderr()
   return self._stderr
 end
 
----Stop the bridge: send `shutdown` (short grace, best effort), then kill the
----job. Suppresses auto-respawn. `cb` fires once the job has exited.
 ---@param cb fun()?
 ---@return jove.bridge self
 function Bridge:stop(cb)
   self._stopping = true
-  -- Cancel any pending respawn and readiness deadline: stop is terminal.
   if self._respawn_timer then
     cancel_timer(self._respawn_timer)
     self._respawn_timer = nil
@@ -345,7 +302,6 @@ function Bridge:stop(cb)
     self._ready_timer = nil
   end
   if not self._job then
-    -- No process to reap: queued requests would otherwise wait forever.
     self:_fail_pending("bridge stopped")
     if cb then
       vim.schedule(cb)
@@ -368,18 +324,14 @@ function Bridge:stop(cb)
   return self
 end
 
----Convenience: create a handle and start it in one call.
 ---@param cb fun(ok: boolean, err: string?)?
 ---@return jove.bridge
 function M.start(cb)
   return M.new():start(cb)
 end
 
--- Timeout for the (silent, best-effort) variable snapshot request.
 local VARIABLES_TIMEOUT_MS = 5000
 
----Resolve the running kernel's language for `buf`, if it can be determined.
----Fall back to notebook metadata before the running kernel's language is known.
 ---@param buf integer
 ---@return string?
 local function language_of(buf)
@@ -397,10 +349,6 @@ local function language_of(buf)
   return nil
 end
 
----Run the variable-inspector probe for `buf` and hand the parsed result to
----`cb`. The result is `{ variables = <array>, unsupported = <language>? }`;
----on any failure it is `{ variables = {} }` (never nil) after a WARN notify.
----Not a method: it looks up the buffer's kernel handle itself.
 ---@param buf integer  Buffer handle (0 = current).
 ---@param cb fun(result: {variables: table[]?, unsupported: string?})?
 function M.variables(buf, cb)
@@ -442,9 +390,6 @@ end
 
 ---@private
 function Bridge:_on_stdout(_, data)
-  -- nvim splits stdout on "\n": all but the last element are complete lines,
-  -- the last is the partial remainder. Concatenating with "\n" reconstructs
-  -- the exact byte stream (trailing "\n" yields a trailing "" element).
   self._rbuf = self._rbuf .. table.concat(data, "\n")
   while true do
     local nl = self._rbuf:find("\n", 1, true)
@@ -473,7 +418,7 @@ function Bridge:_handle_line(line)
   if type(msg.event) == "string" then
     if msg.event == "ready" then
       self._ready = true
-      self._respawn_attempts = 0 -- survived long enough to announce itself
+      self._respawn_attempts = 0
       if self._ready_timer then
         cancel_timer(self._ready_timer)
         self._ready_timer = nil
@@ -541,7 +486,6 @@ function Bridge:_flush_queue()
   end
 end
 
----Fail every pending and queued request (bridge death / stop).
 ---@private
 ---@param reason string
 function Bridge:_fail_pending(reason)
@@ -571,17 +515,12 @@ end
 
 ---@private
 function Bridge:_on_stderr(_, data)
-  -- Same line-split shape as stdout: reconstruct the exact byte stream.
-  -- Healthy kernels write startup warnings here (e.g. ipykernel >= 7 "without
-  -- encryption"), so stderr is NOT a failure signal: keep it accumulated for
-  -- :checkhealth and only surface it in failure messages (see _stderr_tail).
   self._stderr = self._stderr .. table.concat(data, "\n")
   if #self._stderr > 65536 then
     self._stderr = self._stderr:sub(-65536)
   end
 end
 
----Last ~5 lines of accumulated stderr, single-line, for failure messages.
 ---@private
 ---@return string  -- "" when there is no stderr to show
 function Bridge:_stderr_tail()
@@ -635,8 +574,6 @@ function Bridge:_on_exit(_, code)
     local delay = M.respawn_backoff_ms[attempts + 1] or M.respawn_backoff_ms[#M.respawn_backoff_ms]
     self._respawn_attempts = attempts + 1
     self:_trace(("unexpected exit (code %d); respawn in %dms"):format(code, delay))
-    -- Tracked so request() can tell "respawn coming" from "nothing running":
-    -- requests arriving during the backoff gap queue for the next process.
     self._respawn_timer = vim.defer_fn(function()
       self._respawn_timer = nil
       if self._job or self._stopping or self._shutdown_sent then
@@ -647,7 +584,6 @@ function Bridge:_on_exit(_, code)
   end)
 end
 
----Log wire traffic when tracing is enabled on the module or handle.
 ---@private
 ---@param msg string
 function Bridge:_trace(msg)

@@ -1,14 +1,5 @@
-"""Session logic: shell-channel requests, iopub collection, event routing.
+"""Session logic.."""
 
-One worker thread (see :meth:`BridgeSession.poll_forever`) polls the iopub and
-shell channels and routes messages:
-
-- iopub ``stream`` / ``display_data`` / ``execute_result`` / ``error`` become
-  ``output`` events tagged with the opaque ``cell`` key of the originating
-  ``execute`` request, in iopub arrival order.
-- iopub ``status`` becomes ``kernel_status`` events (starting/busy/idle).
-- shell ``execute_reply`` completes the deferred ``execute`` response.
-"""
 
 from __future__ import annotations
 
@@ -21,8 +12,6 @@ from typing import Any, Callable, Optional
 
 from .kernel import KernelController, KernelError
 
-# Isolate repr/len failures so one object cannot discard the variable listing.
-# Underscore-prefixed helpers are hidden from the listing.
 _VARIABLES_HELPERS = (
     "def _jv_repr(v):\n"
     "    try:\n"
@@ -36,8 +25,6 @@ _VARIABLES_HELPERS = (
     "        return None\n"
 )
 
-# Evaluated via user_expressions in the kernel's user namespace. Use builtins
-# and explicit imports so inspection does not depend on the user's imports.
 VARIABLES_EXPR = (
     "exec(" + repr(_VARIABLES_HELPERS) + ", globals()) or __import__('json').dumps(["
     "{'name': _jv_n, 'type': type(_jv_v).__name__, "
@@ -48,12 +35,8 @@ VARIABLES_EXPR = (
     "])"
 )
 
-# Sentinel returned by dispatch() when the response will be sent later by the
-# poll thread (e.g. execute waits for the shell-channel execute_reply).
 DEFERRED = object()
 
-# ZMQ does not order messages across sockets. Retain cell routing for this
-# many seconds after a shell reply so late iopub outputs can still be delivered.
 LATE_IOPUB_GRACE = 10.0
 
 
@@ -66,7 +49,7 @@ class _Pending:
         self, kind: str, reply_id: Optional[int], cell: Optional[str] = None
     ) -> None:
         self.kind = kind
-        self.reply_id = reply_id  # None for internal probes
+        self.reply_id = reply_id
         self.cell = cell
 
 
@@ -74,32 +57,16 @@ class BridgeSession:
     """Bridges protocol requests onto one Jupyter kernel."""
 
     def __init__(self, conn: Any) -> None:
-        # ``conn`` is a thread-safe object with send_result/send_error/
-        # send_event (see jove_bridge.__main__.Connection).
         self.conn = conn
         self.kernel = KernelController()
-        # msg_id -> _Pending, shared between the main thread (insert) and the
-        # poll thread (pop); guard mutations with the lock.
         self.pending: dict = {}
-        # msg_id -> (cell, expiry): answered executes whose late iopub
-        # messages (delivered after the shell reply) are still tagged to
-        # their cell; see LATE_IOPUB_GRACE.
         self._recent: dict = {}
         self._lock = threading.Lock()
-        # libzmq sockets are not thread-safe and jupyter_client's
-        # ZMQSocketChannel has no locking of its own: serialize every
-        # shell-channel send (main thread) and recv (poll thread).
         self._shell_lock = threading.Lock()
         self._stop = threading.Event()
         self._restarting = False
         self._shutting_down = False
-        # Set once the kernel_info readiness roundtrip completes (or times
-        # out); early iopub status messages are racy (ZMQ PUB drops messages
-        # published before our subscription registers kernel-side), so the
-        # initial idle status is synthesized from the shell roundtrip instead.
         self._ready = threading.Event()
-        # Set once the kernel confirmed our iopub subscription (iopub_welcome,
-        # ipykernel >= 7): from this point iopub delivery is dependable.
         self._iopub_live = threading.Event()
 
     def dispatch(self, method: str, params: Any, reply_id: int) -> Any:
@@ -117,7 +84,6 @@ class BridgeSession:
         if method == "restart":
             return self.restart()
         if method == "shutdown":
-            # Reply immediately; __main__ stops the kernel after responding.
             self._shutting_down = True
             return {}
         if method == "execute":
@@ -152,18 +118,11 @@ class BridgeSession:
             )
 
     def start_kernel(self, kernelspec: str) -> dict:
-        # Validate first so an invalid spec leaves the running kernel and requests intact.
         self.kernel.require_kernelspec(kernelspec)
-        # The existing kernel is being replaced; its in-flight requests will
-        # never come back on the new kernel, so fail them now.
         self._fail_pending("kernel_not_running", "kernel was replaced")
         self.kernel.start(kernelspec)
         self.conn.send_event("kernel_status", {"status": "starting"})
-        # Wait for kernel readiness (kernel_info roundtrip + iopub welcome)
-        # before replying, then announce idle; see _probe_ready for why the
-        # initial idle must not rely on early iopub status messages.
         if not self._probe_ready():
-            # Keep the bridge's state consistent with the error: no kernel.
             self.kernel.shutdown()
             raise KernelError(
                 "kernel_start_failed",
@@ -191,13 +150,7 @@ class BridgeSession:
         )
 
     def variables(self, reply_id: int) -> Any:
-        """Snapshot user-namespace variables (python kernels only).
-
-        Runs an empty (non-history) execute carrying a user_expression that
-        returns a JSON list; the reply is parsed in
-        :meth:`_finish_variables`. Non-python kernels short-circuit with an
-        ``unsupported`` marker rather than running Python-only code.
-        """
+        """Snapshot user-namespace variables."""
         language = self._kernel_language()
         if language and language != "python":
             return {"variables": [], "unsupported": language}
@@ -206,8 +159,6 @@ class BridgeSession:
             reply_id,
             lambda client: client.execute(
                 "",
-                # ipykernel 7 drops user_expressions with silent=True. Empty code
-                # avoids output; store_history=False keeps the probe out of history.
                 silent=False,
                 store_history=False,
                 user_expressions={"__jove__": VARIABLES_EXPR},
@@ -243,9 +194,6 @@ class BridgeSession:
         if not isinstance(text, str):
             self.conn.send_result(pending.reply_id, empty)
             return
-        # IPython renders a str user_expression as its repr (quoted and
-        # escaped), so `text` is a Python string literal wrapping the JSON.
-        # Accept both the raw JSON and the repr-wrapped form.
         try:
             raw = json.loads(text)
         except Exception:
@@ -286,16 +234,7 @@ class BridgeSession:
         send: Callable[[Any], str],
         cell: Optional[str] = None,
     ) -> Any:
-        """Send a shell-channel request and register it atomically.
-
-        The pending insert and the kernel-liveness check share ``self._lock``
-        with the kernel-death path (``_check_alive`` nils the client *before*
-        ``_fail_pending`` clears the table), so a kernel dying during
-        submission can never yield two responses for ``reply_id``: either the
-        liveness check raises before anything is registered, or the pending
-        entry is visible to ``_fail_pending`` and the error comes from there
-        alone.
-        """
+        """Send a shell-channel request and register it atomically."""
         with self._lock:
             client = self.kernel.require_client()
             with self._shell_lock:
@@ -368,7 +307,6 @@ class BridgeSession:
         msg_type = msg.get("msg_type")
         content = msg.get("content") or {}
         if msg_type == "iopub_welcome":
-            # Kernel-side XPUB processed our subscription; iopub is live now.
             self._iopub_live.set()
             return
         if msg_type == "status":
@@ -408,9 +346,6 @@ class BridgeSession:
                 "kind": msg_type,
                 "mime": dict(content.get("data") or {}),
             }
-            # execute_result carries the cell's execution_count; display_data
-            # doesn't. Forwarded here so the Lua side can render `Out [n]`
-            # labels without a second iopub round-trip.
             if msg_type == "execute_result" and "execution_count" in content:
                 out["execution_count"] = content["execution_count"]
             self.conn.send_event("output", out)
@@ -447,8 +382,6 @@ class BridgeSession:
             pending = self.pending.pop(parent, None)
         if pending is None:
             return
-        # Keep the answered execute's msg_id resolvable for late iopub
-        # messages (see LATE_IOPUB_GRACE) before dropping the pending entry.
         if pending.kind == "execute" and pending.cell is not None:
             now = time.monotonic()
             with self._lock:
@@ -458,14 +391,11 @@ class BridgeSession:
                 ]:
                     del self._recent[msg_id]
         if pending.kind == "ready_probe":
-            # Kernel answered the readiness probe: it is up and our iopub
-            # subscription is registered — announce idle.
             self.conn.send_event("kernel_status", {"status": "idle"})
             self._ready.set()
             return
         msg_type = msg.get("msg_type")
         content = msg.get("content") or {}
-        # Variable probes return user_expressions rather than an execution status.
         if pending.kind == "variables":
             self._finish_variables(pending, msg_type, content)
             return
@@ -481,11 +411,6 @@ class BridgeSession:
                 evalue = content.get("evalue", "")
                 tb_lines = [str(line) for line in content.get("traceback") or []]
                 if status in ("abort", "aborted") and pending.cell is not None:
-                    # An interrupt with queued execute requests aborts them:
-                    # the reply carries no ename/evalue/traceback and *no*
-                    # iopub error message is published. An error result
-                    # implies an error-kind output event, so synthesize one
-                    # here.
                     self._emit_error_output(pending.cell, ename, evalue, tb_lines)
                 err_result = {
                     "status": "error",
@@ -524,24 +449,7 @@ class BridgeSession:
             self._fail_pending("kernel_not_running", "kernel died")
 
     def _probe_ready(self, timeout: float = 25.0) -> bool:
-        """Wait until the kernel is reachable and iopub is dependable.
-
-        Two signals, both best-effort with fallback timeouts so exotic
-        kernels without an ``iopub_welcome`` still work:
-
-        - the ``kernel_info`` reply on the shell channel (DEALER/ROUTER
-          queues it, so it is never dropped);
-        - ``iopub_welcome`` on iopub, sent by ipykernel >= 7 exactly when the
-          kernel's XPUB socket processes our subscription. Everything
-          published on iopub before that point may be dropped (classic PUB
-          semantics), which is why the bridge waits for it before answering
-          ``start_kernel``.
-
-        Returns False on timeout so callers can answer ``kernel_start_failed``
-        instead of reporting success with a stuck "starting" status. The
-        total wait is bounded by ``timeout`` (the two waits share a deadline)
-        so it stays inside the parent's request timeout.
-        """
+        """Wait until the kernel is reachable and iopub is dependable."""
         client = self.kernel.client
         if client is None:
             return False
@@ -557,10 +465,8 @@ class BridgeSession:
         with self._lock:
             self.pending[msg_id] = _Pending("ready_probe", None)
         deadline = time.monotonic() + timeout
-        # Welcome first: it must be processed by the kernel before any later
-        # iopub (including the probe's own busy/idle) is guaranteed through.
         if not self._iopub_live.wait(timeout):
-            self._iopub_live.set()  # no welcome support; proceed optimistically
+            self._iopub_live.set()  
         remaining = deadline - time.monotonic()
         if not self._ready.wait(max(remaining, 0.0)):
             with self._lock:
@@ -575,5 +481,5 @@ class BridgeSession:
             self.pending.clear()
         for pending in items:
             if pending.reply_id is None:
-                continue  # internal probe, no reply to fail
+                continue
             self.conn.send_error(pending.reply_id, code, message)

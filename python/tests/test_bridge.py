@@ -1,9 +1,4 @@
-"""Bridge protocol conformance tests.
-
-Launches ``python -m jove_bridge`` as a subprocess and speaks the JSON-lines
-protocol directly — no Neovim involved. Kernel tests exercise a real
-``python3`` ipykernel. Generous timeouts: kernel startup can take ~10s in CI.
-"""
+"""Bridge protocol conformance tests."""
 
 from __future__ import annotations
 
@@ -28,7 +23,7 @@ class BridgeProcess:
 
     def __init__(self) -> None:
         self.proc = subprocess.Popen(
-            [sys.executable, "-m", "jove_bridge"],
+           [sys.executable, "-m", "jove_bridge"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -222,7 +217,7 @@ def test_unknown_method(bridge):
 def test_invalid_params(bridge):
     msg = bridge.request("start_kernel", {})
     assert msg["error"]["code"] == "invalid_params"
-    msg = bridge.request("execute", {"code": "1"})  # missing cell
+    msg = bridge.request("execute", {"code": "1"})
     assert msg["error"]["code"] == "invalid_params"
 
 
@@ -317,10 +312,6 @@ def test_overlapping_executes(kernel):
     assert r1["result"].get("status") == "ok"
     assert r2["result"].get("status") == "ok"
 
-    # A cell's final iopub output can be emitted after its execute_reply
-    # (ZMQ gives no cross-socket ordering; the bridge re-tags late outputs to
-    # the originating cell). Wait for the stream events instead of
-    # snapshotting whatever has arrived right after the replies.
     ev1 = kernel.wait_event(
         "output",
         since=since,
@@ -336,16 +327,6 @@ def test_overlapping_executes(kernel):
 
 
 def _interruptable_sleep():
-    """Sleep code that provably enters the cell before sleeping.
-
-    ipykernel installs its SIGINT handler only around handler execution
-    (SIG_IGN otherwise, set at startup). Interrupting right after seeing the
-    "busy" status races the pre-handler window, and on loaded runners
-    (macOS CI) the SIGINT can be swallowed, letting the sleep run to
-    completion. The cell prints "started" from inside the handler, so waiting
-    for that output proves the kernel is executing user code and the
-    interrupt must land.
-    """
     return "print('started'); import time; time.sleep(30)"
 
 
@@ -373,13 +354,6 @@ def test_interrupt(kernel):
 
 
 def test_interrupt_with_queued_execute_error_implies_output(kernel):
-    """Interrupting with a queued execute: the queued request is aborted.
-
-    ipykernel answers the queued request with ``execute_reply
-    status="aborted"`` and publishes *no* iopub error for it. The contract
-    (an error result implies an error-kind output event) must still hold,
-    so the bridge synthesizes the missing output event.
-    """
     since = kernel.cursor()
     rid_sleep = kernel.send_request(
         "execute", {"code": _interruptable_sleep(), "cell": "sleep"}
@@ -397,12 +371,6 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
     quick_reply = kernel.wait_response(rid_quick, since=since, timeout=60)
     assert quick_reply["result"]["status"] == "error"
 
-    # Exactly one error-kind output per error result: the sleeper's arrives
-    # via iopub, the aborted request's is synthesized by the bridge. The
-    # sleeper's iopub error can be emitted after its execute_reply (no
-    # cross-socket ZMQ ordering), but it always precedes the idle status on
-    # the wire, and the bridge emits iopub events in wire order — so wait
-    # for idle before counting.
     kernel.wait_status("idle", since=since)
     outputs = kernel.outputs_since(since)
     for cell in ("sleep", "quick"):
@@ -428,7 +396,6 @@ def test_restart(bridge):
     assert "restarting" in statuses
     bridge.wait_status("idle", since=since)
 
-    # Fresh execution context: the pre-restart variable is gone.
     msg = bridge.request("execute", {"code": "print(jove_secret)", "cell": "s2"})
     result = msg["result"]
     assert result["status"] == "error"
@@ -450,13 +417,8 @@ def test_stdin_eof_exits_zero(bridge):
     assert rc == 0
 
 
-# Use in-process fakes to reproduce kernel death during request submission
-# deterministically; subprocess timing cannot reliably hit that window.
-
 
 class _FakeConn:
-    """Records everything the session would write to the wire."""
-
     def __init__(self):
         self.msgs = []
 
@@ -489,8 +451,6 @@ class _FakeClient:
 
 
 class _FakeKernel:
-    """Duck-typed KernelController (only what BridgeSession touches)."""
-
     def __init__(self):
         self.km = _FakeKM()
         self.client = _FakeClient(self)
@@ -505,14 +465,12 @@ class _FakeKernel:
 
 
 def test_single_response_when_kernel_dies_during_execute():
-    """Death mid-send: the pending entry is registered, so the death path
-    (_check_alive → mark_dead → _fail_pending) must be the ONLY responder."""
     conn = _FakeConn()
     session = BridgeSession(conn)
     session.kernel = _FakeKernel()  # type: ignore[assignment]
 
     assert session.execute("1+1", "cell-a", 42) is DEFERRED_SENTINEL
-    session._check_alive()  # drive the poll-thread death path
+    session._check_alive()
 
     responses = conn.responses(42)
     assert len(responses) == 1, conn.msgs
@@ -521,8 +479,6 @@ def test_single_response_when_kernel_dies_during_execute():
 
 
 def test_execute_on_dead_kernel_raises_without_double_response():
-    """Death before submit: the KernelError raise is the single response and
-    nothing is left registered for _fail_pending to answer again."""
     conn = _FakeConn()
     session = BridgeSession(conn)
     kernel = _FakeKernel()
@@ -537,10 +493,6 @@ def test_execute_on_dead_kernel_raises_without_double_response():
 
 
 def test_late_iopub_after_execute_reply_still_tagged():
-    """Regression (macOS CI): ZMQ has no cross-socket ordering, so a cell's
-    last iopub outputs can be delivered after the shell execute_reply was
-    processed. The pending entry is already popped at that point; the late
-    outputs must still be tagged to the originating cell, not dropped."""
     from jove_bridge.session import _Pending
 
     conn = _FakeConn()
@@ -548,7 +500,6 @@ def test_late_iopub_after_execute_reply_still_tagged():
     with session._lock:
         session.pending["m-late"] = _Pending("execute", 7, "c-late")
 
-    # Shell reply first: pops the pending entry and answers ok.
     session._handle_shell(
         {
             "parent_header": {"msg_id": "m-late"},
@@ -558,7 +509,6 @@ def test_late_iopub_after_execute_reply_still_tagged():
     )
     assert conn.responses(7) == [{"id": 7, "result": {"status": "ok"}}]
 
-    # Then the iopub stream arrives late — still tagged to "c-late".
     session._handle_iopub(
         {
             "parent_header": {"msg_id": "m-late"},
@@ -574,7 +524,6 @@ def test_late_iopub_after_execute_reply_still_tagged():
         for p in outputs
     ), conn.msgs
 
-    # Late error outputs are tagged too (interrupt traceback race).
     session._handle_iopub(
         {
             "parent_header": {"msg_id": "m-late"},
@@ -587,7 +536,6 @@ def test_late_iopub_after_execute_reply_still_tagged():
         conn.msgs
     )
 
-    # Unknown parents and expired grace entries are still dropped.
     session._handle_iopub(
         {
             "parent_header": {"msg_id": "never-sent"},
@@ -600,7 +548,6 @@ def test_late_iopub_after_execute_reply_still_tagged():
 
 
 def test_version_matches_pyproject() -> None:
-    """__version__ must track pyproject.toml so the `ready` event can't drift."""
     import re
     from pathlib import Path
 

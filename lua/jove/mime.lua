@@ -1,26 +1,11 @@
--- mime.lua: normalize an output event's mime bundle (`output` event params)
--- into an ordered, renderable chunk list for lua/jove/output.lua.
---
--- A chunk is a plain table:
---   { kind = "text",  mime = <str>, text = <str>, hl_group = <str>? }
---   { kind = "note",  mime = <str>, text = <str>, hl_group = <str>? }  (fallbacks)
---   { kind = "image", mime = <str>, data = <base64 str>, fallback = <str>? }
---
--- Ordering: text/plain first, then other text/* mimes, application/json, then
--- images (image/png, image/jpeg), then svg (text note), then everything else
--- as an "[unsupported mime <x>]" note.
+-- Normalize an output event's mime bundle.
+
 local M = {}
 
--- ANSI CSI sequence: ESC [ <params 0-?> <intermediates " "/".."/"> <final @-~>.
 local CSI = "\27%[[0-?]*[ -/]*[@-~]"
--- ANSI OSC sequences (e.g. window-title writes in tracebacks), terminated
--- either by BEL (\7) or by ST (ESC \).
 local OSC_ST = "\27%].-\27\\"
 local OSC_BEL = "\27%][^\7]*\7"
 
----Strip ANSI escape sequences (OSC incl. BEL/ST terminators, CSI, lone ESC,
----stray CR) from a string. Used for error tracebacks; plain streams are kept
----raw.
 ---@param s any
 ---@return any
 function M.strip_ansi(s)
@@ -30,8 +15,6 @@ function M.strip_ansi(s)
   return (s:gsub(OSC_ST, ""):gsub(OSC_BEL, ""):gsub(CSI, ""):gsub("\27", ""):gsub("\r", ""))
 end
 
----Naive text/html fallback: break on <br>, drop tags, decode a handful of
----entities. Good enough for a plain-text preview of simple HTML output.
 ---@param html string
 ---@return string
 local function html_to_text(html)
@@ -41,17 +24,11 @@ local function html_to_text(html)
   return (t:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
--- Extract tables separately so pandas style blocks do not appear as preview text.
-
----Collapse an HTML fragment to a single cell string: <br> -> space, drop
----tags, decode entities, squeeze whitespace.
 ---@param s string
 ---@return string
 local function html_cell_text(s)
   s = s:gsub("<[bB][rR]%s*/?>", " ")
   s = s:gsub("<[^>]*>", "")
-  -- Numeric references first, then named ones; &amp; last so "&amp;lt;"
-  -- decodes to "&lt;" rather than "<".
   s = s:gsub("&#[xX](%x+);", function(hex)
     return vim.fn.nr2char(tonumber(hex, 16))
   end)
@@ -69,8 +46,6 @@ local function html_cell_text(s)
   return s
 end
 
----Remove every <style>...</style> block (pandas injects the whole table CSS
----there). Unterminated style blocks are dropped to end-of-string.
 ---@param html string
 ---@return string
 local function strip_style_blocks(html)
@@ -89,7 +64,6 @@ local function strip_style_blocks(html)
   end
 end
 
----Body of the first <table> (between the opening tag and </table>), or nil.
 ---@param html string
 ---@return string?
 local function extract_table(html)
@@ -109,7 +83,6 @@ local function extract_table(html)
   return html:sub(gt + 1, e - 1)
 end
 
----Parse the <tr>/<th>/<td> cells of one row. Returns { cells, header }.
 ---@param row string
 ---@return {cells: string[], header: boolean}
 local function parse_cells(row)
@@ -134,7 +107,6 @@ local function parse_cells(row)
       break
     end
     if lower:sub(s, gt):find("/", 1, true) then
-      -- Self-closing cell (<td/>): empty.
       cells[#cells + 1] = ""
       pos = gt + 1
     else
@@ -151,7 +123,6 @@ local function parse_cells(row)
   return { cells = cells, header = is_header }
 end
 
----Parse all <tr> rows of a table body.
 ---@param tbl string
 ---@return {cells: string[], header: boolean}[]
 local function parse_rows(tbl)
@@ -171,7 +142,7 @@ local function parse_rows(tbl)
     local row_html, next_pos
     if close then
       row_html = tbl:sub(gt + 1, close - 1)
-      next_pos = close + 5 -- skip "</tr>"
+      next_pos = close + 5
     else
       row_html = tbl:sub(gt + 1)
       next_pos = #tbl + 1
@@ -182,9 +153,6 @@ local function parse_rows(tbl)
   return rows
 end
 
----Render the first HTML table in `html` as padded, aligned text lines.
----Returns nil when there is no parseable table (caller falls back to the
----naive html_to_text tag-stripper).
 ---@param html string
 ---@return string[]?
 function M.html_table(html)
@@ -209,7 +177,6 @@ function M.html_table(html)
     return nil
   end
 
-  -- Column widths by display width (CJK/emoji aware).
   local widths = {}
   for c = 1, ncols do
     widths[c] = 0
@@ -231,7 +198,6 @@ function M.html_table(html)
   end
 
   local lines = {}
-  -- Keep every row for :JoveOpenOutput. Only the inline renderer applies max_lines.
   for _, r in ipairs(rows) do
     lines[#lines + 1] = format_row(r)
     if r.header then
@@ -245,7 +211,6 @@ function M.html_table(html)
   return lines
 end
 
----Sort class of a mime within the render order (lower sorts first).
 ---@param mime string
 ---@return integer
 local function sort_class(mime)
@@ -265,8 +230,6 @@ local function sort_class(mime)
   return 7
 end
 
----Chunks for a `kind = "error"` event: `ename: evalue` first, then the
----ANSI-stripped traceback, all with an error highlight.
 ---@param params table
 ---@return table[]
 function M.render_error(params)
@@ -309,7 +272,6 @@ function M.render_error(params)
   return chunks
 end
 
----Normalize one output event's params into an ordered chunk list.
 ---@param params table?  `output` event params
 ---@return table[] chunks
 function M.render(params)
@@ -332,10 +294,6 @@ function M.render(params)
   end)
 
   local chunks = {}
-  -- A bundle with a renderable image usually also carries the object's
-  -- text/plain repr (e.g. matplotlib's "<Figure size 1000x500 with 1 Axes>").
-  -- The repr is redundant next to the rendered image, so it is demoted to a
-  -- fallback on the image chunk: shown only when the image cannot be placed.
   local has_image = type(bundle["image/png"]) == "string" or type(bundle["image/jpeg"]) == "string"
   local plain_fallback
   for _, mime in ipairs(keys) do
@@ -349,8 +307,6 @@ function M.render(params)
         hl_group = "Comment",
       }
     elseif mime == "text/html" then
-      -- Prefer the table renderer (pandas/DataFrame.style etc.); fall back
-      -- to the naive tag-stripper for non-tabular HTML.
       local table_lines = M.html_table(value)
       chunks[#chunks + 1] = {
         kind = "text",
@@ -376,8 +332,6 @@ function M.render(params)
     elseif mime == "text/plain" and has_image then
       plain_fallback = value
     else
-      -- text/plain, other text/*, application/json: raw text (JSON is
-      -- highlighted by treesitter in the float, not re-encoded here).
       chunks[#chunks + 1] = { kind = "text", mime = mime, text = value }
     end
   end

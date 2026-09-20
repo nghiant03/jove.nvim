@@ -1,6 +1,5 @@
--- buffer.lua: BufReadCmd / BufWriteCmd handlers.
--- Conversion runs async via jove.convert; state bookkeeping happens on
--- completion callbacks (scheduled onto the main loop).
+-- Buffer events handlers.
+
 local convert = require("jove.convert")
 local persist = require("jove.persist")
 local state = require("jove.state")
@@ -8,18 +7,11 @@ local kernel = require("jove.kernel")
 
 local M = {}
 
--- Monotonic sequence numbers guarding against stale async read completions.
 local read_seq = {}
 
--- Single-flight write bookkeeping per buffer.
--- While a jupytext conversion is in flight for a buffer, further :w requests
--- are coalesced: the latest request's (changedtick, lines) are stashed here
--- and re-issued automatically once the in-flight write completes.
 ---@type table<integer, {in_flight: boolean, dirty: boolean, pending_tick: integer?, pending_lines: string[]?}>
 local flights = {}
 
----Split a leading `# ---` ... `# ---` front-matter block from `lines`.
----Returns front (the block, including both `# ---` markers) and rest, or nil if absent.
 ---@param lines string[]
 ---@return string[]?, string[]
 local function split_front(lines)
@@ -40,10 +32,9 @@ local function split_front(lines)
       return front, rest
     end
   end
-  return nil, lines -- unterminated: treat as no front matter
+  return nil, lines
 end
 
----Detect filetype from kernelspec.language in the .ipynb JSON.
 ---@param json table?
 ---@return string
 local function filetype_for(json)
@@ -59,7 +50,6 @@ local function filetype_for(json)
   return map[lang] or "python"
 end
 
----Parse the raw .ipynb JSON from disk; returns nil on failure.
 ---@param path string
 ---@return table?
 local function read_json(path)
@@ -76,8 +66,6 @@ local function read_json(path)
   return json
 end
 
----Restore the cursor of a window showing `buf` after the buffer text was
----replaced; clamps to the new line count.
 ---@param buf integer
 ---@param cursor [integer, integer]  -- 1-based lnum, 0-based col
 ---@param lines string[]
@@ -91,13 +79,6 @@ local function restore_cursor(buf, cursor, lines)
   pcall(vim.api.nvim_win_set_cursor, win, { lnum, col })
 end
 
----BufReadCmd handler; also used by :JoveReload and the auto-reload flow.
----Only `buftype` is set synchronously; the jupytext read is async. Concurrent
----reads of the same buffer are guarded: only the most recent read's
----completion is applied, stale ones are ignored.
----`opts.guard_tick` (a changedtick captured when the reload was requested)
----makes the completion abort instead of clobbering edits made while the
----conversion was in flight; used by every reload path, not the initial read.
 ---@param buf integer
 ---@param path string
 ---@param opts {preserve_cursor: boolean?, guard_tick: integer?}?
@@ -106,7 +87,6 @@ function M.read(buf, path, opts)
   local cfg = require("jove").config
 
   if not vim.uv.fs_stat(path) then
-    -- New file: empty py:percent buffer, defer JSON creation to first write.
     vim.bo[buf].buftype = "acwrite"
     vim.bo[buf].filetype = "python"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "# %%", "" })
@@ -115,8 +95,6 @@ function M.read(buf, path, opts)
     return
   end
 
-  -- Set the buftype up front so the buffer is acwrite while the async
-  -- jupytext read is in flight.
   vim.bo[buf].buftype = "acwrite"
 
   local seq = (read_seq[buf] or 0) + 1
@@ -125,11 +103,9 @@ function M.read(buf, path, opts)
   local initial_rev = (state.peek(buf) or {}).content_rev or 0
 
   convert.read(path, function(lines, err)
-    -- The convert callback runs in a libuv (fast) context; move onto the
-    -- main loop before touching buffer/window APIs.
     vim.schedule(function()
       if read_seq[buf] ~= seq or not vim.api.nvim_buf_is_valid(buf) then
-        return -- stale completion or wiped buffer: ignore
+        return
       end
 
       if not lines then
@@ -137,8 +113,6 @@ function M.read(buf, path, opts)
         return
       end
 
-      -- Edits made while the conversion was in flight would be silently
-      -- replaced by set_lines below; drop the reload instead.
       if
         (opts.guard_tick and vim.b[buf].changedtick ~= opts.guard_tick)
         or not vim.deep_equal(initial_lines, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
@@ -162,20 +136,14 @@ function M.read(buf, path, opts)
         end
       end
 
-      -- Strip the `# ---` front matter jupytext emits: it is re-emitted on
-      -- write (metadata round-trips via `jupytext --update`), so the buffer
-      -- shows only real cell content and the space is reclaimed.
       local front, rest = split_front(lines)
 
-      -- A trailing empty cell needs a body line because chrome conceals its header.
-      -- The blank line keeps it accessible and saves back to an empty source.
       if rest[#rest] and rest[#rest]:match("^# %%") then
         rest[#rest + 1] = ""
       end
 
       vim.api.nvim_buf_set_lines(buf, 0, -1, false, rest)
 
-      -- Stash state before setting filetype so FileType autocmds can see it.
       local st = state.get(buf)
       st.path = path
       st.json = json
@@ -188,8 +156,6 @@ function M.read(buf, path, opts)
         restore_cursor(buf, cursor, rest)
       end
 
-      -- Wait for BufRead* autocmds to settle. Persisted outputs can be imported
-      -- independently of kernel startup.
       if cfg.auto_kernel then
         vim.schedule(function()
           if vim.api.nvim_buf_is_valid(buf) then
@@ -207,7 +173,6 @@ function M.read(buf, path, opts)
   end)
 end
 
----Run one jupytext write flight for `buf` and handle its completion.
 ---@param buf integer
 ---@param path string
 ---@param tick integer  -- changedtick captured at request time
@@ -218,8 +183,6 @@ local function start_write(buf, path, tick, lines)
   flight.in_flight = true
 
   convert.write(path, lines, function(bytes, err)
-    -- The convert callback runs in a libuv (fast) context; move onto the
-    -- main loop before touching buffer APIs.
     vim.schedule(function()
       flight.in_flight = false
 
@@ -229,10 +192,6 @@ local function start_write(buf, path, tick, lines)
       end
 
       if not bytes then
-        -- Drop any coalesced request with the failed flight: the user's
-        -- buffer stays modified, the notification names the error, and the
-        -- next :w starts a fresh flight. Replaying a write that just failed
-        -- would only spam identical errors.
         flight.dirty = false
         flight.pending_tick = nil
         flight.pending_lines = nil
@@ -240,8 +199,6 @@ local function start_write(buf, path, tick, lines)
         return
       end
 
-      -- jupytext already wrote the file when it existed on disk (convert
-      -- wrote it atomically otherwise); only refresh bookkeeping here.
       local st = state.get(buf)
       local ok_json, json = pcall(vim.json.decode, bytes)
       if ok_json then
@@ -249,23 +206,14 @@ local function start_write(buf, path, tick, lines)
       end
       st.last_write = vim.fn.sha256(bytes)
 
-      -- BufWritePost observes the jupytext-written file before session outputs merge.
       vim.api.nvim_exec_autocmds("BufWritePost", { buffer = buf })
 
       local export_failed = false
       if cfg.auto_export_outputs and not flight.dirty then
-        -- Export synchronously so the checksum matches the merged file before
-        -- yielding to FileChangedShell. Only the final write exports outputs;
-        -- a pending replay would overwrite an intermediate merge.
         local _, export_err = persist.export(buf, bytes)
         export_failed = export_err ~= nil
       end
 
-      -- Only clear the modified flag when the whole save — text conversion
-      -- AND output export — durably landed, and the user hasn't edited the
-      -- buffer while the write was in flight. A failed output merge leaves
-      -- the buffer modified so the unsaved results stay visible (and :q
-      -- still warns).
       if export_failed then
         vim.bo[buf].modified = true
       elseif vim.api.nvim_buf_get_changedtick(buf) == tick and not flight.dirty then
@@ -286,24 +234,12 @@ local function start_write(buf, path, tick, lines)
   end)
 end
 
----BufWriteCmd handler.
----
----Single-flight design: at most one jupytext conversion per buffer runs at a
----time. If a write is requested while one is in flight, the latest request's
----(changedtick, lines) are captured and automatically re-issued when the
----in-flight conversion completes. The final disk state therefore always
----reflects the last :w, no jupytext processes race on the same file, and the
----modified flag is only cleared when the buffer hasn't changed since the
----lines that were actually written.
 ---@param buf integer
 ---@param path string
 function M.write(buf, path)
   local tick = vim.api.nvim_buf_get_changedtick(buf)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 
-  -- Re-emit the stripped front matter on write unless the user has typed
-  -- their own (a first line already starting with `# --`). jupytext merges
-  -- metadata from the existing .ipynb on `--update`, so this preserves it.
   local st = state.peek(buf)
   if st and st.front_matter and not lines[1]:match("^# %-%-") then
     local merged = {}
@@ -328,10 +264,6 @@ function M.write(buf, path)
   start_write(buf, path, tick, lines)
 end
 
----Compare two paths for same-file identity, tolerating symlink resolution
----differences (e.g. macOS temp dirs: /var -> /private/var). Neovim resolves
----some autocmd matches through symlinks but not others, so a raw string
----compare can miss our own buffer.
 ---@param a string
 ---@param b string
 ---@return boolean
@@ -343,13 +275,6 @@ local function same_file(a, b)
   return vim.fn.fnamemodify(a, ":p") == vim.fn.fnamemodify(b, ":p")
 end
 
----FileChangedShell decision for jove-managed buffers (see plugin/jove.lua):
----
---- - true: the change echoes our own last write -> caller suppresses silently;
---- - false: a foreign change with `auto_reload` on -> a reload is scheduled
----   (caller suppresses the default handler while ours is in flight);
---- - nil: not jove-managed / not our file -> caller falls back to warn-notify
----   (v:fcs_choice stays empty, so no default reload happens either).
 ---@param buf integer
 ---@param path string
 ---@return boolean?
@@ -376,9 +301,6 @@ function M.changed_shell(buf, path)
   local cfg = require("jove").config
   if cfg.auto_reload then
     if vim.bo[buf].modified then
-      -- Unsaved edits (text or session outputs) would be clobbered; leave
-      -- the disk change untouched and say so. Returning true suppresses the
-      -- default handler (we already notified).
       vim.notify(
         ("[jove] %s changed on disk; buffer has unsaved changes — :JoveReload to discard them"):format(
           path
@@ -387,10 +309,6 @@ function M.changed_shell(buf, path)
       )
       return true
     end
-    -- Foreign change with auto-reload on: go through the normal read flow,
-    -- preserving the cursor. fcs_choice stays empty so the default handler
-    -- does nothing while ours is in flight. The guard tick aborts the
-    -- completion if an edit slips in while the conversion runs.
     local tick = vim.b[buf].changedtick
     vim.schedule(function()
       if vim.api.nvim_buf_is_valid(buf) then
@@ -403,7 +321,6 @@ function M.changed_shell(buf, path)
   return nil
 end
 
----Reload the notebook backing `buf` from disk (cursor-preserving).
 ---@param buf integer
 function M.reload(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf

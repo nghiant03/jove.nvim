@@ -1,7 +1,4 @@
--- ui/init.lua: cell status rendering (gutter signs + running-cell spinner).
--- Reacts to execute.lua status transitions via M.on_status; attach() is
--- idempotent per buffer (keymaps.apply calls it from the FileType autocmd).
--- Completed-run signs remain until the next run; output.lua renders output bodies.
+-- Cell status rendering.
 local cell = require("jove.cell")
 
 local execute = require("jove.execute")
@@ -17,7 +14,6 @@ local ns = vim.api.nvim_create_namespace("jove_cell_status")
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧" }
 local SPINNER_INTERVAL_MS = 120
 
--- Per-buffer rendering bookkeeping (extmark ids, spinner timer, unsub).
 ---@type table<integer, table>
 local bufs = {}
 
@@ -46,8 +42,6 @@ local function stop_spinner(buf, b)
   end
 end
 
----Trailing elapsed suffix for the spinner text, e.g. " 0.4s". Empty when the
----`elapsed` option is off or the cell has no recorded elapsed_ms.
 ---@param buf integer
 ---@param hash string
 ---@return string
@@ -84,7 +78,6 @@ local function start_spinner(buf, b, lnum, hash)
     0,
     SPINNER_INTERVAL_MS,
     vim.schedule_wrap(function()
-      -- Buffer wiped or spinner replaced mid-flight: stop the loop.
       if b.timer ~= timer or not vim.api.nvim_buf_is_valid(buf) then
         if b.timer == timer then
           b.timer = nil
@@ -104,7 +97,6 @@ local function start_spinner(buf, b, lnum, hash)
   )
 end
 
----Whether cell headers are concealed (defensive config read).
 ---@return boolean
 local function conceal_headers()
   local ok, jove = pcall(require, "jove")
@@ -112,9 +104,6 @@ local function conceal_headers()
   return type(ui) == "table" and ui.conceal_headers ~= false or type(ui) ~= "table"
 end
 
----Find the line the cell's status sign/spinner belongs on: the header line,
----or the first body line when headers are concealed (the header is not drawn
----and a sign on it would be invisible).
 ---@param buf integer
 ---@param hash string
 ---@return integer?
@@ -131,7 +120,6 @@ local function cell_lnum(buf, hash)
   return nil
 end
 
----Status transition handler (also callable directly; tests use this).
 ---@param buf integer
 ---@param hash string
 ---@param status "queued"|"running"|"ok"|"error"
@@ -142,17 +130,12 @@ function M.on_status(buf, hash, status)
     return
   end
 
-  -- Terminal statuses always stop the spinner, even if the cell can no
-  -- longer be resolved below (edited away mid-run): a leaked 120ms timer
-  -- would spin forever until the next resolvable status change.
   if status == "ok" or status == "error" then
     stop_spinner(buf, b)
   end
 
   local lnum = cell_lnum(buf, hash)
   if not lnum then
-    -- Cell deleted/unresolvable: sweep its stale sign extmark (by id -- the
-    -- line it lived on may be gone, so no lnum-based cleanup is possible).
     if b.marks[hash] then
       pcall(vim.api.nvim_buf_del_extmark, buf, ns, b.marks[hash])
       b.marks[hash] = nil
@@ -175,7 +158,6 @@ function M.on_status(buf, hash, status)
   end
 end
 
----Start reacting to execute.lua status transitions for `buf`. Idempotent.
 ---@param buf integer
 function M.attach(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
@@ -183,8 +165,6 @@ function M.attach(buf)
     return
   end
   local b = ensure(buf)
-  -- Cell chrome (concealment, rules, active highlight) is idempotent on its
-  -- own; attach it regardless of the status-subscription early return.
   chrome.attach(buf)
   if b.unsub then
     return

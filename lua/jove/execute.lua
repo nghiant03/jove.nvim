@@ -1,33 +1,10 @@
--- Per-buffer FIFO execution queue. Each batch uses one cached cell-model lookup.
---
--- Queue semantics (strictly serial):
---   * enqueue marks items "queued"; the pump starts the head item ("running")
---     and the next item only starts once the previous execute's response
---     arrives (ok or error; bridge death fails pending via bridge.lua).
---   * the bridge cell key is unique per run. Routes resolve it to the cell's
---     content/occurrence key; stale runs cannot append to a newer run's output.
---     Selections route to the cell containing the selection start.
---   * no kernel at enqueue time: notify + drop the queue (nothing stale runs
---     when a kernel later appears). Kernel dying mid-queue: in-flight items
---     fail with status "error" (the bridge answers kernel_not_running) and
---     the queue drains with visible errors; queued-but-not-started items
---     after M.interrupt stay queued (interrupt clears the shell channel, the
---     next response re-pumps).
---
--- Kernel-handle subscription contract: listeners live on the bridge handle,
--- which survives bridge respawn (handlers are per-handle in bridge.lua) but
--- is replaced by kernel.select/shutdown. ensure_attached() therefore
--- re-subscribes whenever state.get(buf).kernel is a different entry than the
--- last one attached; it is called lazily from enqueue, so no wiring outside
--- this module is needed.
-local state = require("jove.state")
+-- Buffer FIFO execution queue.
+
 local cell = require("jove.cell")
 
 local M = {}
 local next_run = 0
 
--- Tests can replace the output backend via execute._output.
--- Backends provide clear(buf, cell_hash) and push(buf, cell_hash, params).
 M._output = function()
   local ok, m = pcall(require, "jove.output")
   return ok and m or nil
@@ -41,7 +18,7 @@ local function norm_buf(buf)
   return buf == 0 and vim.api.nvim_get_current_buf() or buf
 end
 
-local pump -- forward declaration (ensure_attached's closures call it)
+local pump
 
 ---@param st jove.BufferState
 ---@return table exec
@@ -49,14 +26,14 @@ local function ensure_exec(st)
   local exec = st.exec
   if not exec then
     exec = {
-      queue = {}, -- jove.ExecItem[]
-      running = nil, -- jove.ExecItem currently in flight
-      status = {}, -- [hash] -> "queued"|"running"|"ok"|"error"
-      status_cbs = {}, -- fn(hash, status)
-      attached = nil, -- kernel entry whose bridge we subscribed
-      unsubs = nil, -- unsubscribe fns for the attached bridge
-      start_hr = {}, -- [hash] -> hrtime at request send (elapsed source)
-      meta = {}, -- [hash] -> { count?: integer, elapsed_ms?: number }
+      queue = {},
+      running = nil,
+      status = {},
+      status_cbs = {},
+      attached = nil,
+      unsubs = nil,
+      start_hr = {},
+      meta = {},
     }
     st.exec = exec
   end
@@ -65,8 +42,6 @@ local function ensure_exec(st)
   return exec
 end
 
----Invalidate executions when disk replaces the notebook. Old replies and
----late IOPub events must not repopulate a freshly reloaded output store.
 function M.reset(buf)
   local st = state.peek(buf)
   local old = st and st.exec
@@ -81,9 +56,6 @@ function M.reset(buf)
   fresh.status_cbs = old.status_cbs or {}
 end
 
----Record per-run metadata for a cell (count from the bridge, elapsed from
----hrtime). Only numeric values are stored; absent data leaves prior values
----(or nil) intact.
 ---@param exec table?
 ---@param hash string
 ---@param count integer?
@@ -117,9 +89,6 @@ local function set_status(buf, hash, status)
   end
 end
 
----(Re)subscribe this buffer's execute listeners to its current kernel entry.
----No-op when already attached to it. Safe across kernel replacement and
----bridge respawn (see module comment).
 ---@param buf integer
 ---@return table? kernel_entry
 local function ensure_attached(buf)
@@ -150,10 +119,8 @@ local function ensure_attached(buf)
     end
     local hash = exec.routes[params.cell]
     if not hash or exec.latest[hash] ~= params.cell then
-      return -- output from an obsolete run or a pre-reload execution
+      return
     end
-    -- The bridge tags execute_result events with the kernel execution count;
-    -- record it even when the shell reply (which may also carry it) is late.
     if params.kind == "execute_result" and type(params.execution_count) == "number" then
       local st2 = state.peek(buf)
       set_meta(st2 and st2.exec, hash, params.execution_count, nil)
@@ -165,12 +132,7 @@ local function ensure_attached(buf)
   end
 
   local function on_kernel_status(params)
-    -- Kernel death clears the in-flight item immediately (its execute will
-    -- also fail with kernel_not_running; the status transition is idempotent
-    -- because the pump slot is already empty).
     if type(params) == "table" and params.status == "dead" then
-      -- Peek (not get): a dead-event dispatch racing BufWipeout must not
-      -- resurrect a phantom registry entry for a wiped buffer.
       local st2 = state.peek(buf)
       local exec2 = st2 and st2.exec
       if exec2 == exec and st2.kernel == k and exec2.running then
@@ -190,7 +152,6 @@ local function ensure_attached(buf)
   return k
 end
 
----Start the next queued item when idle. No-op when empty/busy.
 ---@param buf integer
 function pump(buf)
   local st = state.peek(buf)
@@ -204,9 +165,6 @@ function pump(buf)
   end
   local k = st.kernel
   if not (k and k.name and k.bridge and k.bridge:is_alive()) then
-    -- Kernel vanished mid-queue: drop the rest loudly (enqueue-time checks
-    -- already cover the "never had a kernel" case). Dropped items get
-    -- status "error" so no gutter sign is stuck on "queued" forever.
     for _, dropped in ipairs(exec.queue) do
       set_status(buf, dropped.hash, "error")
     end
@@ -220,13 +178,9 @@ function pump(buf)
   set_status(buf, item.hash, "running")
   local out = M._output()
   if out then
-    pcall(out.clear, buf, item.hash) -- drop stale outputs from earlier runs
+    pcall(out.clear, buf, item.hash)
   end
 
-  -- Execute has NO timeout (the cell may run for minutes); disable the
-  -- bridge's default explicitly. The reply may outlive the buffer (wiped
-  -- mid-run): peek the state and bail when the registry entry is gone --
-  -- state.get here would resurrect a phantom entry.
   exec.start_hr[item.hash] = vim.uv.hrtime()
   next_run = next_run + 1
   local wire = item.hash .. ":run:" .. next_run
@@ -262,7 +216,6 @@ function pump(buf)
       end
     end, 10000)
     if exec2 then
-      -- Measure through the response handler, excluding time spent queued.
       local start = exec2.start_hr and exec2.start_hr[item.hash]
       local elapsed = start and (vim.uv.hrtime() - start) / 1e6 or nil
       if exec2.start_hr then
@@ -271,8 +224,6 @@ function pump(buf)
       local count = (not err and type(result) == "table") and result.execution_count or nil
       set_meta(exec2, item.hash, count, elapsed)
       if count ~= nil and out and out.mark_dirty then
-        -- A count-only run (no output events) still changes what the .ipynb
-        -- will persist; cells with outputs are already dirtied by push().
         pcall(out.mark_dirty, buf)
       end
       if exec2.running == item then
@@ -281,9 +232,6 @@ function pump(buf)
           or "error"
         set_status(buf, item.hash, status)
       end
-      -- The execution count may only arrive with this reply (print-only cells
-      -- emit no execute_result output event): re-render so the inline `Out[n]`
-      -- header picks it up.
       if out and out.refresh_cell then
         pcall(out.refresh_cell, buf, item.hash)
       end
@@ -302,12 +250,10 @@ local function enqueue(buf, items)
   if not kernel.available(buf) then
     local st = state.get(buf)
     if st.exec then
-      -- Dropped items get status "error" so no gutter sign is stuck on
-      -- "queued" forever.
       for _, dropped in ipairs(st.exec.queue) do
         set_status(buf, dropped.hash, "error")
       end
-      st.exec.queue = {} -- drop queued items too; nothing stale runs later
+      st.exec.queue = {}
     end
     vim.notify(NO_KERNEL_MSG, vim.log.levels.WARN)
     return
@@ -322,7 +268,6 @@ local function enqueue(buf, items)
   pump(buf)
 end
 
----Cell body lines (header excluded), or nil for an empty body.
 ---@param buf integer
 ---@param c jove.Cell
 ---@return string?
@@ -335,7 +280,6 @@ local function cell_code(buf, c)
   return table.concat(lines, "\n")
 end
 
----Run the cell containing `lnum` (default: cursor).
 ---@param buf integer
 ---@param lnum integer?
 function M.run_cell(buf, lnum)
@@ -354,7 +298,6 @@ function M.run_cell(buf, lnum)
   enqueue(buf, { { hash = c.hash, code = code, lnum = c.start_lnum } })
 end
 
----Run all code cells through the cell at `lnum` (default: cursor).
 ---@param buf integer
 ---@param lnum integer?
 function M.run_above(buf, lnum)
@@ -374,7 +317,6 @@ function M.run_above(buf, lnum)
   enqueue(buf, items)
 end
 
----Run every code cell in the buffer.
 ---@param buf integer
 function M.run_all(buf)
   buf = norm_buf(buf)
@@ -390,14 +332,9 @@ function M.run_all(buf)
   enqueue(buf, items)
 end
 
----Run the current visual selection's lines as one unit. Outputs route to the
----cell containing the selection start (its content hash is the bridge cell
----key); a selection outside any cell falls back to the key "selection".
----Intended to be called with visual marks active (mapped in x-mode).
 ---@param buf integer
 function M.run_selection(buf)
   buf = norm_buf(buf)
-  -- Buffer-local visual marks: readable without the buffer being current.
   local s = vim.api.nvim_buf_get_mark(buf, "<")
   local e = vim.api.nvim_buf_get_mark(buf, ">")
   local l1, l2 = s[1], e[1]
@@ -408,8 +345,6 @@ function M.run_selection(buf)
   if #lines == 0 then
     return
   end
-  -- Charwise single-line selection: slice the columns (get_mark cols are
-  -- 0-based).
   local c1, c2 = s[2] + 1, e[2] + 1
   if l1 == l2 and c1 > 0 and c2 > 0 and c1 ~= c2 then
     local cs, ce = math.min(c1, c2), math.max(c1, c2)
@@ -420,7 +355,6 @@ function M.run_selection(buf)
   enqueue(buf, { { hash = hash, code = table.concat(lines, "\n"), lnum = l1 } })
 end
 
----Run the cell at the cursor, then move the cursor to the next cell header.
 ---@param buf integer
 function M.run_cell_and_advance(buf)
   buf = norm_buf(buf)
@@ -432,17 +366,11 @@ function M.run_cell_and_advance(buf)
   end
 end
 
----Forward to the kernel's interrupt. Queued-but-not-started items remain
----queued: interrupt clears the shell channel; the
----in-flight execute still returns (typically status "error" with the
----KeyboardInterrupt) and the pump continues.
 ---@param buf integer
 function M.interrupt(buf)
   require("jove.kernel").interrupt(buf)
 end
 
----Subscribe to per-cell status transitions; fn(hash, status). Returns an
----unsubscribe function.
 ---@param buf integer
 ---@param fn fun(hash: string, status: "queued"|"running"|"ok"|"error")
 ---@return fun()
@@ -460,7 +388,6 @@ function M.on_status(buf, fn)
   end
 end
 
----Current status of a cell hash: "queued"|"running"|"ok"|"error"|nil.
 ---@param buf integer
 ---@param hash string
 ---@return string?
@@ -469,8 +396,6 @@ function M.status(buf, hash)
   return st and st.exec and st.exec.status[hash] or nil
 end
 
----Per-run metadata recorded for a cell: { count?: integer, elapsed_ms?: number }
----(nil until the cell has run and the bridge supplied the data).
 ---@param buf integer
 ---@param hash string
 ---@return { count: integer?, elapsed_ms: number? }?
@@ -479,7 +404,6 @@ function M.meta(buf, hash)
   return st and st.exec and st.exec.meta and st.exec.meta[hash] or nil
 end
 
----Number of queued (not yet running) items.
 ---@param buf integer
 ---@return integer
 function M.queue_len(buf)

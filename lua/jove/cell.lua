@@ -1,29 +1,5 @@
--- cell.lua: single-pass cell parser + per-buffer cached cell model for
--- py:percent buffers.
---
--- A cell is a block of lines opened by a jupytext `# %%` header line (either
--- exactly `# %%` or `# %% ...`, e.g. `# %% [markdown]`). Lines before the
--- first header belong to a synthetic first cell starting at line 1; the last cell extends
--- to the end of the buffer. Synthetic cells have no `header` line and kind
--- "code".
---
--- Cell identity: `hash` is the sha256 hex digest (vim.fn.sha256) of the
--- normalized cell body. Normalization: the header line is excluded;
--- trailing empty separator lines are dropped; whitespace within lines is preserved;
--- the rest is joined with "\n". Jupytext's py:percent round-trip loses
--- jupytext cell ids, so persist.lua matches cells to outputs by content hash.
---
--- Duplicate cells: when several cells normalize to the same digest, the bare
--- hash alone cannot tell them apart (outputs would be saved to every copy).
--- The identity key is therefore `sha` for the first occurrence in buffer
--- order and `sha .. "#" .. n` for the n-th duplicate (see M.dup_key).
--- persist.lua applies the same ordinal scheme to .ipynb cells, which share
--- the buffer's cell order.
---
--- Cache: the parsed list is stored per buffer in state.get(buf).cells =
---   { list = <cell list>, tick = <vim.b[buf].changedtick at parse time> }
--- and validated in O(1) by comparing changedtick -- any buffer edit bumps
--- changedtick and forces a re-parse on next access. No autocmds needed.
+-- Cell parser and cell model for buffers.
+
 local state = require("jove.state")
 
 local M = {}
@@ -38,9 +14,6 @@ local M = {}
 ---@param line string
 ---@return boolean
 local function is_header(line)
-  -- `# %%` exactly, or `# %% ` with a tag/body after it (e.g. `# %% [markdown]`).
-  -- Plain prefix check: a pattern like "^# %% " would match only one `%`
-  -- (percent-space is itself an escape sequence in Lua patterns).
   return line == "# %%" or line:sub(1, 5) == "# %% "
 end
 
@@ -53,8 +26,6 @@ local function header_kind(line)
   return "code"
 end
 
----Normalize a cell body: drop trailing empty separator lines, join with "\n".
----Keep whitespace inside source lines: it can be meaningful in string literals.
 ---@param lines string[]  body lines (already sliced, header excluded)
 ---@return string
 local function normalize_body(lines)
@@ -64,10 +35,6 @@ local function normalize_body(lines)
   return table.concat(lines, "\n")
 end
 
----Identity key for the `n`th occurrence of content hash `sha` in a cell
----list. The first occurrence keeps the bare hash, so single-occurrence cells
----have a stable identity across sessions and `hash_source` results;
----duplicates are suffixed in document order.
 ---@param sha string
 ---@param n integer  1-based occurrence index of `sha`
 ---@return string
@@ -75,7 +42,6 @@ function M.dup_key(sha, n)
   return n == 1 and sha or (sha .. "#" .. n)
 end
 
----Single pass over the buffer lines producing the cell list.
 ---@param lines string[]
 ---@return jove.Cell[]
 local function parse_cells(lines)
@@ -108,7 +74,6 @@ local function parse_cells(lines)
       end
       cur = { start_lnum = i, kind = header_kind(line), header = i }
     elseif not cur then
-      -- Content before the first header: synthetic first cell from line 1.
       cur = { start_lnum = 1, kind = "code", header = nil }
     end
   end
@@ -118,13 +83,6 @@ local function parse_cells(lines)
   return cells
 end
 
----Content hash for a cell source taken from .ipynb JSON (string or list of
----lines), using the same normalize+sha256 logic as parsing. Public because
----persist.lua matches .ipynb JSON cells to session outputs by hash: when
----jupytext round-trips the source verbatim, this hash equals the `hash` the
----buffer's parsed cells carry (and the bridge cell keys execute.lua sends).
----This returns the FIRST occurrence's identity (no duplicate suffix);
----persist.lua applies M.dup_key itself while scanning a notebook's cells.
 ---@param source string|string[]?
 ---@return string
 function M.hash_source(source)
@@ -137,8 +95,6 @@ function M.hash_source(source)
   return vim.fn.sha256(normalize_body(lines))
 end
 
----All cells for a buffer, from cache or freshly parsed.
----The returned list is the cached table; treat it as read-only.
 ---@param buf integer
 ---@return jove.Cell[]
 function M.all(buf)
@@ -154,7 +110,6 @@ function M.all(buf)
   return list
 end
 
----Binary-search the index of the cell containing `lnum`.
 ---@param cells jove.Cell[]
 ---@param lnum integer
 ---@return integer?
@@ -174,8 +129,6 @@ local function index_at(cells, lnum)
   return nil
 end
 
----Cell containing `lnum`. Lines before the first header map to the synthetic
----first cell; nil only when `lnum` is outside the buffer.
 ---@param buf integer
 ---@param lnum integer  1-based
 ---@return jove.Cell?
@@ -185,8 +138,6 @@ function M.at(buf, lnum)
   return idx and cells[idx] or nil
 end
 
----Header lnum of the first cell starting after `lnum`; nil at/after the last
----header.
 ---@param buf integer
 ---@param lnum integer
 ---@return integer?
@@ -201,9 +152,6 @@ function M.next(buf, lnum)
   return nil
 end
 
----Header lnum of the previous cell relative to `lnum`: strictly below a cell's
----header that cell's own header; on a header (or in the synthetic pre-header
----cell) the header of the cell before it; nil when there is none.
 ---@param buf integer
 ---@param lnum integer
 ---@return integer?
@@ -225,7 +173,6 @@ function M.prev(buf, lnum)
   return nil
 end
 
----Inclusive, 1-based line range of the cell containing `lnum`; nil outside the buffer.
 ---@param buf integer
 ---@param lnum integer
 ---@return integer?, integer?
@@ -237,13 +184,6 @@ function M.range(buf, lnum)
   return c.start_lnum, c.end_lnum
 end
 
----Apply the built-in `ic`/`ac` cell text-object around the cursor.
----kind "i" selects the cell body (the `# %%` header line excluded); "a" the
----whole cell including the header. Selection is linewise. In operator-pending
----mode the pending operator applies to the selection once the mapping function
----returns; in visual mode the active selection is replaced by the cell range.
----With count N > 1 the selection extends through N-1 following cells (for "i"
----the intermediate headers are kept, since the selection must be contiguous).
 ---@param kind "i"|"a"
 ---@param count integer?  Defaults to vim.v.count (1 when unset).
 function M.textobj(kind, count)
@@ -262,13 +202,10 @@ function M.textobj(kind, count)
   local end_lnum = cells[math.min(idx + count - 1, #cells)].end_lnum
   local start_lnum = (kind == "i" and c.header) and c.header + 1 or c.start_lnum
   if start_lnum > end_lnum then
-    return -- empty body (header-only cell): leave the selection untouched
+    return
   end
 
   if vim.api.nvim_get_mode().mode:match("^[vV\22]") then
-    -- Visual mode: leave the active selection, then reselect linewise over
-    -- [start, end]. Keys are queued (no "x" flag) so they run right after the
-    -- mapping function returns.
     vim.api.nvim_feedkeys(
       vim.api.nvim_replace_termcodes(
         ("<Esc>%dGV%dG"):format(start_lnum, end_lnum),
@@ -280,8 +217,6 @@ function M.textobj(kind, count)
       false
     )
   else
-    -- Operator-pending: select linewise; the pending operator applies to the
-    -- selection once this mapping function returns.
     vim.api.nvim_win_set_cursor(0, { start_lnum, 0 })
     vim.cmd(("normal! V%dG"):format(end_lnum))
   end

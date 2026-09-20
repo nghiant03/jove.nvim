@@ -1,5 +1,3 @@
--- jove: native .ipynb editing for Neovim, backed by jupytext and a
--- first-party Python kernel bridge.
 local M = {}
 
 ---@class jove.Config
@@ -57,7 +55,7 @@ M.config = {
   },
   output = {
     max_lines = 50,
-    max_bytes = 1048576, -- per-cell payload cap; tails beyond it are dropped with a marker
+    max_bytes = 1048576,
     images = true,
     image_max_width = 80,
     image_max_height = 40,
@@ -86,15 +84,12 @@ M.config = {
   },
 }
 
----Valid keymap lhs: a mapping string or `false` to disable.
 ---@param v any
 ---@return boolean
 local function is_keymap_lhs(v)
   return type(v) == "string" or v == false
 end
 
--- Known config keys for the unknown-option shim. Nested tables (signs/output)
--- are opaque; `keymap` members are checked individually.
 local KNOWN_KEYS = {
   jupytext = true,
   bridge_python = true,
@@ -121,14 +116,10 @@ local KNOWN_KEYMAP_KEYS = {
 
 local warned = {}
 
----Reset the shim's warn-once state (test seam; also useful for reloads).
 function M._reset_shim_state()
   warned = {}
 end
 
----Warn once per unknown option key (top-level unknown keys and unknown
----`keymap.*` members — molten-era leftovers or typos). Strictly permissive:
----warnings only, the option still merges and validation still runs.
 ---@param opts table?
 local function warn_unknown_opts(opts)
   for k, v in pairs(opts or {}) do
@@ -154,8 +145,6 @@ local function warn_unknown_opts(opts)
   end
 end
 
----Validate a (fully merged) config table; raises via vim.validate on bad types.
----@param cfg jove.Config
 local function validate_config(cfg)
   vim.validate("jupytext", cfg.jupytext, "string")
   vim.validate("bridge_python", cfg.bridge_python, "string")

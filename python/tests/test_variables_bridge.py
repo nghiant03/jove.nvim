@@ -1,10 +1,4 @@
-"""Variable-inspector bridge tests.
-
-Unit tests drive :meth:`BridgeSession._finish_variables` with a recording fake
-connection, and the ``variables`` submit path with a fake client. The e2e test
-reuses ``test_bridge.BridgeProcess`` to run the probe against a real python3
-ipykernel.
-"""
+"""Variable-inspector bridge tests."""
 
 from __future__ import annotations
 
@@ -15,9 +9,9 @@ import pytest
 from jove_bridge.kernel import KernelError
 from jove_bridge.session import DEFERRED, VARIABLES_EXPR, BridgeSession, _Pending
 
-try:  # test module sibling; pytest prepends the test dir to sys.path
+try:
     from test_bridge import BridgeProcess
-except Exception:  # pragma: no cover - only when run out of tree
+except Exception:
     BridgeProcess = None  # type: ignore[assignment]
 
 
@@ -43,8 +37,6 @@ class _FakeKM:
 
 
 class _FakeKernel:
-    """Duck-typed KernelController: only what the variables path touches."""
-
     def __init__(self, language: str = "python", name: str = "python3") -> None:
         self.km = _FakeKM(name)
         self._language = language
@@ -97,11 +89,10 @@ def test_finish_variables_parses_user_expression():
 
 
 def test_finish_variables_unwraps_ipython_string_repr():
-    """ipykernel's text/plain for a str expression is its repr (quoted)."""
     conn = _FakeConn()
     session = BridgeSession(conn)
     payload = [{"name": "x", "type": "int", "value": "'hi'", "size": 2}]
-    text = repr(json.dumps(payload))  # e.g. '\'[{"name": "x", ...}]\''
+    text = repr(json.dumps(payload))
     content = {
         "status": "ok",
         "user_expressions": {
@@ -154,8 +145,6 @@ def test_variables_submits_silent_user_expression_and_replies_on_shell_reply():
 
     assert session.variables(10) is DEFERRED
     assert client.captured["code"] == ""
-    # ipykernel drops user_expressions when silent=True, so the probe is
-    # non-silent but non-history.
     assert client.captured["silent"] is False
     assert client.captured["store_history"] is False
     expr = client.captured["user_expressions"]["__jove__"]
@@ -178,13 +167,6 @@ def test_variables_submits_silent_user_expression_and_replies_on_shell_reply():
 
 
 def test_variables_per_item_resilience():
-    """One broken object must not discard the rest of the variable listing.
-
-    Exercises ``VARIABLES_EXPR`` directly against a fake namespace: a zero-dim
-    NumPy array (has ``__len__`` but ``len()`` raises) and objects whose
-    ``len``/``repr`` raise must be isolated per item.
-    """
-
     class BoomLen:
         def __len__(self):
             raise TypeError("len() of unsized object")
@@ -224,7 +206,6 @@ def test_variables_per_item_resilience_numpy_zero_dim():
 
 @pytest.mark.skipif(BridgeProcess is None, reason="test_bridge helper unavailable")
 def test_variables_e2e_real_kernel():
-    """Round-trip against a real python3 ipykernel: types, repr, size, filter."""
     proc = BridgeProcess()  # type: ignore[misc]
     try:
         proc.wait_ready()
@@ -257,7 +238,7 @@ def test_variables_e2e_real_kernel():
         assert by_name["jv_s"]["size"] == 2
         assert by_name["jv_boom"]["value"] == "jv_Boom()"
         assert by_name["jv_boom"]["size"] is None
-        assert "os" not in by_name  # imported modules are filtered out
+        assert "os" not in by_name
         assert not any(n.startswith("_") for n in by_name)
     finally:
         proc.close()

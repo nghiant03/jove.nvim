@@ -1,18 +1,5 @@
 -- Cell header concealment, borders, and active-cell highlighting.
---
--- Responsibilities:
---   * conceal cell headers (`# %%`) with `conceal_lines = ""` extmarks;
---     (jupytext front matter never reaches the buffer: buffer.lua strips it on
---      read and re-emits it on write)
---   * draw a per-cell rule (virt_lines) above each cell body carrying the
---     status glyph, cell index, execution count and elapsed time, plus an
---     optional closing border below the cell;
---   * highlight the body of the cell under the cursor (`JoveActiveCell`).
---
--- Rendering is configured through `config.ui` (read defensively; a missing
--- `ui` table falls back to the documented defaults). The module never assumes
--- a kernel exists: buffers with no execute state still get rules with an
--- "unread" glyph and no count/elapsed.
+
 local cell = require("jove.cell")
 local state = require("jove.state")
 local execute = require("jove.execute")
@@ -21,7 +8,7 @@ local M = {}
 
 M.ns = vim.api.nvim_create_namespace("jove_cell_chrome")
 
--- Highlight groups (default links; users can override before setup()).
+-- Highlight groups
 vim.api.nvim_set_hl(0, "JoveActiveCell", { link = "CursorLine", default = true })
 vim.api.nvim_set_hl(0, "JoveCellRule", { link = "Comment", default = true })
 vim.api.nvim_set_hl(0, "JoveCellRuleCount", { link = "Special", default = true })
@@ -40,7 +27,6 @@ vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = true })
 ---@type table<integer, jove.ChromeBook>
 local bufs = {}
 
----Read config.ui defensively, filling in the documented defaults.
 ---@return { conceal_headers: boolean, active_cell: boolean, exec_counts: boolean, elapsed: boolean, borders: boolean, border_hl: string|table? }
 local function ui_conf()
   local ok, jove = pcall(require, "jove")
@@ -58,10 +44,6 @@ local function ui_conf()
   }
 end
 
----Apply `cfg.border_hl` to the `JoveCellBorder` highlight group.
---- string → `{ link = hl }`; table → passed straight to nvim_set_hl.
---- nil → no-op (default link at module load is respected, user overrides
----       via direct nvim_set_hl still apply).
 ---@param cfg string|table|nil
 local function apply_border_hl(cfg)
   if cfg == nil then
@@ -112,14 +94,12 @@ local function clear_marks(buf, b)
   b.rules = {}
 end
 
----First body line of a cell (header excluded for header'd cells).
 ---@param c jove.Cell
 ---@return integer
 local function body_start(c)
   return c.header and (c.header + 1) or c.start_lnum
 end
 
----Cell execution status ("queued"|"running"|"ok"|"error") or nil.
 ---@param buf integer
 ---@param hash string
 ---@return string?
@@ -129,8 +109,6 @@ local function cell_status(buf, hash)
   return exec and exec.status and exec.status[hash] or nil
 end
 
----Execution metadata recorded by execute.lua:
----state.get(buf).exec.meta[hash] = { count = <int|nil>, elapsed_ms = <number|nil> }.
 ---@param buf integer
 ---@param hash string
 ---@return table?
@@ -166,7 +144,6 @@ local function status_hl(status)
   return "Comment"
 end
 
----Width to span for a buffer's rules (its window width, else global columns).
 ---@param buf integer
 ---@return integer
 local function win_width(buf)
@@ -180,7 +157,6 @@ local function win_width(buf)
   return vim.o.columns
 end
 
----Build one rule's virt_text chunks (boxed top border).
 ---@param buf integer
 ---@param c jove.Cell
 ---@param cfg table
@@ -210,7 +186,6 @@ local function build_rule(buf, c, cfg, cell_index)
   for _, chunk in ipairs(chunks) do
     used = used + vim.fn.strdisplaywidth(chunk[1])
   end
-  -- Box chrome reserves 3 display cols for the leading "╭─ " and 1 for "╮".
   local fill = win_width(buf) - used - 4
   local ruled = { { "╭─ ", "JoveCellBorder" } }
   for _, chunk in ipairs(chunks) do
@@ -223,7 +198,6 @@ local function build_rule(buf, c, cfg, cell_index)
   return ruled
 end
 
----Line number of the window cursor currently showing `buf` (nil if hidden).
 ---@param buf integer
 ---@return integer?
 local function cursor_lnum(buf)
@@ -238,7 +212,6 @@ local function cursor_lnum(buf)
   return pos[1]
 end
 
----Re-set the active-cell highlight extmark for the cursor's cell.
 ---@param buf integer
 ---@param b jove.ChromeBook
 ---@param cfg table
@@ -268,7 +241,6 @@ local function update_active(buf, b, cfg)
   })
 end
 
----Recompute header concealment, cell borders/rules and active highlight.
 ---@param buf integer
 function M.refresh(buf)
   buf = norm_buf(buf)
@@ -319,9 +291,6 @@ function M.refresh(buf)
           { "╯", "JoveCellBorder" },
         }
       end
-      -- Left-gravity marks sort before right-gravity output at the same
-      -- position. Reverse this for legacy output inside the code border.
-      -- Highlight priority does not order virtual lines.
       local out_cfg = require("jove").config.output or {}
       b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
         virt_lines_above = false,
@@ -334,8 +303,6 @@ function M.refresh(buf)
 
   update_active(buf, b, cfg)
 
-  -- conceal_lines is a no-op at conceallevel 0; enable it unless the user has
-  -- chosen a non-default level of their own.
   if cfg.conceal_headers then
     for _, win in ipairs(vim.fn.win_findbuf(buf)) do
       local ok, lvl = pcall(vim.api.nvim_get_option_value, "conceallevel", { win = win })
@@ -346,7 +313,6 @@ function M.refresh(buf)
   end
 end
 
----Cheap path for cursor moves: only re-set the active-cell highlight.
 ---@param buf integer
 function M.refresh_active(buf)
   buf = norm_buf(buf)
@@ -357,7 +323,6 @@ function M.refresh_active(buf)
   update_active(buf, b, ui_conf())
 end
 
----Start rendering chrome for `buf`. Idempotent.
 ---@param buf integer
 function M.attach(buf)
   buf = norm_buf(buf)
@@ -381,9 +346,6 @@ function M.attach(buf)
       M.refresh(buf)
     end,
   })
-  -- ColorScheme reloads clear hl groups; a refresh on TextChanged would only
-  -- re-establish the override after the next keystroke, so hook it explicitly
-  -- to repaint borders right when the colorscheme settles.
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = group,
     callback = function()
@@ -400,11 +362,6 @@ function M.attach(buf)
     end,
   })
 
-  -- Execution status changes recompute glyph/count/elapsed. Coalesce into a
-  -- single refresh per event-loop tick so a batch of status transitions
-  -- (notably Run All enqueuing N cells synchronously) does not cost O(N)
-  -- full-buffer extmark rebuilds. Final glyph/count still reflects the
-  -- current `st.exec.status[hash]` for each cell because refresh reads it.
   b.unsub = execute.on_status(buf, function()
     if b.refresh_pending then
       return
@@ -421,7 +378,6 @@ function M.attach(buf)
   M.refresh(buf)
 end
 
----Stop rendering chrome for `buf` and drop its extmarks/autocmds.
 ---@param buf integer
 function M.detach(buf)
   buf = norm_buf(buf)

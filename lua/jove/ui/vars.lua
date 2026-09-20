@@ -1,13 +1,5 @@
 -- Variable-inspector sidebar.
---
--- `:JoveVariables` toggles a right-hand split listing the running kernel's
--- user-namespace variables as `name  type  value`. The data comes from the
--- bridge's `variables` method (see lua/jove/bridge.lua + python
--- jove_bridge/session.py); this module is presentation + interaction only.
---
--- Auto-refresh (config.variables.auto_refresh) subscribes to the per-cell
--- status callback already exposed by lua/jove/execute.lua (M.on_status) and
--- re-queries once a cell reaches a terminal state.
+
 local state = require("jove.state")
 
 local M = {}
@@ -44,7 +36,6 @@ local function config()
   }
 end
 
----Truncate a string to at most `max` display cells, appending an ellipsis.
 ---@param s string
 ---@param max integer
 ---@return string
@@ -70,7 +61,6 @@ local function pad(s, width)
   return s .. string.rep(" ", math.max(0, n))
 end
 
----Collapse row-breaking whitespace so a value never spans multiple sidebar rows.
 ---@param s string
 ---@return string
 local function flatten(s)
@@ -78,7 +68,6 @@ local function flatten(s)
   return out
 end
 
----Format variable records into sidebar lines.
 ---@param vars table[]  { {name, type, value, size}, ... }
 ---@param width integer  Target display width.
 ---@return string[]
@@ -139,7 +128,6 @@ function M.is_open(buf)
   return get(norm_buf(buf)) ~= nil
 end
 
----Toggle the sidebar for `buf`.
 ---@param buf integer?
 function M.toggle(buf)
   buf = norm_buf(buf)
@@ -150,7 +138,6 @@ function M.toggle(buf)
   end
 end
 
----Open (and populate) the sidebar. No-op when already open.
 ---@param buf integer?
 ---@return integer? win
 function M.open(buf)
@@ -211,10 +198,6 @@ function M.open(buf)
     M.inspect(buf)
   end, "Jove: Inspect Variable")
 
-  -- Keep the session table from leaking when the scratch buffer goes away.
-  -- Unsubscribe the status listener before clearing: the same listener is
-  -- installed again on every reopen and would otherwise stack up, with each
-  -- duplicate firing `M.refresh(buf)` on every status transition.
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = fbuf,
     once = true,
@@ -242,7 +225,6 @@ function M.open(buf)
   return win
 end
 
----Close the sidebar and drop its session + status subscription.
 ---@param buf integer?
 function M.close(buf)
   buf = norm_buf(buf)
@@ -262,7 +244,6 @@ function M.close(buf)
   end
 end
 
----Re-query the bridge and re-render (no-op when the sidebar is closed).
 ---@param buf integer?
 function M.refresh(buf)
   buf = norm_buf(buf)
@@ -272,7 +253,7 @@ function M.refresh(buf)
   end
   M._variables(buf, function(result)
     if not get(buf) then
-      return -- closed while the request was in flight
+      return
     end
     if type(result) ~= "table" then
       result = {}
@@ -283,7 +264,6 @@ function M.refresh(buf)
   end)
 end
 
----Variable name under the cursor, or nil.
 ---@param buf integer
 ---@return string?
 local function current_name(buf)
@@ -296,7 +276,6 @@ local function current_name(buf)
   return v and v.name or nil
 end
 
----Open a small float showing `text` (used for inspect details / fallback).
 ---@param text string
 ---@return integer? win
 function M.show_float(text)
@@ -336,8 +315,6 @@ function M.show_float(text)
   return win
 end
 
----Inspect the variable under the cursor (`<CR>`): ask the bridge, else use the
----cached repr.
 ---@param buf integer?
 function M.inspect(buf)
   buf = norm_buf(buf)
@@ -384,8 +361,6 @@ function M.inspect(buf)
   end
 end
 
--- Test seam: overridable so specs don't need a live bridge. Production reads
--- the orchestration helper in lua/jove/bridge.lua.
 M._variables = function(buf, cb)
   require("jove.bridge").variables(buf, cb)
 end

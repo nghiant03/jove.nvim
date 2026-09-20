@@ -1,18 +1,14 @@
--- Dependency and configuration checks for :checkhealth jove.
+-- Dependency and configuration checks.
 local M = {}
 
 local h = vim.health
 
----Plugin root, mirroring bridge.lua's private computation (its copy is not
----exposed; health needs the same <root>/python for the sidecar probe).
 ---@return string
 local function plugin_root()
   local src = debug.getinfo(1, "S").source:sub(2)
   return vim.fn.fnamemodify(src, ":h:h:h")
 end
 
----Pure classifier for a `python -c "import jupyter_client, ipykernel"` probe
----result (exposed for unit tests).
 ---@param code integer?  exit code (nil on timeout/kill)
 ---@param stderr string
 ---@return "ok"|"missing" status
@@ -28,8 +24,6 @@ function M.check_import_result(code, stderr)
   return "missing", detail
 end
 
----Run `cmd` to completion with a short timeout (health checks may block;
----:checkhealth is explicitly synchronous).
 ---@param cmd string[]
 ---@param timeout integer
 ---@param env table?  Extra environment variables merged into the current
@@ -68,7 +62,6 @@ function M.check()
     h.error("`jupytext` not found on $PATH (pip install jupytext)")
   end
 
-  -- Bridge python: resolved exactly like bridge.lua resolves it at spawn.
   local bridge = require("jove.bridge")
   local cfg = require("jove").config
   local python = bridge.resolve_python(cfg.bridge_python)
@@ -98,11 +91,6 @@ function M.check()
     )
   end
 
-  -- Bridge sidecar probe: a cheap import of the jove_bridge package over
-  -- the same PYTHONPATH the real spawn uses — interpreter (resolve_python)
-  -- AND env (plugin python dir PREPENDED to any existing PYTHONPATH, like
-  -- bridge.lua's spawn; never replaces, so editable installs keep working).
-  -- Never spawns the sidecar itself.
   local pythonpath = vim.fs.joinpath(plugin_root(), "python")
   local existing = vim.fn.environ().PYTHONPATH
   if existing and existing ~= "" then
@@ -121,7 +109,6 @@ function M.check()
     )
   end
 
-  -- snacks.image: strictly INFO, never a warning (optional dependency).
   local ok_snacks, snacks = pcall(require, "snacks")
   if ok_snacks and type(snacks) == "table" and snacks.image ~= nil then
     h.info("snacks.image detected (optional; enables inline image outputs)")

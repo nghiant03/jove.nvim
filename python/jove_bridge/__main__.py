@@ -1,10 +1,3 @@
-"""Entry point: ``python -m jove_bridge``.
-
-Reads newline-delimited JSON requests on stdin, writes newline-delimited
-responses and events on stdout. Runs entirely on the main
-thread plus one channel-poll worker thread — no asyncio.
-"""
-
 from __future__ import annotations
 
 import json

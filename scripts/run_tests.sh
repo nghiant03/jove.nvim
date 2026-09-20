@@ -13,8 +13,6 @@ command -v jupytext >/dev/null 2>&1 || {
   exit 2
 }
 
-# GNU timeout is not on macOS; run unguarded there and rely on the CI job's
-# timeout-minutes instead.
 if command -v timeout >/dev/null 2>&1; then
   timeout 600 nvim --headless -u scripts/minimal_init.lua -c 'lua MiniTest.run()'
 else

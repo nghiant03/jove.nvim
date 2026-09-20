@@ -1,14 +1,9 @@
--- ui/image.lua: optional snacks.image integration for inline image outputs.
---
--- snacks is loaded on demand: availability is probed with
--- pcall on every use so the plugin can appear mid-session. Without it (or with
--- config `output.images = false`) output.lua renders a text placeholder and we
--- notify at most once per session with an install hint.
+-- Optional snacks.image integration for inline image outputs.
+
 local M = {}
 
 local MIME_EXT = { ["image/png"] = "png", ["image/jpeg"] = "jpg" }
 
--- Placement bookkeeping: placed[buf] = { [cell_hash] = { ["<index>:<path>"] = placement } }
 ---@type table<integer, table<string, table<string, table>>>
 local placed = {}
 
@@ -29,10 +24,6 @@ local function ensure_wipeout_cleanup()
   })
 end
 
----Load snacks.image, requiring the parent "snacks" first when needed: the
----submodule reads the global `Snacks` at load time, which only the parent's
----init sets — so a bare require fails when snacks is installed but its
----setup() has not run yet.
 ---@return table? snacks
 local function load()
   pcall(require, "snacks")
@@ -43,13 +34,11 @@ local function load()
   return nil
 end
 
----True when snacks.image is loadable right now.
 ---@return boolean
 function M.available()
   return load() ~= nil
 end
 
----True when image rendering is both enabled in config and possible.
 ---@return boolean
 function M.enabled()
   local cfg = require("jove").config
@@ -59,7 +48,6 @@ function M.enabled()
   return M.available()
 end
 
----One-time-per-session INFO hint when images are wanted but snacks is absent.
 function M.notify_missing()
   if notified then
     return
@@ -68,8 +56,6 @@ function M.notify_missing()
   vim.notify("snacks.image enables inline image outputs", vim.log.levels.INFO)
 end
 
----Decode a base64 image chunk to a temp file, cached on the chunk itself so
----each chunk is written to disk at most once per session.
 ---@param chunk table  { mime = <str>, data = <base64 str> }
 ---@return string? path
 function M.decode(chunk)
@@ -101,8 +87,6 @@ function M.decode(chunk)
   return path
 end
 
----Place one image via snacks.image.placement (feature-detected so snacks API
----drift degrades to the text placeholder instead of an error).
 ---@param buf integer
 ---@param row integer  1-based buffer line the image anchors at
 ---@param path string
@@ -122,8 +106,6 @@ local function place(buf, row, path, col)
   end
   local cfg = require("jove").config
   local opts = { pos = { row, col or 0 }, inline = true }
-  -- Without max_width/max_height snacks fits the image into the whole window,
-  -- which balloons small-DPI outputs to full screen; cap the box in cells.
   if cfg.output and type(cfg.output.image_max_width) == "number" then
     opts.max_width = cfg.output.image_max_width
   end
@@ -137,7 +119,6 @@ local function place(buf, row, path, col)
   return nil
 end
 
----Place image chunks on `buf`.
 ---@param buf integer        Target buffer (cell buffer or output float).
 ---@param cell_hash string   Identity used for placement bookkeeping.
 ---@param image_chunks table List of { chunk = <image chunk>, index = <int>, row = <int>?, col = <int>? };
@@ -167,10 +148,6 @@ function M.render(buf, cell_hash, image_chunks, opts)
   local for_buf = placed[buf] or {}
   local for_cell = for_buf[cell_hash] or {}
   local chunks = image_chunks or {}
-  -- Reverse order: snacks draws each grid as same-row virt_lines, and
-  -- same-row marks stack with the first-created first and the rest in
-  -- reverse creation order, so reversed placement lands the grids in
-  -- document order on screen.
   for i = #chunks, 1, -1 do
     local entry = chunks[i]
     local path = M.decode(entry.chunk)
@@ -193,8 +170,6 @@ function M.render(buf, cell_hash, image_chunks, opts)
   return placed_idx
 end
 
----Close placement handles and forget the records (records also die with the
----buffer via BufWipeout).
 ---@param buf integer
 ---@param cell_hash string?
 function M.clear(buf, cell_hash)

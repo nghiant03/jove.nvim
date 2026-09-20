@@ -1,9 +1,5 @@
--- Notebook outline from markdown-cell headings.
---
--- Markdown cells are stored by jupytext as `# %% [markdown]` followed by
--- comment-prefixed lines, so `# Header` in the source appears as
--- `# # Header` in the buffer. This module strips that comment prefix and
--- collects ATX headings (`#`..`######`) per cell for `:JoveToc`.
+-- Notebook outline from markdown cell headings.
+
 local state = require("jove.state")
 local cell = require("jove.cell")
 
@@ -18,8 +14,6 @@ local function norm_buf(buf)
   return buf
 end
 
----Strip the jupytext markdown comment marker from one body line.
----"# # Header" -> "# Header"; "# plain" -> "plain"; "#" -> "".
 ---@param line string
 ---@return string
 local function strip_comment(line)
@@ -41,8 +35,6 @@ end
 ---@field cell_idx integer   Index into cell.all(buf); 0 for the title.
 ---@field lnum integer       Cell start line to jump to.
 
----Collect the outline for `buf`: an optional notebook-title entry followed by
----every markdown ATX heading, in buffer order.
 ---@param buf integer?
 ---@return jove.TocEntry[]
 function M.headings(buf)
@@ -76,7 +68,6 @@ function M.headings(buf)
   return out
 end
 
----Show the outline in `vim.ui.select`; on confirm, jump to the heading's cell.
 ---@param buf integer?
 function M.pick(buf)
   buf = norm_buf(buf)

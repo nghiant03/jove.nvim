@@ -1,9 +1,4 @@
-"""Kernel lifecycle management (a thin jupyter_client wrapper).
-
-The bridge owns exactly one kernel per process. This module
-knows nothing about the wire protocol; it raises :class:`KernelError` with a
-protocol error code and lets the caller translate.
-"""
+"""Kernel lifecycle management."""
 
 from __future__ import annotations
 
@@ -13,7 +8,6 @@ from typing import Any, Optional
 from jupyter_client.kernelspec import KernelSpecManager
 from jupyter_client.manager import KernelManager
 
-# Seconds to wait for a kernel to exit on shutdown before killing it.
 SHUTDOWN_GRACE = 5.0
 
 
