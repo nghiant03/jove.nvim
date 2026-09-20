@@ -160,7 +160,7 @@ require("jove").setup({
     image_max_width = 80,       -- cap rendered image width in terminal cells (nil disables)
     image_max_height = 40,      -- cap rendered image height in terminal cells (nil disables)
     header = true,              -- draw the Output block's `┌─ Out[n] ─┐` top frame; false renders content + guide rail only
-    guide = "▎ ",               -- per-line inner output rail (between the left border and the text); false disables it
+    guide = "▎ ",               -- per-line inner output rail (before the text); false disables it
     inside_border = false,      -- render output inside the cell border instead of its own bordered block below it
     hl = nil,                   -- output background tint: hl group name (string, linked) or attrs table; nil disables
   },
@@ -273,8 +273,8 @@ to the cell border so the two stay visually separated:
 [code lines]
 ╰────────────────────────────╯       <- JoveCellBorder
 ┌─ Out[3] ─────────────────────┐     <- JoveOutputBorder (distinct group)
-│ ▎ accuracy             │
-│ ▎ 0.74      0.74  …     │
+▎ accuracy
+▎ 0.74      0.74  …
 └────────────────────────────────┘     <- JoveOutputBorder
 ```
 
@@ -287,9 +287,10 @@ to the cell border so the two stay visually separated:
 - The Output top frame carries the `Out[n]` label and is the same role the
   `└─ Out[n]` rule used to play; `output.header = false` skips the entire
   Output frame and renders just content with the guide rail.
-- Every content row carries a `▎ ` guide rail between its left and right
-  border rails (`JoveOutputGuide` → `Comment`, or `JoveOutputGuideError` →
-  `DiagnosticError` for error blocks). Customize with `output.guide = "│ "`,
+- Every content row carries a `▎ ` guide rail (there are no left/right
+  border rails, mirroring the code cell chrome). The guide uses
+  `JoveOutputGuide` → `Comment`, or `JoveOutputGuideError` →
+  `DiagnosticError` for error blocks. Customize with `output.guide = "│ "`,
   or disable with `output.guide = false`.
 - `output.inside_border = true` restores the original layout (output rendered
   between the cell body and its closing border — no Output frame).
@@ -309,7 +310,9 @@ to the cell border so the two stay visually separated:
   rerun or cleared. Live redraws are batched at roughly 16 ms intervals.
 - Error tracebacks are shown as plain text.
 - Image outputs (PNG/JPEG) render inline via `snacks.image` when available;
-  otherwise a text placeholder is shown.
+  otherwise a text placeholder is shown. A `text/plain` repr bundled with an
+  image (e.g. matplotlib's `<Figure size ...>`) is hidden once the image
+  renders and only shown as the placeholder when it cannot.
 
 Highlight groups: `JoveCellBorder` (cell frame), `JoveOutputBorder` (Output
 frame, distinct from the cell frame), `JoveOutputHeader`,

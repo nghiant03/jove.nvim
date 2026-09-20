@@ -4,7 +4,7 @@
 -- A chunk is a plain table:
 --   { kind = "text",  mime = <str>, text = <str>, hl_group = <str>? }
 --   { kind = "note",  mime = <str>, text = <str>, hl_group = <str>? }  (fallbacks)
---   { kind = "image", mime = <str>, data = <base64 str> }              (decode deferred)
+--   { kind = "image", mime = <str>, data = <base64 str>, fallback = <str>? }
 --
 -- Ordering: text/plain first, then other text/* mimes, application/json, then
 -- images (image/png, image/jpeg), then svg (text note), then everything else
@@ -332,6 +332,12 @@ function M.render(params)
   end)
 
   local chunks = {}
+  -- A bundle with a renderable image usually also carries the object's
+  -- text/plain repr (e.g. matplotlib's "<Figure size 1000x500 with 1 Axes>").
+  -- The repr is redundant next to the rendered image, so it is demoted to a
+  -- fallback on the image chunk: shown only when the image cannot be placed.
+  local has_image = type(bundle["image/png"]) == "string" or type(bundle["image/jpeg"]) == "string"
+  local plain_fallback
   for _, mime in ipairs(keys) do
     local value = bundle[mime]
     local class = sort_class(mime)
@@ -367,10 +373,20 @@ function M.render(params)
         text = ("[unsupported mime %s]"):format(mime),
         hl_group = "Comment",
       }
+    elseif mime == "text/plain" and has_image then
+      plain_fallback = value
     else
       -- text/plain, other text/*, application/json: raw text (JSON is
       -- highlighted by treesitter in the float, not re-encoded here).
       chunks[#chunks + 1] = { kind = "text", mime = mime, text = value }
+    end
+  end
+  if plain_fallback then
+    for _, chunk in ipairs(chunks) do
+      if chunk.kind == "image" then
+        chunk.fallback = plain_fallback
+        break
+      end
     end
   end
   return chunks

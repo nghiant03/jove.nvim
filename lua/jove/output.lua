@@ -182,8 +182,15 @@ local function build_lines(chunks)
       local index = #lines + 1
       images[#images + 1] = { chunk = chunk, index = index }
       -- The placeholder doubles as the anchor line: a successful snacks
-      -- placement covers it, a failed one (API drift) still shows the text.
-      lines[#lines + 1] = { { ("[image: %s]"):format(chunk.mime), "Comment" } }
+      -- placement drops it, a failed one (API drift, no image support) still
+      -- shows the text. A bundle that carried the object's text/plain repr
+      -- (matplotlib's "<Figure size ...>") uses that instead of the generic
+      -- tag so a failed placement stays informative.
+      local text = ("[image: %s]"):format(chunk.mime)
+      if type(chunk.fallback) == "string" then
+        text = chunk.fallback:match("^[^\n]*") or text
+      end
+      lines[#lines + 1] = { { text, "Comment" } }
     else
       for i, l in ipairs(vim.split(chunk.text or "", "\n", { plain = true, trimempty = false })) do
         if i == 1 and chunk.continues and #lines > 0 then
@@ -245,8 +252,9 @@ local function apply_output_hl(cfg)
 end
 
 ---Decorate truncated inline output lines for the outside-border (default)
----layout: a self-contained `┌─ Out[n] ──┐ │ … │ └───┘` box rendered below the
----code cell border, top frame at row `c.end_lnum - 1` virt_lines_above =
+---layout: a rail-less `┌─ Out[n] ──┐` / content / `└───┘` box (mirroring the
+---code cell chrome, which also has no side rails) rendered below the code
+---cell border, top frame at row `c.end_lnum - 1` virt_lines_above =
 ---false so it sits visually below the cell's bottom `╰──╯` corner. The frame
 ---uses `JoveOutputBorder` (distinct from `JoveCellBorder`) so the two boxes
 ---stay visually independent while sharing the same horizontal row.
@@ -344,11 +352,11 @@ local function decorate(buf, shown, ctx)
   top[#top + 1] = { "┐", "JoveOutputBorder" }
   decorated[#decorated + 1] = top
 
-  -- Pad to the window width even without a background highlight so the
-  -- right rail aligns with the frame corners.
+  -- Pad to the window width so a configured `output.hl` background spans
+  -- the frame. Like the code cell chrome, there are no side rails: the box
+  -- is just the top rule, guided content, and the bottom rule.
   for _, line in ipairs(shown) do
     local new_line = {}
-    new_line[#new_line + 1] = { "│", "JoveOutputBorder" }
     if guide and guide ~= "" then
       new_line[#new_line + 1] = { guide, guide_hl }
     end
@@ -359,14 +367,13 @@ local function decorate(buf, shown, ctx)
       end
       new_line[#new_line + 1] = { text, hl }
     end
-    local used = 1 -- from the left rail
+    local used = 0
     for _, chunk in ipairs(new_line) do
       used = used + vim.fn.strdisplaywidth(chunk[1])
     end
-    if width - used - 1 > 0 then -- reserve 1 col for the right rail
-      new_line[#new_line + 1] = { string.rep(" ", width - used - 1), "JoveOutput" }
+    if width - used > 0 then
+      new_line[#new_line + 1] = { string.rep(" ", width - used), "JoveOutput" }
     end
-    new_line[#new_line + 1] = { "│", "JoveOutputBorder" }
     decorated[#decorated + 1] = new_line
   end
 
@@ -415,10 +422,10 @@ local function next_unconcealed_row(buf, row)
   return row
 end
 
----Column for the snacks image grid so it starts inside the output frame's
----content area (past the left rail and guide) instead of under the border.
----snacks only honors the column on a blank anchor line (a code anchor gets a
----flush-left grid plus an inline icon), so code anchors keep column 0.
+---Column for the snacks image grid so it starts past the content guide
+---instead of flush left. snacks only honors the column on a blank anchor
+---line (a code anchor gets a flush-left grid plus an inline icon), so code
+---anchors keep column 0.
 ---@param buf integer
 ---@param c jove.Cell
 ---@param out_cfg table
@@ -428,15 +435,11 @@ local function image_col(buf, c, out_cfg)
   if anchor and anchor:find("%S") then
     return 0
   end
-  local col = 0
-  if not out_cfg.inside_border and out_cfg.header ~= false then
-    col = 1 -- left rail "│"
-  end
   local guide = out_cfg.guide == nil and "▎ " or out_cfg.guide
   if guide and guide ~= "" then
-    col = col + vim.fn.strdisplaywidth(guide)
+    return vim.fn.strdisplaywidth(guide)
   end
-  return col
+  return 0
 end
 
 ---(Re)render one cell's extmark. Skips silently when the hash is unknown to

@@ -68,7 +68,6 @@ T["ordering"]["text/plain first, images last, unsupported noted"] = function()
     kind = "display_data",
     mime = {
       ["image/gif"] = "GIF8",
-      ["image/png"] = "cG5n",
       ["text/html"] = "<b>hi</b>",
       ["application/json"] = '{"a":1}',
       ["text/plain"] = "plain",
@@ -84,9 +83,37 @@ T["ordering"]["text/plain first, images last, unsupported noted"] = function()
     "text/plain",
     "text/html",
     "application/json",
-    "image",
     "image/gif", -- unsupported → note chunk carrying its mime
   })
+end
+
+T["ordering"]["text/plain bundled with an image becomes the image's fallback"] = function()
+  -- matplotlib bundles the figure repr ("<Figure size ...>") with the png;
+  -- it is demoted so the placed image can replace the line entirely, while
+  -- a failed placement still has something informative to show.
+  local chunks = mime.render({
+    kind = "display_data",
+    mime = { ["image/png"] = "iVBORw0KGgo=", ["text/plain"] = "<Figure size 100x100>" },
+  })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(
+    chunks[1],
+    {
+      kind = "image",
+      mime = "image/png",
+      data = "iVBORw0KGgo=",
+      fallback = "<Figure size 100x100>",
+    }
+  )
+end
+
+T["ordering"]["text/plain without an image stays a standalone chunk"] = function()
+  local chunks = mime.render({
+    kind = "execute_result",
+    mime = { ["text/plain"] = "42" },
+  })
+  MiniTest.expect.equality(#chunks, 1)
+  MiniTest.expect.equality(chunks[1], { kind = "text", mime = "text/plain", text = "42" })
 end
 
 T["ordering"]["sorts multiple text/* mimes alphabetically"] = function()

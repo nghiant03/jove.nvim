@@ -117,14 +117,14 @@ T["push"]["stores the event and renders virt_lines below the cell end"] = functi
   expect_truthy(ext ~= nil)
   MiniTest.expect.equality(ext.row, end_lnum) -- virt_lines appear below end_lnum
   local t = texts(ext.virt_lines)
-  -- Outside-border layout: top frame, content (rails), bottom frame. The
-  -- right rail always aligns with the window edge so the frame stays square.
+  -- Outside-border layout: top frame, content (guide only, no side rails),
+  -- bottom frame.
   MiniTest.expect.equality(#t, 3)
   expect_truthy(starts_with(t[1], "┌─ "))
   expect_truthy(t[1]:find("Out", 1, true) ~= nil)
   MiniTest.expect.equality(t[1]:find("Out[", 1, true), nil) -- count unknown: bare "Out"
-  expect_truthy(starts_with(t[2], "│▎ "))
-  expect_truthy(t[2]:find("hello", 1, true) ~= nil and ends_with(t[2], "│"))
+  expect_truthy(starts_with(t[2], "▎ hello"))
+  expect_truthy(t[2]:find("│", 1, true) == nil)
   expect_truthy(starts_with(t[3], "└"))
   release_buffer(buf)
 end
@@ -148,10 +148,8 @@ T["push"]["appends incrementally without duplicating the extmark"] = function()
   local t = texts(second.virt_lines)
   MiniTest.expect.equality(#t, 3)
   expect_truthy(starts_with(t[1], "┌─ "))
-  -- Each content row: `│<guide> text<padding>│` with right rail at edge.
-  expect_truthy(
-    starts_with(t[2], "│▎ ") and ends_with(t[2], "│") and t[2]:find("onetwo", 1, true) ~= nil
-  )
+  -- Each content row: `<guide>text<padding>`, no side rails.
+  expect_truthy(starts_with(t[2], "▎ onetwo") and t[2]:find("│", 1, true) == nil)
   expect_truthy(starts_with(t[3], "└"))
   expect_truthy(second.extmark_id == first.extmark_id)
   MiniTest.expect.equality(#vim.api.nvim_buf_get_extmarks(buf, output.ns, 0, -1, {}), 1)
@@ -184,12 +182,11 @@ T["push"]["renders a text placeholder for image chunks"] = function()
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
   local ext = extmark_of(buf, hash)
-  -- Outside-border layout: top frame, content row with rails + image placeholder
-  -- + right rail at edge, bottom frame.
+  -- Outside-border layout: top frame, content row with guide + image
+  -- placeholder (no side rails), bottom frame.
   local t = texts(ext.virt_lines)
   MiniTest.expect.equality(#t, 3)
-  expect_truthy(starts_with(t[2], "│▎ [image:"))
-  expect_truthy(ends_with(t[2], "│"))
+  expect_truthy(starts_with(t[2], "▎ [image:"))
   release_buffer(buf)
 end
 
@@ -304,7 +301,7 @@ T["images"]["text after a placed image renders in the bottom piece"] = function(
   expect_truthy(starts_with(t[1], "┌─ "))
   local b = texts(extmark_below_of(buf, hash).virt_lines)
   MiniTest.expect.equality(#b, 2)
-  expect_truthy(starts_with(b[1], "│▎ note"))
+  expect_truthy(starts_with(b[1], "▎ note"))
   expect_truthy(starts_with(b[2], "└"))
   release_buffer(buf)
 end
@@ -334,8 +331,8 @@ T["images"]["a blank anchor line indents the image inside the frame"] = function
 
   output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
 
-  -- Left rail (1) + default guide "▎ " (2) = column 3.
-  MiniTest.expect.equality(calls[1].opts.pos, { end_lnum, 3 })
+  -- Default guide "▎ " (2 cells) puts the grid at column 2.
+  MiniTest.expect.equality(calls[1].opts.pos, { end_lnum, 2 })
   release_buffer(buf)
 end
 
@@ -394,6 +391,45 @@ T["images"]["keeps the placeholder when the terminal lacks the kitty protocol"] 
   release_buffer(buf)
 end
 
+T["images"]["a bundled text/plain repr disappears when the image is placed"] = function()
+  stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+
+  -- matplotlib sends the figure's repr alongside the png in one bundle.
+  output.push(buf, hash, {
+    kind = "display_data",
+    mime = { ["image/png"] = "iVBORw0KGgo=", ["text/plain"] = "<Figure size 100x100>" },
+  })
+
+  -- Neither the top piece nor the bottom piece shows the repr: the image
+  -- grid replaces it entirely.
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  MiniTest.expect.equality(#t, 1)
+  expect_truthy(starts_with(t[1], "┌─ "))
+  local b = texts(extmark_below_of(buf, hash).virt_lines)
+  MiniTest.expect.equality(#b, 1)
+  expect_truthy(starts_with(b[1], "└"))
+  release_buffer(buf)
+end
+
+T["images"]["a failed placement shows the bundled text/plain repr instead"] = function()
+  stub_snacks(false)
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, {
+    kind = "display_data",
+    mime = { ["image/png"] = "iVBORw0KGgo=", ["text/plain"] = "<Figure size 100x100>" },
+  })
+
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  MiniTest.expect.equality(#t, 3)
+  expect_truthy(t[2]:find("<Figure size 100x100>", 1, true) ~= nil)
+  expect_truthy(t[2]:find("[image:", 1, true) == nil)
+  release_buffer(buf)
+end
+
 T["push"]["survives an error event with ANSI traceback"] = function()
   local buf = make_buffer({ "# %% a", "1/0" })
   local hash = cell_hash(buf)
@@ -406,11 +442,11 @@ T["push"]["survives an error event with ANSI traceback"] = function()
   local ext = extmark_of(buf, hash)
   local t = texts(ext.virt_lines)
   expect_truthy(starts_with(t[1], "┌─ "))
-  -- Each error line: `│▎ <line text><padding>│` (the inner guide stays the
-  -- default `▎ ` — the error styling only swaps the hl group to GuideError).
+  -- Each error line: `▎ <line text><padding>` (the guide stays the default
+  -- `▎ `; the error styling only swaps the hl group to GuideError).
   MiniTest.expect.equality(#t, 4)
-  expect_truthy(starts_with(t[2], "│▎ ZeroDivisionError:") and ends_with(t[2], "│"))
-  expect_truthy(starts_with(t[3], "│▎ ZeroDivisionError") and ends_with(t[3], "│"))
+  expect_truthy(starts_with(t[2], "▎ ZeroDivisionError:"))
+  expect_truthy(starts_with(t[3], "▎ ZeroDivisionError"))
   expect_truthy(starts_with(t[4], "└"))
   release_buffer(buf)
 end
@@ -457,24 +493,21 @@ T["decoration"]["guide = false omits the inner padding rail"] = function()
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hi" } })
   local t = texts(extmark_of(buf, hash).virt_lines)
   MiniTest.expect.equality(#t, 3)
-  expect_truthy(starts_with(t[2], "│"))
-  expect_truthy(ends_with(t[2], "│"))
-  expect_truthy(t[2]:find("hi", 1, true) ~= nil)
+  expect_truthy(starts_with(t[2], "hi"))
   expect_truthy(t[2]:find("▎", 1, true) == nil)
+  expect_truthy(t[2]:find("│", 1, true) == nil)
   jove.config.output.guide = orig
   release_buffer(buf)
 end
 
-T["decoration"]["custom guide string is used verbatim between rails"] = function()
+T["decoration"]["custom guide string is used verbatim"] = function()
   local orig = jove.config.output.guide
   jove.config.output.guide = "│ "
   local buf = make_buffer({ "# %% a", "print(1)" })
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hi" } })
   local t = texts(extmark_of(buf, hash).virt_lines)
-  expect_truthy(starts_with(t[2], "││"))
-  expect_truthy(ends_with(t[2], "│"))
-  expect_truthy(t[2]:find("hi", 1, true) ~= nil)
+  expect_truthy(starts_with(t[2], "│ hi"))
   jove.config.output.guide = orig
   release_buffer(buf)
 end
@@ -491,9 +524,9 @@ T["decoration"]["error output switches the inner padding rail to JoveOutputGuide
     traceback = { "ZeroDivisionError" },
   })
   -- Outside-border layout: the first virt_line is the top frame, the second
-  -- is the first content row whose outer rails are the box borders; the
-  -- inner rail (between outer rail and text) carries the error hl.
-  local inner_rail = extmark_of(buf, hash).virt_lines[2][2]
+  -- is the first content row, whose first chunk is the guide carrying the
+  -- error hl.
+  local inner_rail = extmark_of(buf, hash).virt_lines[2][1]
   MiniTest.expect.equality(inner_rail[1], "▎ ")
   MiniTest.expect.equality(inner_rail[2], "JoveOutputGuideError")
   jove.config.output.guide = orig
@@ -585,11 +618,9 @@ T["truncation"]["caps virt_lines at output.max_lines with a float trailer"] = fu
   -- top frame + 3 retained lines + trailer + bottom frame.
   MiniTest.expect.equality(#t, 6)
   expect_truthy(starts_with(t[1], "┌─ "))
-  expect_truthy(starts_with(t[2], "│▎ line1") and ends_with(t[2], "│"))
-  expect_truthy(starts_with(t[4], "│▎ line3") and ends_with(t[4], "│"))
-  expect_truthy(
-    starts_with(t[5], "│▎ … +7 lines · :JoveOpenOutput") and ends_with(t[5], "│")
-  )
+  expect_truthy(starts_with(t[2], "▎ line1"))
+  expect_truthy(starts_with(t[4], "▎ line3"))
+  expect_truthy(starts_with(t[5], "▎ … +7 lines · :JoveOpenOutput"))
   expect_truthy(starts_with(t[6], "└"))
 
   jove.config.output.max_lines = orig
@@ -618,7 +649,7 @@ T["import"]["bulk-attaches outputs by hash and renders them"] = function()
   local t1 = texts(extmark_of(buf, h1).virt_lines)
   -- Adjacent stream fragments continue the same line.
   MiniTest.expect.equality(#t1, 3)
-  expect_truthy(starts_with(t1[2], "│▎ a1a2") and ends_with(t1[2], "│"))
+  expect_truthy(starts_with(t1[2], "▎ a1a2"))
   expect_truthy(texts(extmark_of(buf, h2).virt_lines)[2]:find("b1", 1, true) ~= nil)
   release_buffer(buf)
 end
@@ -684,13 +715,11 @@ T["buf = 0 (current buffer)"]["push(0, ...) attaches to the current buffer"] = f
   local ext = extmark_of(buf, cell_hash(buf))
   expect_truthy(ext ~= nil)
   -- Outside-border layout: top frame + content row + bottom frame. The
-  -- content row's left rail + default guide `▎ ` puts `▎ hello ` between
-  -- the two outer `│` rails.
+  -- content row is the default guide `▎ ` plus the text; no side rails.
   local t = texts(ext.virt_lines)
   MiniTest.expect.equality(#t, 3)
-  expect_truthy(starts_with(t[2], "│"))
-  expect_truthy(ends_with(t[2], "│"))
-  expect_truthy(t[2]:find("hello", 1, true) ~= nil)
+  expect_truthy(starts_with(t[2], "▎ hello"))
+  expect_truthy(t[2]:find("│", 1, true) == nil)
   release_buffer(buf)
 end
 

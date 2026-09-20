@@ -24,8 +24,8 @@ local M = {}
 ---  | header: draw the Output block's `┌─ Out[n] ─┐` top frame below each
 ---  | cell (boolean); setting false renders just content with the guide rail,
 ---  | no Output frame.
----  | guide: per-line inner rail string (placed between the left `│` border
----  | rail and the text), or `false` to disable (`string|false`).
+---  | guide: per-line inner rail string (placed before the text), or
+---  | `false` to disable (`string|false`).
 ---  | inside_border: render output inside the cell border instead of in its
 ---  | own dedicated bordered block (boolean).
 ---  | hl: output background tint — an existing hl group name (`string`, linked
