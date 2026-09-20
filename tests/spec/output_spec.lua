@@ -241,6 +241,104 @@ T["images"]["places chunks via snacks.image.placement anchored at the cell end"]
   release_buffer(buf)
 end
 
+---Extmark info for the bottom piece of a split output box (placed images).
+---@param buf integer
+---@param hash string
+---@return table?
+local function extmark_below_of(buf, hash)
+  local entry = state.peek(buf).outputs and state.peek(buf).outputs[hash]
+  if not entry or not entry.extmark_id_below then
+    return nil
+  end
+  local ok, ext = pcall(
+    vim.api.nvim_buf_get_extmark_by_id,
+    buf,
+    output.ns,
+    entry.extmark_id_below,
+    { details = true }
+  )
+  if not ok then
+    return nil
+  end
+  return {
+    row = ext[1] + 1,
+    virt_lines = ext[3].virt_lines,
+    virt_lines_above = ext[3].virt_lines_above,
+  }
+end
+
+T["images"]["a placed image drops its placeholder and the box closes below it"] = function()
+  stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()", "", "# %% b", "print(1)" })
+  local hash = cell_hash(buf)
+  local end_lnum = cell.all(buf)[1].end_lnum
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+
+  -- Top piece: frame header only, no "[image: ...]" placeholder anywhere.
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  MiniTest.expect.equality(#t, 1)
+  expect_truthy(starts_with(t[1], "┌─ "))
+  -- Bottom piece: the frame's bottom border, anchored at the next buffer line
+  -- with virt_lines_above so the snacks grid lands inside the frame.
+  local below = extmark_below_of(buf, hash)
+  expect_truthy(below ~= nil)
+  MiniTest.expect.equality(below.row, end_lnum + 1)
+  MiniTest.expect.equality(below.virt_lines_above, true)
+  local b = texts(below.virt_lines)
+  MiniTest.expect.equality(#b, 1)
+  expect_truthy(starts_with(b[1], "└"))
+  release_buffer(buf)
+end
+
+T["images"]["text after a placed image renders in the bottom piece"] = function()
+  stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "note" } })
+
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  MiniTest.expect.equality(#t, 1)
+  expect_truthy(starts_with(t[1], "┌─ "))
+  local b = texts(extmark_below_of(buf, hash).virt_lines)
+  MiniTest.expect.equality(#b, 2)
+  expect_truthy(starts_with(b[1], "│▎ note"))
+  expect_truthy(starts_with(b[2], "└"))
+  release_buffer(buf)
+end
+
+T["images"]["the bottom piece anchors past a concealed next header"] = function()
+  stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()", "# %% b", "print(1)" })
+  local hash = cell_hash(buf)
+  -- chrome conceals the next cell's `# %%` header when conceal_headers is on.
+  local chrome_ns = vim.api.nvim_create_namespace("jove_cell_chrome")
+  vim.api.nvim_buf_set_extmark(buf, chrome_ns, 2, 0, { conceal_lines = "" })
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+
+  -- virt_lines on a concealed line are hidden with it, so the bottom piece
+  -- skips the concealed header and anchors at the next visible line.
+  local below = extmark_below_of(buf, hash)
+  MiniTest.expect.equality(below.row, 4)
+  release_buffer(buf)
+end
+
+T["images"]["a blank anchor line indents the image inside the frame"] = function()
+  local calls = stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()", "", "# %% b" })
+  local hash = cell_hash(buf)
+  local end_lnum = cell.all(buf)[1].end_lnum
+
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } })
+
+  -- Left rail (1) + default guide "▎ " (2) = column 3.
+  MiniTest.expect.equality(calls[1].opts.pos, { end_lnum, 3 })
+  release_buffer(buf)
+end
+
 T["images"]["re-render closes the previous placement instead of stacking grids"] = function()
   local calls, closed = stub_snacks()
   local buf = make_buffer({ "# %% a", "plt.plot()" })

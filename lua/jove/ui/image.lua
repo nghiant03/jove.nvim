@@ -106,8 +106,9 @@ end
 ---@param buf integer
 ---@param row integer  1-based buffer line the image anchors at
 ---@param path string
+---@param col integer?  0-based column the grid is padded to (blank anchors only)
 ---@return table? placement  snacks placement handle on success
-local function place(buf, row, path)
+local function place(buf, row, path, col)
   local snacks = load()
   if not snacks then
     return nil
@@ -120,7 +121,7 @@ local function place(buf, row, path)
     return nil
   end
   local cfg = require("jove").config
-  local opts = { pos = { row, 0 }, inline = true }
+  local opts = { pos = { row, col or 0 }, inline = true }
   -- Without max_width/max_height snacks fits the image into the whole window,
   -- which balloons small-DPI outputs to full screen; cap the box in cells.
   if cfg.output and type(cfg.output.image_max_width) == "number" then
@@ -139,45 +140,57 @@ end
 ---Place image chunks on `buf`.
 ---@param buf integer        Target buffer (cell buffer or output float).
 ---@param cell_hash string   Identity used for placement bookkeeping.
----@param image_chunks table List of { chunk = <image chunk>, index = <int>, row = <int>? };
+---@param image_chunks table List of { chunk = <image chunk>, index = <int>, row = <int>?, col = <int>? };
 ---   `row` is an explicit 1-based anchor line: inline outputs anchor every
 ---   image at the cell's last real line because virt_lines have no buffer row
 ---   of their own. Without `row` the anchor is `opts.base_row + index` (the
 ---   output float, where the placeholder is a real line).
 ---@param opts table?        { base_row = <int, 1-based buffer row for index 0; default 1> }
+---@return table<integer, boolean> placed  set of `index` values that got a live placement
 function M.render(buf, cell_hash, image_chunks, opts)
   ensure_wipeout_cleanup()
+  local placed_idx = {}
   opts = opts or {}
   if type(buf) ~= "number" or not vim.api.nvim_buf_is_valid(buf) then
-    return
+    return placed_idx
   end
   local cfg = require("jove").config
   if not (cfg.output and cfg.output.images) then
-    return -- user opted out: output.lua keeps the text placeholder, stay silent
+    return placed_idx -- user opted out: output.lua keeps the text placeholder, stay silent
   end
   if not M.available() then
     M.notify_missing()
-    return
+    return placed_idx
   end
 
   local base_row = opts.base_row or 1
   local for_buf = placed[buf] or {}
   local for_cell = for_buf[cell_hash] or {}
-  for _, entry in ipairs(image_chunks or {}) do
+  local chunks = image_chunks or {}
+  -- Reverse order: snacks draws each grid as same-row virt_lines, and
+  -- same-row marks stack with the first-created first and the rest in
+  -- reverse creation order, so reversed placement lands the grids in
+  -- document order on screen.
+  for i = #chunks, 1, -1 do
+    local entry = chunks[i]
     local path = M.decode(entry.chunk)
     if path then
       local key = ("%d:%s"):format(entry.index, path)
-      if not for_cell[key] then
+      if for_cell[key] then
+        placed_idx[entry.index] = true
+      else
         local row = entry.row or (base_row + entry.index)
-        local handle = place(buf, row, path)
+        local handle = place(buf, row, path, entry.col)
         if handle then
           for_cell[key] = handle
+          placed_idx[entry.index] = true
         end
       end
     end
   end
   placed[buf] = for_buf
   for_buf[cell_hash] = for_cell
+  return placed_idx
 end
 
 ---Close placement handles and forget the records (records also die with the

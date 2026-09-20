@@ -7,6 +7,7 @@
 --       raw    = <list of raw output event params>,
 --       hidden = <bool, per-cell fold state>,
 --       extmark_id = <int?, virt_lines extmark below the cell end>,
+--       extmark_id_below = <int?, bottom piece when the box is split around a placed image>,
 --       bytes  = <int, approximate payload bytes accumulated>,
 --       truncated = <bool, true once config.output.max_bytes was hit>,
 --     },
@@ -90,8 +91,15 @@ local function get_entry(st, cell_hash)
   local store = st.outputs or {}
   local entry = store[cell_hash]
   if not entry then
-    entry =
-      { chunks = {}, raw = {}, hidden = false, extmark_id = nil, bytes = 0, truncated = false }
+    entry = {
+      chunks = {},
+      raw = {},
+      hidden = false,
+      extmark_id = nil,
+      extmark_id_below = nil,
+      bytes = 0,
+      truncated = false,
+    }
     store[cell_hash] = entry
   end
   st.outputs = store
@@ -372,6 +380,65 @@ local function decorate(buf, shown, ctx)
   return decorated
 end
 
+---First row at or past `row` (0-indexed) not hidden by a `conceal_lines`
+---extmark (jove's concealed `# %%` headers): virt_lines attached to a
+---concealed line are hidden along with it, so the bottom piece of a split
+---output box must anchor on a visible row. May return one row past the
+---buffer end; the caller sets strict=false.
+---@param buf integer
+---@param row integer  0-indexed
+---@return integer
+local function next_unconcealed_row(buf, row)
+  -- nvim_create_namespace returns the existing id for chrome's namespace.
+  local chrome_ns = vim.api.nvim_create_namespace("jove_cell_chrome")
+  local line_count = vim.api.nvim_buf_line_count(buf)
+  while row < line_count do
+    local marks = vim.api.nvim_buf_get_extmarks(
+      buf,
+      chrome_ns,
+      { row, 0 },
+      { row, -1 },
+      { details = true }
+    )
+    local concealed = false
+    for _, m in ipairs(marks) do
+      if m[4] and m[4].conceal_lines then
+        concealed = true
+        break
+      end
+    end
+    if not concealed then
+      return row
+    end
+    row = row + 1
+  end
+  return row
+end
+
+---Column for the snacks image grid so it starts inside the output frame's
+---content area (past the left rail and guide) instead of under the border.
+---snacks only honors the column on a blank anchor line (a code anchor gets a
+---flush-left grid plus an inline icon), so code anchors keep column 0.
+---@param buf integer
+---@param c jove.Cell
+---@param out_cfg table
+---@return integer
+local function image_col(buf, c, out_cfg)
+  local anchor = vim.api.nvim_buf_get_lines(buf, c.end_lnum - 1, c.end_lnum, false)[1]
+  if anchor and anchor:find("%S") then
+    return 0
+  end
+  local col = 0
+  if not out_cfg.inside_border and out_cfg.header ~= false then
+    col = 1 -- left rail "│"
+  end
+  local guide = out_cfg.guide == nil and "▎ " or out_cfg.guide
+  if guide and guide ~= "" then
+    col = col + vim.fn.strdisplaywidth(guide)
+  end
+  return col
+end
+
 ---(Re)render one cell's extmark. Skips silently when the hash is unknown to
 ---the current buffer contents (edited away) or the cell is toggled hidden.
 ---@param buf integer
@@ -387,6 +454,10 @@ local function render_cell(buf, cell_hash)
   if entry.extmark_id then
     pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id)
     entry.extmark_id = nil
+  end
+  if entry.extmark_id_below then
+    pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id_below)
+    entry.extmark_id_below = nil
   end
 
   -- Invalidation guard: if the cell was edited (hash gone) we keep the stored
@@ -423,24 +494,76 @@ local function render_cell(buf, cell_hash)
   -- down by one: keep the image layer's dedup indexes in sync.
   local header_offset = (#shown > 0 and out_cfg.header ~= false) and 1 or 0
 
-  entry.extmark_id = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
-    virt_lines = decorated,
-    virt_lines_above = false,
-    right_gravity = not out_cfg.inside_border,
-    priority = (not out_cfg.inside_border) and RENDER_PRIORITY or nil,
-  })
-
+  -- Place images before setting the output extmarks: snacks draws each image
+  -- as its own same-row virt_lines extmark (created asynchronously, so it
+  -- reliably stacks after the marks created here). A placed image replaces
+  -- its `[image: ...]` placeholder line; a failed placement keeps the
+  -- placeholder so something still shows.
+  local split_at -- index into `decorated` of the first placed image
+  local drop = {} -- decorated indexes of placed image placeholders
   if #images > 0 then
     local visible = {}
     for _, e in ipairs(images) do
       if e.index <= max then
-        visible[#visible + 1] =
-          { chunk = e.chunk, index = e.index + header_offset, row = c.end_lnum }
+        visible[#visible + 1] = {
+          chunk = e.chunk,
+          index = e.index + header_offset,
+          row = c.end_lnum,
+          col = image_col(buf, c, out_cfg),
+        }
       end
     end
     if #visible > 0 then
-      pcall(image.render, buf, cell_hash, visible)
+      local ok, placed_idx = pcall(image.render, buf, cell_hash, visible)
+      if ok and placed_idx then
+        for _, e in ipairs(visible) do
+          if placed_idx[e.index] then
+            drop[e.index] = true
+            split_at = math.min(split_at or e.index, e.index)
+          end
+        end
+      end
     end
+  end
+
+  -- Split the decorated box around the image block: the top piece hangs off
+  -- the cell's last line as before; the bottom piece anchors at the next
+  -- unconcealed buffer line with virt_lines_above, which always renders after
+  -- everything hanging off the cell's last line, so the image grid lands
+  -- inside the frame. Left gravity keeps the bottom piece before the next
+  -- cell's right-gravity top rule when both attach above the same row.
+  local top, bottom = decorated, nil
+  if split_at then
+    top, bottom = {}, {}
+    for i, line in ipairs(decorated) do
+      if not drop[i] then
+        if i < split_at then
+          top[#top + 1] = line
+        else
+          bottom[#bottom + 1] = line
+        end
+      end
+    end
+  end
+
+  if #top > 0 then
+    entry.extmark_id = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
+      virt_lines = top,
+      virt_lines_above = false,
+      right_gravity = not out_cfg.inside_border,
+      priority = (not out_cfg.inside_border) and RENDER_PRIORITY or nil,
+    })
+  end
+  if bottom and #bottom > 0 then
+    entry.extmark_id_below =
+      vim.api.nvim_buf_set_extmark(buf, M.ns, next_unconcealed_row(buf, c.end_lnum), 0, {
+        virt_lines = bottom,
+        virt_lines_above = true,
+        right_gravity = false,
+        -- A last cell reaching buffer end anchors one row past the final line.
+        strict = false,
+        priority = (not out_cfg.inside_border) and RENDER_PRIORITY or nil,
+      })
   end
 end
 
@@ -521,6 +644,9 @@ function M.clear(buf, cell_hash, opts)
         if entry.extmark_id then
           pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id)
         end
+        if entry.extmark_id_below then
+          pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id_below)
+        end
         image.clear(buf, cell_hash)
         st.outputs[cell_hash] = nil
         if not (opts and opts.skip_dirty) then
@@ -531,6 +657,9 @@ function M.clear(buf, cell_hash, opts)
       for hash, entry in pairs(st.outputs) do
         if entry.extmark_id then
           pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id)
+        end
+        if entry.extmark_id_below then
+          pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id_below)
         end
         image.clear(buf, hash)
       end
