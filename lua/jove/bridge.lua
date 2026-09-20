@@ -79,7 +79,7 @@ function M.new(opts)
     respawn = opts.respawn,
   }
   self._handlers = {}
-  self._pending = {} 
+  self._pending = {}
   self._queue = {}
   self._next_id = 1
   self._ready = false

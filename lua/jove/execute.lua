@@ -1,6 +1,7 @@
 -- Buffer FIFO execution queue.
 
 local cell = require("jove.cell")
+local state = require("jove.state")
 
 local M = {}
 local next_run = 0

@@ -23,7 +23,7 @@ class BridgeProcess:
 
     def __init__(self) -> None:
         self.proc = subprocess.Popen(
-           [sys.executable, "-m", "jove_bridge"],
+            [sys.executable, "-m", "jove_bridge"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -415,7 +415,6 @@ def test_stdin_eof_exits_zero(bridge):
     bridge.proc.stdin.close()
     rc = bridge.proc.wait(timeout=20)
     assert rc == 0
-
 
 
 class _FakeConn:

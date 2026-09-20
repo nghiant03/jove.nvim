@@ -1,6 +1,5 @@
 """Session logic.."""
 
-
 from __future__ import annotations
 
 import ast
@@ -466,7 +465,7 @@ class BridgeSession:
             self.pending[msg_id] = _Pending("ready_probe", None)
         deadline = time.monotonic() + timeout
         if not self._iopub_live.wait(timeout):
-            self._iopub_live.set()  
+            self._iopub_live.set()
         remaining = deadline - time.monotonic()
         if not self._ready.wait(max(remaining, 0.0)):
             with self._lock:
