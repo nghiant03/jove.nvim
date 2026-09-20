@@ -3,11 +3,6 @@
 > **Jupyter notebooks, edited natively in Neovim.**
 > *Jove — /dʒoʊv/, as in Jupiter.*
 
-Edit Jupyter `.ipynb` notebooks in Neovim as if they were native Python
-buffers — real LSP/copilot/treesitter, a first-party kernel client, inline
-cell outputs, and proper round-tripping to disk. No otter, no quarto, no
-molten, no temp files, no lost outputs.
-
 <!-- panvimdoc-ignore-start -->
 
 [![CI](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml)
@@ -35,47 +30,15 @@ molten, no temp files, no lost outputs.
 - **Tooling** — variable inspector sidebar, notebook table of contents, and a
   kernel info panel with sessions and installed kernelspecs.
 
-## How it works
-
-```
-.ipynb on disk (JSON)
-   │  open ── jupytext ─▶  normal buffer, filetype=python
-   │                        pyright / ruff / copilot / treesitter attach natively
-   │                        run cells via a background Jupyter kernel
-   │                        cell status signs + inline cell outputs
-   │  save ── jupytext ─▶  .ipynb on disk (outputs persisted in the JSON)
-```
-
-- Notebooks open as ordinary Python buffers — LSP, completion, formatting,
-  and git tooling all work on them like any other file.
-- On save, the outputs you produced this session are merged back into the
-  `.ipynb`, so they survive to disk and reappear when you reopen the notebook.
-- Kernel execution runs through a small Python helper that jove starts and
-  supervises per notebook; if it dies, it is restarted automatically and the
-  kernel comes back with it.
-- The kernel is chosen from the notebook's own metadata, then the active
-  Python environment, then an interactive picker of installed kernels.
-
 ## Requirements
 
 - Neovim ≥ 0.11
-- [`jupytext`](https://github.com/mwouts/jupytext) on `$PATH` (conversion-only
-  usage — editing and saving notebooks without running cells — needs just this)
-- For kernel execution: a Python interpreter with `jupyter_client` and
+- [`jupytext`](https://github.com/mwouts/jupytext)
+- A Python interpreter with `jupyter_client` and
   `ipykernel` installed:
+- [`snacks.nvim`](https://github.com/folke/snacks.nvim) (optional): Image rendering 
 
-  ```sh
-  pip install jupyter_client ipykernel
-  ```
-
-- [`snacks.nvim`](https://github.com/folke/snacks.nvim) (optional) — its
-  `image` module renders inline PNG/JPEG outputs. Without it, image outputs
-  render as text placeholders.
-
-Run `:checkhealth jove` to verify all of the above: the Neovim version, the
-`jupytext` binary, the Python interpreter and its dependencies, the optional
-`snacks.image` integration, and a conflict check against `jupytext.nvim`
-(it also warns if it detects molten, which jove no longer uses).
+Run `:checkhealth jove` to verify the requirements
 
 ## Installation
 
@@ -84,7 +47,7 @@ Run `:checkhealth jove` to verify all of the above: the Neovim version, the
 ```lua
 {
   "nghiant03/jove.nvim",
-  lazy = false,   -- BufReadCmd must be registered before the .ipynb is opened
+  lazy = false,
   opts = {
     auto_kernel = true,
     keymap = {
@@ -95,19 +58,10 @@ Run `:checkhealth jove` to verify all of the above: the Neovim version, the
   },
 }
 ```
-
-> `opts = {}` (or `config = true`) is **required** — without it lazy.nvim
-> never calls `require("jove").setup(...)`. The `BufReadCmd`/`BufWriteCmd`
-> handlers are installed from `plugin/jove.lua` at startup either way, but
-> you'll lose the `ic`/`ac` cell text-objects, `[c`/`]c` cell motions, all
-> `keymap = {}` bindings, and the cell status signs/spinner.
-
-With any other plugin manager, load jove at startup (not lazily) and call
-`require("jove").setup({...})` in your config.
-
-**Do not load `jupytext.nvim` alongside jove** — both register `BufReadCmd`
-on `*.ipynb`. Jove detects it and refuses to register its handlers with a
-warning; remove one of the two plugins.
+> [!important]
+> **Do not** load `jupytext.nvim` with jove since both register `BufReadCmd`
+> on `*.ipynb`. Jove detects it and refuses to register its handlers with a
+> warning.
 
 ### Python environment
 
@@ -126,10 +80,6 @@ opts = {
   bridge_python = "/home/you/envs/jupyter/bin/python",
 }
 ```
-
-If `jupytext` lives in a conda env that isn't on `$PATH` for the nvim
-process, either prepend that env's `bin/` to `vim.env.PATH` early in your
-`init.lua` or point `opts.jupytext` at the absolute binary path.
 
 ## Configuration
 
@@ -213,8 +163,6 @@ require("jove").setup({
 | `:JoveKernelInfo` | Show kernel panel (current session, running kernels, installed kernelspecs) |
 | `:JoveToc` | Show a table of contents for the current notebook |
 
-Use `:checkhealth jove` to verify dependencies, versions, and conflicts.
-
 ### Keymaps and motions
 
 On jove buffers (python, julia, r, javascript filetypes backed by an
@@ -237,188 +185,3 @@ opts = {
   },
 }
 ```
-
-### Execution and status
-
-Cells run one at a time per notebook: a queued cell gets the `queued` sign,
-then `running` (with a spinner on the cell), then `ok` or `error`. Errors
-keep the `✗` sign and render the traceback. `:JoveInterrupt` stops the
-running execution.
-
-When enabled (`ui.exec_counts` / `ui.elapsed`), each cell shows its kernel
-execution count and how long its last run took; counts are also persisted
-into the `.ipynb` on save (`persist_exec_counts`).
-
-Add a kernel status component to your statusline:
-
-```lua
-require("jove.ui.panel").status()  -- e.g. "⚡ python3 · busy"
-```
-
-It shows the kernelspec name and busy/idle state, and returns an empty
-string when no kernel is running.
-
-`:JoveKernelInfo` opens a centered float with three sections: the current
-session (kernel, status, and queue length), every running kernel across all
-open notebooks, and the installed kernelspecs (fetched asynchronously through
-the bridge, reusing a live kernel when one is available).
-
-## Output rendering
-
-Outputs render as a dedicated bordered `Out` block below each cell, attached
-to the cell border so the two stay visually separated:
-
-```
-╭─ ○ Cell 5 ────────────────╮       <- JoveCellBorder
-[code lines]
-╰────────────────────────────╯       <- JoveCellBorder
-┌─ Out[3] ─────────────────────┐     <- JoveOutputBorder (distinct group)
-▎ accuracy
-▎ 0.74      0.74  …
-└────────────────────────────────┘     <- JoveOutputBorder
-```
-
-- The Code cell border (`JoveCellBorder`) wraps the **code only**; the Output
-  block is its own bordered region with the **distinct** `JoveOutputBorder`
-  group so cell vs output can be themed independently and never visually merge.
-- Effect: the output sits directly below the code border without being
-  contained inside it (set `output.inside_border = true` for the older
-  in-box behaviour).
-- The Output top frame carries the `Out[n]` label and is the same role the
-  `└─ Out[n]` rule used to play; `output.header = false` skips the entire
-  Output frame and renders just content with the guide rail.
-- Every content row carries a `▎ ` guide rail (there are no left/right
-  border rails, mirroring the code cell chrome). The guide uses
-  `JoveOutputGuide` → `Comment`, or `JoveOutputGuideError` →
-  `DiagnosticError` for error blocks. Customize with `output.guide = "│ "`,
-  or disable with `output.guide = false`.
-- `output.inside_border = true` restores the original layout (output rendered
-  between the cell body and its closing border — no Output frame).
-- `output.hl` optionally tints the block's full window-width background: an hl
-  group name (`string`, linked to `JoveOutput`) or attrs table (e.g.
-  `{ bg = "#2a2a3a" }`). nil disables the tint.
-- `:JoveToggleOutput` folds/unfolds the current cell's output.
-- `:JoveOpenOutput` opens the current cell's output in a scrollable float
-  (close with `q` or `<Esc>`); the float shows the raw, undecorated lines.
-- Output longer than `output.max_lines` is truncated inline, with a trailer
-  pointing at `:JoveOpenOutput` for the full view.
-- `output.max_bytes` defaults to 1 MiB per cell (minimum 1 KiB), measured
-  against serialized output events. Events beyond the limit are dropped;
-  a truncation marker is shown and saved with session outputs. Increase the
-  limit for large images or datasets. Imported disk outputs are capped for
-  display but their original disk payloads are preserved until the cell is
-  rerun or cleared. Live redraws are batched at roughly 16 ms intervals.
-- Error tracebacks are shown as plain text.
-- Image outputs (PNG/JPEG) render inline via `snacks.image` when available;
-  otherwise a text placeholder is shown. A `text/plain` repr bundled with an
-  image (e.g. matplotlib's `<Figure size ...>`) is hidden once the image
-  renders and only shown as the placeholder when it cannot.
-
-Highlight groups: `JoveCellBorder` (cell frame), `JoveOutputBorder` (Output
-frame, distinct from the cell frame), `JoveOutputHeader`,
-`JoveOutputGuide`, `JoveOutputGuideError` and `JoveOutput` (all
-user-overridable via `nvim_set_hl`).
-
-## Output persistence
-
-jove persists outputs natively in the `.ipynb` — no import/export step. On
-save, session outputs are merged into the notebook JSON, matched to cells by
-their content.
-
-The exact semantics:
-
-- **Outputs are notebook changes**: executing or clearing outputs marks the
-  notebook modified even when its source text is unchanged. A failed output
-  export leaves it modified so saving can be retried.
-- **Untouched cells** keep whatever jupytext preserved on disk, including
-  their original execution counts.
-- **Cells re-run this session** get their disk outputs replaced by the
-  session outputs along with the kernel execution count; with
-  `persist_exec_counts = false` (or when the kernel reports no count) the
-  count is written as `null`.
-- **Cleared outputs stay cleared**: deleting a cell's outputs and saving
-  persists `outputs: []`, so they don't resurrect on reload.
-- **Reload treats disk as truth**: `:JoveReload` (or an external change with
-  `auto_reload = true`) re-imports outputs from the file; session-only
-  outputs that were never saved are dropped.
-  Automatic reload skips notebooks with unsaved changes. `:JoveReload`
-  explicitly discards existing local changes, but aborts if source or outputs
-  change while the asynchronous read is running.
-- **One-time reformat**: the first save that merges session outputs
-  re-encodes the whole notebook as compact JSON, so that diff can look large
-  once. Subsequent saves only rewrite cells you actually ran or cleared.
-
-Identical cells have separate output/status keys using their occurrence in
-document order. These are content-based keys, not permanent notebook cell IDs:
-reordering or deleting identical cells can change their association. Save
-results before restructuring duplicates and rerun affected cells afterward.
-Whitespace within source lines is significant when matching results.
-
-## Comparison
-
-| | jove.nvim | jupytext.nvim | quarto-nvim + otter | jupynium.nvim |
-|---|---|---|---|---|
-| Native python LSP | yes | yes | proxy/chunked | yes |
-| Kernel execution | built-in (Python bridge) | no | via molten | via browser |
-| Inline outputs | built-in (virtual lines + floats) | no | via molten | via browser |
-| No temp files | yes | no (writes sidecar) | yes | yes |
-| Output persistence | yes (JSON merge) | no | manual | yes |
-| Browser required | no | no | no | yes |
-| Scope | small | small | wide (`.qmd`) | wide |
-
-## Migrating from 0.1 (molten-based)
-
-jove 0.2 replaced molten with a first-party kernel bridge:
-
-- Remove `benlubas/molten-nvim` from your plugin dependencies and delete any
-  `Molten*` autocmds or keymaps you copied from molten's README (e.g.
-  `BufAdd *.ipynb` → `MoltenInit`). jove initializes its own kernel when
-  `auto_kernel = true`.
-- There is no `MoltenInit` equivalent to run — `:JoveInitKernel` (or just
-  opening the notebook) is enough.
-- `:JoveImportOutputs` / `:JoveExportOutputs` are gone. Outputs are read
-  from and merged into the `.ipynb` automatically; see
-  [Output persistence](#output-persistence).
-
-## Non-goals
-
-- Markdown prose rendering between cells (markdown cells stay as
-  `# %% [markdown]` comment blocks).
-- Browser sync à la jupynium.
-- Quarto/`.qmd` support — jove is scoped to Jupyter notebooks.
-- Reimplementing `jupytext` format conversions in Lua.
-
-## Contributing
-
-Bug reports, feature requests and pull requests are welcome on
-[GitHub](https://github.com/nghiant03/jove.nvim/issues).
-
-### Development checks
-
-Install Neovim >= 0.11, StyLua 2.1.0, Selene 0.31.0 and uv. From the
-repository root:
-
-```sh
-uv sync --project python --locked --extra dev
-git clone https://github.com/nvim-mini/mini.test .testdeps/mini.test
-git -C .testdeps/mini.test checkout 3cc4c29be99531b3fc4fb99f3fa964b492166728
-stylua --check .
-selene .
-uv run --project python --locked --extra dev ruff check python
-uv run --project python --locked --extra dev ruff format --check python
-uv run --project python --locked --extra dev bash scripts/run_tests.sh
-uv run --project python --locked --extra dev python -m pytest python/tests -q
-```
-
-The Lua suite uses temporary notebooks and includes real jupytext conversion
-and Python-kernel execution. The bridge suite also starts real kernels.
-CI uses `python/uv.lock` and a pinned mini.test revision; update the lock with
-`uv lock --project python` when changing development dependencies.
-
-`buffer.lua` coordinates asynchronous reads/writes, `persist.lua` merges
-notebook outputs, and `execute.lua` routes execution through `bridge.lua` to
-the Python sidecar.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
