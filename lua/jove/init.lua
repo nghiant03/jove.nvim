@@ -30,10 +30,13 @@ local M = {}
 ---  | to `JoveOutput`) or attrs passed to `nvim_set_hl` (`table`); nil disables.
 ---@field variables table                Variables inspector options: { auto_refresh, width }.
 ---@field ui table
----  | UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders, border_hl }.
+---  | UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders, border_hl, window_mode }.
 ---  | border_hl: `string|nil` (an existing hl group to link `JoveCellBorder` to)
 ---  | or `table|nil` (attrs passed to `nvim_set_hl` for `JoveCellBorder`, e.g.
 ---  | `{ fg = "#ff9e64" }`). nil leaves the default link in place.
+---  | window_mode: how to open the variables inspector, kernel info panel,
+---  | variable detail view, and output viewer: "float", "vsplit" (default),
+---  | or "hsplit".
 ---@field keymap table<string, string|false>
 
 ---@type jove.Config
@@ -74,6 +77,7 @@ M.config = {
     exec_counts = true,
     elapsed = true,
     borders = true,
+    window_mode = "vsplit",
   },
   keymap = {
     run_cell = false,
@@ -179,6 +183,9 @@ local function validate_config(cfg)
   vim.validate("ui.elapsed", cfg.ui.elapsed, "boolean")
   vim.validate("ui.borders", cfg.ui.borders, "boolean")
   vim.validate("ui.border_hl", cfg.ui.border_hl, { "string", "table" }, true)
+  vim.validate("ui.window_mode", cfg.ui.window_mode, function(v)
+    return v == "float" or v == "vsplit" or v == "hsplit"
+  end, '"float", "vsplit", or "hsplit"')
   vim.validate("keymap", cfg.keymap, "table")
   for k, v in pairs(cfg.keymap) do
     vim.validate(("keymap.%s"):format(k), v, is_keymap_lhs)

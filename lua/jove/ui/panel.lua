@@ -250,7 +250,7 @@ function M.info_float(buf)
     local updated = build_lines(buf, specs, err)
     vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, updated)
     local win = vim.fn.bufwinid(fbuf)
-    if win ~= -1 then
+    if win ~= -1 and vim.api.nvim_win_get_config(win).relative ~= "" then
       vim.api.nvim_win_set_height(win, math.max(3, #updated))
     end
   end)
@@ -259,10 +259,14 @@ function M.info_float(buf)
 end
 
 ---@param buf integer?
----@return integer win
+---@return integer? win
 function M.show_info(buf)
   local float = M.info_float(buf)
-  local win = vim.api.nvim_open_win(float.buf, true, float.opts)
+  local win = require("jove.ui.win").open(float.buf, true, float.opts, float.opts.width)
+  if not win then
+    pcall(vim.api.nvim_buf_delete, float.buf, { force = true })
+    return nil
+  end
   local function close()
     if vim.api.nvim_win_is_valid(win) then
       pcall(vim.api.nvim_win_close, win, true)

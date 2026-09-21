@@ -157,4 +157,28 @@ T["sidebar"]["refresh re-queries and re-renders"] = function()
   vars.close(buf)
 end
 
+T["sidebar"]["opens a vertical split by default and a float when configured"] = function()
+  local buf = make_buffer({ "# %%", "x = 1" })
+  vars._variables = function(_, cb)
+    cb({ variables = {} })
+  end
+
+  local jove = require("jove")
+  local saved = jove.config.ui.window_mode
+
+  jove.config.ui.window_mode = "vsplit"
+  local win = vars.open(buf)
+  expect_truthy(win ~= nil)
+  MiniTest.expect.equality(vim.api.nvim_win_get_config(win).relative, "")
+  vars.close(buf)
+
+  jove.config.ui.window_mode = "float"
+  win = vars.open(buf)
+  expect_truthy(win ~= nil)
+  MiniTest.expect.equality(vim.api.nvim_win_get_config(win).relative, "editor")
+  vars.close(buf)
+
+  jove.config.ui.window_mode = saved
+end
+
 return T

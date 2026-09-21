@@ -779,4 +779,42 @@ T["open_float"]["renders the float with treesitter highlighting best-effort"] = 
   release_buffer(buf)
 end
 
+T["open_float"]["opens a vertical split by default"] = function()
+  local buf = make_buffer({ "# %% a", "print(1)" })
+  output.push(buf, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "x" } })
+  local win = output.open_float(buf, 1)
+  expect_truthy(win ~= nil)
+  MiniTest.expect.equality(vim.api.nvim_win_get_config(win).relative, "")
+  expect_truthy(vim.api.nvim_win_get_width(win) < vim.o.columns)
+  vim.api.nvim_win_close(win, true)
+  release_buffer(buf)
+end
+
+T["open_float"]["honors ui.window_mode = float"] = function()
+  local buf = make_buffer({ "# %% a", "print(1)" })
+  output.push(buf, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "x" } })
+  local saved = jove.config.ui.window_mode
+  jove.config.ui.window_mode = "float"
+  local win = output.open_float(buf, 1)
+  jove.config.ui.window_mode = saved
+  expect_truthy(win ~= nil)
+  MiniTest.expect.equality(vim.api.nvim_win_get_config(win).relative, "editor")
+  vim.api.nvim_win_close(win, true)
+  release_buffer(buf)
+end
+
+T["open_float"]["honors ui.window_mode = hsplit"] = function()
+  local buf = make_buffer({ "# %% a", "print(1)" })
+  output.push(buf, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "x" } })
+  local saved = jove.config.ui.window_mode
+  jove.config.ui.window_mode = "hsplit"
+  local win = output.open_float(buf, 1)
+  jove.config.ui.window_mode = saved
+  expect_truthy(win ~= nil)
+  MiniTest.expect.equality(vim.api.nvim_win_get_config(win).relative, "")
+  expect_truthy(vim.api.nvim_win_get_height(win) < vim.o.lines)
+  vim.api.nvim_win_close(win, true)
+  release_buffer(buf)
+end
+
 return T

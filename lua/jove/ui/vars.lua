@@ -158,7 +158,7 @@ function M.open(buf)
   vim.bo[fbuf].bufhidden = "wipe"
   vim.bo[fbuf].filetype = "jove-vars"
 
-  local ok, win = pcall(vim.api.nvim_open_win, fbuf, true, {
+  local win, err = require("jove.ui.win").open(fbuf, true, {
     relative = "editor",
     width = width,
     height = height,
@@ -166,10 +166,10 @@ function M.open(buf)
     col = math.max(0, vim.o.columns - width),
     style = "minimal",
     border = "single",
-  })
-  if not ok then
+  }, width)
+  if not win then
     pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
-    vim.notify("[jove] could not open variable inspector: " .. tostring(win), vim.log.levels.ERROR)
+    vim.notify("[jove] could not open variable inspector: " .. tostring(err), vim.log.levels.ERROR)
     return nil
   end
 
@@ -286,7 +286,7 @@ function M.show_float(text)
   vim.bo[fbuf].buflisted = false
   local width = math.max(20, math.floor(vim.o.columns * 0.6))
   local height = math.max(3, math.min(#lines, math.floor(vim.o.lines * 0.6)))
-  local win = vim.api.nvim_open_win(fbuf, true, {
+  local win = require("jove.ui.win").open(fbuf, true, {
     relative = "editor",
     width = width,
     height = height,
@@ -294,7 +294,11 @@ function M.show_float(text)
     col = math.floor((vim.o.columns - width) / 2),
     border = "rounded",
     style = "minimal",
-  })
+  }, width)
+  if not win then
+    pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
+    return nil
+  end
   local function close()
     if vim.api.nvim_win_is_valid(win) then
       pcall(vim.api.nvim_win_close, win, true)

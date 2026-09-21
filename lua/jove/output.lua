@@ -637,14 +637,21 @@ function M.open_float(buf, lnum)
 
   local width = math.max(20, math.floor(vim.o.columns * 0.8))
   local height = math.max(5, math.floor(vim.o.lines * 0.8))
-  local win = vim.api.nvim_open_win(fbuf, true, {
+  local win_ui = require("jove.ui.win")
+  local size = win_ui.mode() == "hsplit" and math.floor(vim.o.lines * 0.4)
+    or math.floor(vim.o.columns * 0.5)
+  local win = win_ui.open(fbuf, true, {
     relative = "editor",
     width = width,
     height = height,
     row = math.floor((vim.o.lines - height) / 2),
     col = math.floor((vim.o.columns - width) / 2),
     border = "rounded",
-  })
+  }, size)
+  if not win then
+    pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
+    return nil
+  end
   vim.wo[win].wrap = false
   vim.wo[win].scrolloff = 2
 

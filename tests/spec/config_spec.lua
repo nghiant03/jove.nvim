@@ -196,6 +196,21 @@ T["setup"]["ui.border_hl: accepts string or table; rejects other types"] = funct
   MiniTest.expect.equality(jove.config.ui.border_hl, nil)
 end
 
+T["setup"]["ui.window_mode: accepts float/vsplit/hsplit; rejects other values"] = function()
+  MiniTest.expect.equality(defaults.ui.window_mode, "vsplit")
+  jove.setup({ ui = { window_mode = "float" } })
+  MiniTest.expect.equality(jove.config.ui.window_mode, "float")
+  jove.setup({ ui = { window_mode = "hsplit" } })
+  MiniTest.expect.equality(jove.config.ui.window_mode, "hsplit")
+  MiniTest.expect.error(function()
+    jove.setup({ ui = { window_mode = "popup" } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ ui = { window_mode = 42 } })
+  end)
+  MiniTest.expect.equality(jove.config.ui.window_mode, "hsplit")
+end
+
 T["setup"]["raises on invalid opt types"] = function()
   MiniTest.expect.error(function()
     jove.setup({ jupytext = 123 })
