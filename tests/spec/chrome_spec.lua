@@ -97,30 +97,39 @@ local function marks(buf)
   return vim.api.nvim_buf_get_extmarks(buf, chrome.ns, 0, -1, { details = true })
 end
 
----Number of marks carrying a conceal_lines attribute (empty string included).
 ---@param buf integer
 ---@return integer
-local function conceal_count(buf)
+local function overlay_rule_count(buf)
   local n = 0
   for _, m in ipairs(marks(buf)) do
-    if m[4].conceal_lines ~= nil then
+    if m[4].virt_text_pos == "overlay" then
       n = n + 1
     end
   end
   return n
 end
 
----Concatenated text of every top-rule virt_lines mark (excludes bottom
----borders, which are also virt_lines but anchored below the cell).
+---@param d table
+---@return table[]?
+local function rule_chunks(d)
+  if d.virt_lines and d.virt_lines_above and d.virt_lines[1] then
+    return d.virt_lines[1]
+  end
+  if d.virt_text_pos == "overlay" then
+    return d.virt_text
+  end
+  return nil
+end
+
 ---@param buf integer
 ---@return string[]
 local function rule_texts(buf)
   local out = {}
   for _, m in ipairs(marks(buf)) do
-    local d = m[4]
-    if d.virt_lines and d.virt_lines_above and d.virt_lines[1] then
+    local chunks = rule_chunks(m[4])
+    if chunks then
       local parts = {}
-      for _, chunk in ipairs(d.virt_lines[1]) do
+      for _, chunk in ipairs(chunks) do
         parts[#parts + 1] = chunk[1]
       end
       out[#out + 1] = table.concat(parts)
@@ -155,8 +164,8 @@ end
 T["conceal"] = MiniTest.new_set()
 
 -- With the read pipeline stripping front matter (buffer.lua), chrome no
--- longer conceals it: a buffer that still contains `# ---` lines directly
--- (as here) gets only header conceal marks.
+-- longer replaces it: a buffer that still contains `# ---` lines directly
+-- (as here) gets only header replacement marks.
 T["conceal"]["conceals every cell header (front matter is stripped upstream)"] = function()
   local buf = make_buffer({
     "# ---",
@@ -168,25 +177,27 @@ T["conceal"]["conceals every cell header (front matter is stripped upstream)"] =
     "# md",
   })
   chrome.refresh(buf)
-  -- 2 header marks; the `# ---` block is left alone by chrome.
-  MiniTest.expect.equality(conceal_count(buf), 2)
+  MiniTest.expect.equality(overlay_rule_count(buf), 2)
+  for _, m in ipairs(marks(buf)) do
+    MiniTest.expect.equality(m[4].conceal_lines, nil)
+  end
   release_buffer(buf)
 end
 
-T["conceal"]["no front matter => only header conceal marks"] = function()
+T["conceal"]["no front matter => only header replacement rules"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
   chrome.refresh(buf)
-  MiniTest.expect.equality(conceal_count(buf), 2)
+  MiniTest.expect.equality(overlay_rule_count(buf), 2)
   release_buffer(buf)
 end
 
-T["conceal"]["conceal_headers = false disables concealment"] = function()
+T["conceal"]["conceal_headers = false disables header replacement"] = function()
   local cfg = require("jove").config
   local saved = cfg.ui
   cfg.ui = { conceal_headers = false }
   local buf = make_buffer({ "# ---", "t: x", "# ---", "# %% a", "x1" })
   chrome.refresh(buf)
-  MiniTest.expect.equality(conceal_count(buf), 0)
+  MiniTest.expect.equality(overlay_rule_count(buf), 0)
   cfg.ui = saved
   release_buffer(buf)
 end
@@ -373,17 +384,14 @@ T["border_hl"]["string value links JoveCellBorder to the named group"] = functio
   cfg.ui = { border_hl = "MyBorder" }
   local buf = make_buffer({ "# %% a", "x1" })
   chrome.refresh(buf)
-  -- The rendered rule virt_lines still address JoveCellBorder (not MyBorder),
-  -- but the group now resolves MyBorder through the link.
+  -- The rendered rule still addresses JoveCellBorder (not MyBorder), but the
+  -- group now resolves MyBorder through the link.
   local found = false
   for _, m in ipairs(marks(buf)) do
-    local d = m[4]
-    if d.virt_lines and d.virt_lines_above and d.virt_lines[1] then
-      for _, chunk in ipairs(d.virt_lines[1]) do
-        if chunk[2] == "JoveCellBorder" then
-          found = true
-          break
-        end
+    for _, chunk in ipairs(rule_chunks(m[4]) or {}) do
+      if chunk[2] == "JoveCellBorder" then
+        found = true
+        break
       end
     end
   end

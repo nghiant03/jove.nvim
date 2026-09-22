@@ -16,7 +16,6 @@ vim.api.nvim_set_hl(0, "JoveCellRuleElapsed", { link = "Number", default = true 
 vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = true })
 
 ---@class jove.ChromeBook
----@field headers integer[] header conceal extmark ids
 ---@field rules integer[]   per-cell rule extmark ids
 ---@field active integer?   active-cell highlight extmark id
 ---@field group integer?    autocmd group for this buffer
@@ -68,7 +67,6 @@ local function ensure(buf)
   local b = bufs[buf]
   if not b then
     b = {
-      headers = {},
       rules = {},
       active = nil,
       group = nil,
@@ -84,10 +82,6 @@ end
 ---@param buf integer
 ---@param b jove.ChromeBook
 local function clear_marks(buf, b)
-  for _, id in ipairs(b.headers) do
-    pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, id)
-  end
-  b.headers = {}
   for _, id in ipairs(b.rules) do
     pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, id)
   end
@@ -264,20 +258,21 @@ function M.refresh(buf)
   clear_marks(buf, b)
 
   local cells = cell.all(buf)
-  for _, c in ipairs(cells) do
-    if c.header and cfg.conceal_headers then
-      b.headers[#b.headers + 1] =
-        vim.api.nvim_buf_set_extmark(buf, M.ns, c.header - 1, 0, { conceal_lines = "" })
-    end
-  end
-
   for i, c in ipairs(cells) do
-    local bs = body_start(c)
-    b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, bs - 1, 0, {
-      virt_lines_above = true,
-      virt_lines = { build_rule(buf, c, cfg, i) },
-      hl_mode = "combine",
-    })
+    if c.header and cfg.conceal_headers then
+      b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, c.header - 1, 0, {
+        virt_text = build_rule(buf, c, cfg, i),
+        virt_text_pos = "overlay",
+        hl_mode = "combine",
+      })
+    else
+      local bs = body_start(c)
+      b.rules[#b.rules + 1] = vim.api.nvim_buf_set_extmark(buf, M.ns, bs - 1, 0, {
+        virt_lines_above = true,
+        virt_lines = { build_rule(buf, c, cfg, i) },
+        hl_mode = "combine",
+      })
+    end
 
     if cfg.borders then
       local width = win_width(buf)
@@ -302,15 +297,6 @@ function M.refresh(buf)
   end
 
   update_active(buf, b, cfg)
-
-  if cfg.conceal_headers then
-    for _, win in ipairs(vim.fn.win_findbuf(buf)) do
-      local ok, lvl = pcall(vim.api.nvim_get_option_value, "conceallevel", { win = win })
-      if ok and lvl == 0 then
-        pcall(vim.api.nvim_set_option_value, "conceallevel", 2, { win = win })
-      end
-    end
-  end
 end
 
 ---@param buf integer

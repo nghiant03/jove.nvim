@@ -521,7 +521,8 @@ T["signs"]["spinner appears while running and is removed on completion"] = funct
   ui.attach(buf)
 
   execute.run_cell(buf, 1)
-  local marks = vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })
+  local status_ns = vim.api.nvim_create_namespace("jove_cell_status")
+  local marks = vim.api.nvim_buf_get_extmarks(buf, status_ns, 0, -1, { details = true })
   local virt = {}
   for _, m in ipairs(marks) do
     if m[4].virt_text then
@@ -532,7 +533,7 @@ T["signs"]["spinner appears while running and is removed on completion"] = funct
   MiniTest.expect.equality(virt[1]:len() > 0, true)
 
   br:reply({ status = "ok" })
-  local after = vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })
+  local after = vim.api.nvim_buf_get_extmarks(buf, status_ns, 0, -1, { details = true })
   for _, m in ipairs(after) do
     MiniTest.expect.equality(m[4].virt_text == nil, true)
   end
