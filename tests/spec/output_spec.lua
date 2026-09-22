@@ -156,6 +156,48 @@ T["push"]["appends incrementally without duplicating the extmark"] = function()
   release_buffer(buf)
 end
 
+T["push"]["folds carriage returns so progress bars render as one line"] = function()
+  local buf = make_buffer({ "# %% a", "print(1)" })
+  local hash = cell_hash(buf)
+
+  output.push(
+    buf,
+    hash,
+    { kind = "stream", name = "stderr", mime = { ["text/plain"] = "\r 10%|one" } }
+  )
+  output.push(
+    buf,
+    hash,
+    { kind = "stream", name = "stderr", mime = { ["text/plain"] = "\r 20%|two\n" } }
+  )
+
+  local entry = state.peek(buf).outputs[hash]
+  MiniTest.expect.equality(#entry.chunks, 1)
+  MiniTest.expect.equality(entry.chunks[1].text, " 20%|two\n")
+  -- Raw events keep the original text (carriage returns included) for persist.
+  MiniTest.expect.equality(#entry.raw, 2)
+  MiniTest.expect.equality(entry.raw[1].mime["text/plain"], "\r 10%|one")
+  local t = texts(extmark_of(buf, hash).virt_lines)
+  expect_truthy(starts_with(t[2], "▎  20%|two"))
+  expect_truthy(t[2]:find("\r", 1, true) == nil)
+  release_buffer(buf)
+end
+
+T["push"]["folds multiple carriage returns within a single event"] = function()
+  local buf = make_buffer({ "# %% a", "print(1)" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, {
+    kind = "stream",
+    name = "stderr",
+    mime = { ["text/plain"] = "\r 10%|one\r 20%|two\r 30%|three" },
+  })
+
+  local entry = state.peek(buf).outputs[hash]
+  MiniTest.expect.equality(entry.chunks[1].text, " 30%|three")
+  release_buffer(buf)
+end
+
 T["push"]["unknown hash is stored but not rendered"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   output.push(buf, "deadbeef", { kind = "stream", mime = { ["text/plain"] = "x" } })

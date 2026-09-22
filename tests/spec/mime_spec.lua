@@ -61,6 +61,28 @@ T["strip_ansi"]["passes through non-strings"] = function()
   MiniTest.expect.equality(mime.strip_ansi(5), 5)
 end
 
+T["cr_concat"] = MiniTest.new_set()
+
+T["cr_concat"]["appends plain text unchanged"] = function()
+  MiniTest.expect.equality(mime.cr_concat("foo", "bar\n"), "foobar\n")
+end
+
+T["cr_concat"]["carriage return overwrites the current line"] = function()
+  MiniTest.expect.equality(mime.cr_concat("", "\r 10%|one\r 20%|two"), " 20%|two")
+end
+
+T["cr_concat"]["overwrites the tail of existing text across events"] = function()
+  MiniTest.expect.equality(mime.cr_concat(" 10%|one", "\r 20%|two\n"), " 20%|two\n")
+end
+
+T["cr_concat"]["preserves earlier completed lines"] = function()
+  MiniTest.expect.equality(mime.cr_concat("first\nsecond", "\rthird"), "first\nthird")
+end
+
+T["cr_concat"]["CRLF collapses the line (jupyter classic semantics)"] = function()
+  MiniTest.expect.equality(mime.cr_concat("", "abc\r\ndef"), "\ndef")
+end
+
 T["ordering"] = MiniTest.new_set()
 
 T["ordering"]["text/plain first, images last, unsupported noted"] = function()

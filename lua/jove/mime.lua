@@ -15,6 +15,27 @@ function M.strip_ansi(s)
   return (s:gsub(OSC_ST, ""):gsub(OSC_BEL, ""):gsub(CSI, ""):gsub("\27", ""):gsub("\r", ""))
 end
 
+---Concatenate terminal-style text honoring carriage returns: "\r" restarts
+---the current line, dropping everything since the last "\n" (Jupyter classic
+---semantics, what tqdm-style progress bars rely on).
+---@param existing string  text accumulated so far (may end mid-line)
+---@param new string       incoming text
+---@return string
+function M.cr_concat(existing, new)
+  if not new:find("\r", 1, true) then
+    return existing .. new
+  end
+  local acc = existing
+  for i, seg in ipairs(vim.split(new, "\r", { plain = true, trimempty = false })) do
+    if i > 1 then
+      local nl = acc:find("\n[^\n]*$")
+      acc = nl and acc:sub(1, nl) or ""
+    end
+    acc = acc .. seg
+  end
+  return acc
+end
+
 ---@param html string
 ---@return string
 local function html_to_text(html)

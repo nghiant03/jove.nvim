@@ -110,12 +110,16 @@ local function append_output(entry, params, new_chunks)
       and last.hl_group == chunk.hl_group
     then
       if #last.text + #chunk.text <= 4096 then
-        last.text = last.text .. chunk.text
+        last.text = mime.cr_concat(last.text, chunk.text)
       else
         chunk.continues = true
+        chunk.text = mime.cr_concat("", chunk.text)
         entry.chunks[#entry.chunks + 1] = chunk
       end
     else
+      if chunk.kind == "text" then
+        chunk.text = mime.cr_concat("", chunk.text)
+      end
       entry.chunks[#entry.chunks + 1] = chunk
     end
   end
