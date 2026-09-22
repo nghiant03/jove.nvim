@@ -5,6 +5,34 @@ local state = require("jove.state")
 
 local M = {}
 
+-- buf -> unsubscribe fn while "follow running cell" is enabled.
+local follow_unsubs = {}
+
+---@param buf integer
+---@param hash string
+---@return integer? lnum  cell start (header) matching the content hash
+local function cell_start_by_hash(buf, hash)
+  for _, c in ipairs(cell.all(buf)) do
+    if c.hash == hash then
+      return c.start_lnum
+    end
+  end
+  return nil
+end
+
+---@param buf integer
+---@param hash string
+local function jump_to_hash(buf, hash)
+  local win = vim.fn.bufwinid(buf)
+  if win == -1 then
+    return
+  end
+  local target = cell_start_by_hash(buf, hash)
+  if target then
+    vim.api.nvim_win_set_cursor(win, { target, 0 })
+  end
+end
+
 ---@param dir 1|-1
 local function jump(dir)
   local buf = vim.api.nvim_get_current_buf()
@@ -26,6 +54,64 @@ end
 
 function M.prev_cell()
   jump(-1)
+end
+
+function M.goto_running_cell()
+  local buf = vim.api.nvim_get_current_buf()
+  local running = execute.running(buf)
+  if not running then
+    vim.notify("[jove] no cell is currently executing", vim.log.levels.INFO)
+    return
+  end
+  local target = cell_start_by_hash(buf, running.hash)
+  if not target then
+    local c = cell.at(buf, running.lnum)
+    target = c and c.start_lnum or nil
+  end
+  if target then
+    vim.api.nvim_win_set_cursor(0, { target, 0 })
+  end
+end
+
+---@param buf integer
+---@return boolean
+function M.is_following(buf)
+  buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
+  return follow_unsubs[buf] ~= nil
+end
+
+function M.toggle_follow_running()
+  local buf = vim.api.nvim_get_current_buf()
+  local unsub = follow_unsubs[buf]
+  if unsub then
+    follow_unsubs[buf] = nil
+    pcall(unsub)
+    vim.notify("[jove] follow running cell: off", vim.log.levels.INFO)
+    return
+  end
+  follow_unsubs[buf] = execute.on_status(buf, function(hash, status)
+    if status == "running" then
+      jump_to_hash(buf, hash)
+    end
+  end)
+  local wipe_group = vim.api.nvim_create_augroup("jove_follow_" .. buf, { clear = true })
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = wipe_group,
+    buffer = buf,
+    callback = function()
+      local u = follow_unsubs[buf]
+      follow_unsubs[buf] = nil
+      if u then
+        pcall(u)
+      end
+      pcall(vim.api.nvim_del_augroup_by_id, wipe_group)
+    end,
+  })
+  vim.notify("[jove] follow running cell: on", vim.log.levels.INFO)
+  local running = execute.running(buf)
+  if running then
+    jump_to_hash(buf, running.hash)
+  end
 end
 
 function M.run_cell()
@@ -139,6 +225,8 @@ function M.apply(keymap)
   map(keymap.run_cell, M.run_cell, "Jove: Run Cell")
   map(keymap.next_cell, M.next_cell, "Jove: Next Cell")
   map(keymap.prev_cell, M.prev_cell, "Jove: Previous Cell")
+  map(keymap.goto_running_cell, M.goto_running_cell, "Jove: Go to Running Cell")
+  map(keymap.toggle_follow_running, M.toggle_follow_running, "Jove: Toggle Follow Running Cell")
 end
 
 return M

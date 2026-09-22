@@ -85,6 +85,8 @@ M.config = {
     run_selection = false,
     next_cell = false,
     prev_cell = false,
+    goto_running_cell = false,
+    toggle_follow_running = false,
   },
 }
 
@@ -116,6 +118,8 @@ local KNOWN_KEYMAP_KEYS = {
   run_selection = true,
   next_cell = true,
   prev_cell = true,
+  goto_running_cell = true,
+  toggle_follow_running = true,
 }
 
 local warned = {}

@@ -133,6 +133,8 @@ require("jove").setup({
     run_selection = false,
     next_cell = false,
     prev_cell = false,
+    goto_running_cell = false,
+    toggle_follow_running = false,
   },
 })
 ```
@@ -150,6 +152,8 @@ require("jove").setup({
 | `:JoveRunCellAndAdvance` | Run the current cell and jump to the next |
 | `:JoveNextCell` | Jump to next notebook cell |
 | `:JovePrevCell` | Jump to previous notebook cell |
+| `:JoveGotoRunningCell` | Jump to the currently executing cell |
+| `:JoveToggleFollowRunning` | Toggle following the currently executing cell with the cursor |
 | `:JoveInitKernel` | Start a kernel for the current notebook |
 | `:JoveSelectKernel` | Pick a kernelspec for the current notebook (replaces running kernel) |
 | `:JoveInterrupt` | Interrupt the running execution |
@@ -178,11 +182,13 @@ On jove buffers (python, julia, r, javascript filetypes backed by an
 ```lua
 opts = {
   keymap = {
-    run_cell        = "<leader>x",  -- normal: run cell under cursor
-    run_and_advance = "<leader>X",  -- normal: run cell, jump to next
-    run_selection   = "<leader>xx", -- visual: run selection as one unit
-    next_cell       = "]h",
-    prev_cell       = "[h",
+    run_cell              = "<leader>x",  -- normal: run cell under cursor
+    run_and_advance       = "<leader>X",  -- normal: run cell, jump to next
+    run_selection         = "<leader>xx", -- visual: run selection as one unit
+    next_cell             = "]h",
+    prev_cell             = "[h",
+    goto_running_cell     = "<leader>j",  -- normal: jump to the running cell
+    toggle_follow_running = "<leader>J",  -- normal: cursor follows the running cell
   },
 }
 ```

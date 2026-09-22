@@ -406,6 +406,14 @@ function M.meta(buf, hash)
 end
 
 ---@param buf integer
+---@return { hash: string, lnum: integer }?
+function M.running(buf)
+  local st = state.peek(norm_buf(buf))
+  local item = st and st.exec and st.exec.running or nil
+  return item and { hash = item.hash, lnum = item.lnum } or nil
+end
+
+---@param buf integer
 ---@return integer
 function M.queue_len(buf)
   local st = state.peek(norm_buf(buf))

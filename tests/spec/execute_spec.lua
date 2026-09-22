@@ -225,6 +225,24 @@ T["status"]["queued -> running -> ok, per hash"] = function()
   MiniTest.expect.equality(execute.status(buf, h3), "ok")
 end
 
+T["status"]["running() exposes the in-flight item and clears on reply"] = function()
+  local buf = make_buffer(LINES)
+  local br = fake_bridge()
+  inject_kernel(br, buf)
+  local h1, h2, _ = hashes(buf)
+
+  MiniTest.expect.equality(execute.running(buf), nil)
+  execute.run_all(buf)
+  MiniTest.expect.equality(execute.running(buf), { hash = h1, lnum = 1 })
+
+  br:reply({ status = "ok" })
+  MiniTest.expect.equality(execute.running(buf), { hash = h2, lnum = 3 })
+
+  br:reply({ status = "ok" })
+  br:reply({ status = "ok" })
+  MiniTest.expect.equality(execute.running(buf), nil)
+end
+
 T["status"]["error response marks the cell error and keeps pumping"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()

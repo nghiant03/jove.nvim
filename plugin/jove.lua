@@ -69,6 +69,14 @@ vim.api.nvim_create_user_command("JovePrevCell", function()
   require("jove.keymaps").prev_cell()
 end, { desc = "Jump to previous notebook cell" })
 
+vim.api.nvim_create_user_command("JoveGotoRunningCell", function()
+  require("jove.keymaps").goto_running_cell()
+end, { desc = "Jump to the currently executing cell" })
+
+vim.api.nvim_create_user_command("JoveToggleFollowRunning", function()
+  require("jove.keymaps").toggle_follow_running()
+end, { desc = "Toggle following the currently executing cell with the cursor" })
+
 vim.api.nvim_create_user_command("JoveInitKernel", function()
   require("jove.kernel").init(0)
 end, { desc = "Start a kernel for the current notebook" })
