@@ -1,40 +1,8 @@
 -- Normalize an output event's mime bundle.
 
+local ansi = require("jove.ansi")
+
 local M = {}
-
-local CSI = "\27%[[0-?]*[ -/]*[@-~]"
-local OSC_ST = "\27%].-\27\\"
-local OSC_BEL = "\27%][^\7]*\7"
-
----@param s any
----@return any
-function M.strip_ansi(s)
-  if type(s) ~= "string" then
-    return s
-  end
-  return (s:gsub(OSC_ST, ""):gsub(OSC_BEL, ""):gsub(CSI, ""):gsub("\27", ""):gsub("\r", ""))
-end
-
----Concatenate terminal-style text honoring carriage returns: "\r" restarts
----the current line, dropping everything since the last "\n" (Jupyter classic
----semantics, what tqdm-style progress bars rely on).
----@param existing string  text accumulated so far (may end mid-line)
----@param new string       incoming text
----@return string
-function M.cr_concat(existing, new)
-  if not new:find("\r", 1, true) then
-    return existing .. new
-  end
-  local acc = existing
-  for i, seg in ipairs(vim.split(new, "\r", { plain = true, trimempty = false })) do
-    if i > 1 then
-      local nl = acc:find("\n[^\n]*$")
-      acc = nl and acc:sub(1, nl) or ""
-    end
-    acc = acc .. seg
-  end
-  return acc
-end
 
 ---@param html string
 ---@return string
@@ -266,12 +234,12 @@ function M.render_error(params)
 
   local lines = {}
   for _, line in ipairs(params.traceback or {}) do
-    lines[#lines + 1] = M.strip_ansi(line)
+    lines[#lines + 1] = ansi.strip(line)
   end
   if #lines == 0 and type(params.mime) == "table" then
     local raw = params.mime["text/plain"]
     if type(raw) == "string" then
-      lines[#lines + 1] = M.strip_ansi(raw)
+      lines[#lines + 1] = ansi.strip(raw)
     end
   end
   if #lines > 0 then

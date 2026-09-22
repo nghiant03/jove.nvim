@@ -198,6 +198,60 @@ T["push"]["folds multiple carriage returns within a single event"] = function()
   release_buffer(buf)
 end
 
+T["push"]["renders ANSI SGR styling as highlight groups"] = function()
+  local buf = make_buffer({ "# %% a", "print(1)" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, {
+    kind = "stream",
+    name = "stdout",
+    mime = { ["text/plain"] = '\27[1mModel: "seq"\27[0m \27[38;5;34m28,842\27[0m' },
+  })
+
+  local ext = extmark_of(buf, hash)
+  local t = texts(ext.virt_lines)
+  expect_truthy(starts_with(t[2], '▎ Model: "seq" 28,842'))
+  expect_truthy(t[2]:find("\27", 1, true) == nil)
+
+  local styled = {}
+  for _, seg in ipairs(ext.virt_lines[2]) do
+    if seg[2] and seg[2]:match("^JoveAnsi") then
+      styled[seg[1]] = vim.api.nvim_get_hl(0, { name = seg[2], link = false })
+    end
+  end
+  MiniTest.expect.equality(styled['Model: "seq"'].bold, true)
+  MiniTest.expect.equality(string.format("#%06x", styled["28,842"].fg), "#00af00")
+  release_buffer(buf)
+end
+
+T["push"]["renders ANSI sequences split across stream events"] = function()
+  local buf = make_buffer({ "# %% a", "print(1)" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, {
+    kind = "stream",
+    name = "stdout",
+    mime = { ["text/plain"] = "a\27[38;5;" },
+  })
+  output.push(buf, hash, {
+    kind = "stream",
+    name = "stdout",
+    mime = { ["text/plain"] = "34mgreen\27[0m tail" },
+  })
+
+  local ext = extmark_of(buf, hash)
+  local t = texts(ext.virt_lines)
+  expect_truthy(starts_with(t[2], "▎ agreen tail"))
+  local styled = {}
+  for _, seg in ipairs(ext.virt_lines[2]) do
+    if seg[2] and seg[2]:match("^JoveAnsi") then
+      styled[#styled + 1] = seg[1]
+    end
+  end
+  MiniTest.expect.equality(styled, { "green" })
+  release_buffer(buf)
+end
+
 T["push"]["unknown hash is stored but not rendered"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   output.push(buf, "deadbeef", { kind = "stream", mime = { ["text/plain"] = "x" } })

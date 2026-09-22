@@ -63,9 +63,12 @@ Notes:
 - `lua/jove/persist.lua` - merges session outputs into the `.ipynb` JSON on
   write and replays them on read. Outputs are matched to cells by **content
   hash** because jupytext py:percent round-trips drop cell ids.
-- `lua/jove/output.lua`, `lua/jove/mime.lua`, `lua/jove/ui/` - rendering
-  (inline extmark blocks, optional images via `snacks.image`), variables
-  inspector, kernel info panel, TOC.
+- `lua/jove/output.lua`, `lua/jove/mime.lua`, `lua/jove/ansi.lua`,
+  `lua/jove/ui/` - rendering (inline extmark blocks, optional images via
+  `snacks.image`), variables inspector, kernel info panel, TOC. `ansi.lua`
+  owns all terminal escape handling: `strip` (drop sequences), `cr_concat`
+  (carriage-return folding), and `parse` (map SGR styling to highlight spans,
+  stateful across stream events).
 - `python/jove_bridge/` - stdio sidecar: `__main__.py` (envelope loop, bounded
   writer queue), `session.py` (method dispatch + iopub/shell routing),
   `kernel.py` (thin jupyter_client wrapper raising `KernelError(code, msg)`).
@@ -88,8 +91,10 @@ Notes:
 - Wire protocol details that matter: output events can arrive after the
   execute reply (10s late-iopub grace in the sidecar); each execution gets a
   unique wire key so reruns invalidate the previous run's output routing;
-  binary MIME payloads are base64; error tracebacks carry ANSI codes which the
-  Lua renderer strips but persistence keeps.
+  binary MIME payloads are base64; stream text may carry ANSI SGR codes
+  (e.g. Keras 3 `model.summary()`) which `ansi.parse` renders as highlight
+  groups, while error tracebacks are stripped; persistence keeps the raw
+  bytes either way.
 - The Python bridge deliberately uses threads only (main + one poll worker +
   writer), no asyncio.
 - Adding a config option? Update `M.config`, `KNOWN_KEYS` (and the

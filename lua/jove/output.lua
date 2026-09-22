@@ -3,6 +3,7 @@
 local state = require("jove.state")
 local cell = require("jove.cell")
 local mime = require("jove.mime")
+local ansi = require("jove.ansi")
 local image = require("jove.ui.image")
 
 local M = {}
@@ -110,19 +111,60 @@ local function append_output(entry, params, new_chunks)
       and last.hl_group == chunk.hl_group
     then
       if #last.text + #chunk.text <= 4096 then
-        last.text = mime.cr_concat(last.text, chunk.text)
+        last.text = ansi.cr_concat(last.text, chunk.text)
       else
         chunk.continues = true
-        chunk.text = mime.cr_concat("", chunk.text)
+        chunk.text = ansi.cr_concat("", chunk.text)
         entry.chunks[#entry.chunks + 1] = chunk
       end
     else
       if chunk.kind == "text" then
-        chunk.text = mime.cr_concat("", chunk.text)
+        chunk.text = ansi.cr_concat("", chunk.text)
       end
       entry.chunks[#entry.chunks + 1] = chunk
     end
   end
+end
+
+---Split parsed text into one virt_line per "\n"-separated row, with spans
+---carved into { text, hl_group } segments (spans override the base hl).
+---@param text string
+---@param spans jove.AnsiSpan[]
+---@param base_hl string?
+---@return table[] lines  each line is a list of { text, hl_group? }
+local function split_segments(text, spans, base_hl)
+  local out = {}
+  local offset = 0
+  local span_idx = 1
+  for _, l in ipairs(vim.split(text, "\n", { plain = true, trimempty = false })) do
+    local line_end = offset + #l
+    while span_idx <= #spans and spans[span_idx][2] <= offset do
+      span_idx = span_idx + 1
+    end
+    local segs = {}
+    local pos = 0
+    local si = span_idx
+    while si <= #spans do
+      local s = spans[si]
+      if s[1] >= line_end then
+        break
+      end
+      local a = math.max(s[1] - offset, 0)
+      local b = math.min(s[2] - offset, #l)
+      if a > pos then
+        segs[#segs + 1] = { l:sub(pos + 1, a), base_hl }
+      end
+      segs[#segs + 1] = { l:sub(a + 1, b), s[3] }
+      pos = b
+      si = si + 1
+    end
+    if pos < #l or #segs == 0 then
+      segs[#segs + 1] = { l:sub(pos + 1), base_hl }
+    end
+    out[#out + 1] = segs
+    offset = line_end + 1
+  end
+  return out
 end
 
 ---@param chunks table[]
@@ -130,6 +172,7 @@ end
 ---@return table[] images    { { chunk = <image chunk>, index = <int> } }
 local function build_lines(chunks)
   local lines, images = {}, {}
+  local ansi_state
   for _, chunk in ipairs(chunks) do
     if chunk.kind == "image" then
       local index = #lines + 1
@@ -140,12 +183,21 @@ local function build_lines(chunks)
       end
       lines[#lines + 1] = { { text, "Comment" } }
     else
-      for i, l in ipairs(vim.split(chunk.text or "", "\n", { plain = true, trimempty = false })) do
+      local text, spans
+      text, spans, ansi_state = ansi.parse(chunk.text or "", ansi_state)
+      for i, segs in ipairs(split_segments(text, spans, chunk.hl_group)) do
         if i == 1 and chunk.continues and #lines > 0 then
-          local last = lines[#lines][1]
-          last[1] = last[1] .. l
+          local last_line = lines[#lines]
+          for _, seg in ipairs(segs) do
+            local tail = last_line[#last_line]
+            if tail and tail[2] == seg[2] then
+              tail[1] = tail[1] .. seg[1]
+            else
+              last_line[#last_line + 1] = seg
+            end
+          end
         else
-          lines[#lines + 1] = { { l, chunk.hl_group } }
+          lines[#lines + 1] = segs
         end
       end
     end
@@ -615,7 +667,11 @@ function M.open_float(buf, lnum)
   local lines, images = build_lines(entry.chunks)
   local plain = {}
   for i, line in ipairs(lines) do
-    plain[i] = line[1][1]
+    local parts = {}
+    for _, seg in ipairs(line) do
+      parts[#parts + 1] = seg[1]
+    end
+    plain[i] = table.concat(parts)
   end
 
   local fbuf = vim.api.nvim_create_buf(false, true)
@@ -623,8 +679,15 @@ function M.open_float(buf, lnum)
   vim.bo[fbuf].buflisted = false
   vim.bo[fbuf].bufhidden = "wipe"
   for i, line in ipairs(lines) do
-    if line[1][2] then
-      vim.api.nvim_buf_set_extmark(fbuf, M.ns, i - 1, 0, { line_hl_group = line[1][2] })
+    local col = 0
+    for _, seg in ipairs(line) do
+      if seg[2] and #seg[1] > 0 then
+        vim.api.nvim_buf_set_extmark(fbuf, M.ns, i - 1, col, {
+          end_col = col + #seg[1],
+          hl_group = seg[2],
+        })
+      end
+      col = col + #seg[1]
     end
   end
 

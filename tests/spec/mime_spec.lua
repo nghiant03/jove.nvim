@@ -20,69 +20,6 @@ local function first_of_kind(chunks, kind)
   return nil
 end
 
-T["strip_ansi"] = MiniTest.new_set()
-
-T["strip_ansi"]["removes CSI color sequences"] = function()
-  MiniTest.expect.equality(mime.strip_ansi("\27[0;31mred\27[0m"), "red")
-end
-
-T["strip_ansi"]["removes bold/underline and combined sequences"] = function()
-  MiniTest.expect.equality(
-    mime.strip_ansi("\27[1mbold\27[22m and \27[4munder\27[24m"),
-    "bold and under"
-  )
-end
-
-T["strip_ansi"]["removes cursor sequences and lone ESC"] = function()
-  MiniTest.expect.equality(mime.strip_ansi("a\27[2Kb\27c"), "abc")
-end
-
-T["strip_ansi"]["removes BEL-terminated OSC sequences"] = function()
-  MiniTest.expect.equality(mime.strip_ansi("\27]0;window title\7hello"), "hello")
-end
-
-T["strip_ansi"]["removes ST-terminated OSC sequences"] = function()
-  MiniTest.expect.equality(mime.strip_ansi("\27]2;window title\27\\rest"), "rest")
-end
-
-T["strip_ansi"]["removes OSC alongside CSI sequences"] = function()
-  MiniTest.expect.equality(mime.strip_ansi("\27]0;t\7\27[31mred\27[0m"), "red")
-end
-
-T["strip_ansi"]["leaves plain text untouched"] = function()
-  MiniTest.expect.equality(
-    mime.strip_ansi("Traceback (most recent call last)"),
-    "Traceback (most recent call last)"
-  )
-end
-
-T["strip_ansi"]["passes through non-strings"] = function()
-  MiniTest.expect.equality(mime.strip_ansi(nil), nil)
-  MiniTest.expect.equality(mime.strip_ansi(5), 5)
-end
-
-T["cr_concat"] = MiniTest.new_set()
-
-T["cr_concat"]["appends plain text unchanged"] = function()
-  MiniTest.expect.equality(mime.cr_concat("foo", "bar\n"), "foobar\n")
-end
-
-T["cr_concat"]["carriage return overwrites the current line"] = function()
-  MiniTest.expect.equality(mime.cr_concat("", "\r 10%|one\r 20%|two"), " 20%|two")
-end
-
-T["cr_concat"]["overwrites the tail of existing text across events"] = function()
-  MiniTest.expect.equality(mime.cr_concat(" 10%|one", "\r 20%|two\n"), " 20%|two\n")
-end
-
-T["cr_concat"]["preserves earlier completed lines"] = function()
-  MiniTest.expect.equality(mime.cr_concat("first\nsecond", "\rthird"), "first\nthird")
-end
-
-T["cr_concat"]["CRLF collapses the line (jupyter classic semantics)"] = function()
-  MiniTest.expect.equality(mime.cr_concat("", "abc\r\ndef"), "\ndef")
-end
-
 T["ordering"] = MiniTest.new_set()
 
 T["ordering"]["text/plain first, images last, unsupported noted"] = function()
