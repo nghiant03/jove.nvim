@@ -28,10 +28,6 @@ M.tabs = {
   { id = "toc", key = "3", name = "TOC" },
 }
 
--- Fixed pane width (columns) never exceeds this, even if `variables.width`
--- is set higher. Fractional widths (0 < width < 1) pick a share of the
--- screen instead and are only capped by the screen itself.
-local MAX_WIDTH = 80
 -- Tab bar + separator rule occupy the first two buffer lines.
 local HEADER_LINES = 2
 
@@ -75,16 +71,10 @@ end
 local function pane_width()
   local ok, jove = pcall(require, "jove")
   local c = ok and jove.config and jove.config.variables
-  local width = type(c) == "table" and type(c.width) == "number" and c.width or 48
-  if width > 0 and width < 1 then
-    -- Fractional width: that share of the total screen columns.
-    return math.max(
-      20,
-      math.min(math.floor(vim.o.columns * width), math.floor(vim.o.columns * 0.9))
-    )
-  end
-  local fit = math.max(20, math.floor(vim.o.columns * 0.35))
-  return math.max(20, math.min(math.floor(width), MAX_WIDTH, fit))
+  -- `variables.width` is a fraction of the total screen columns.
+  local width = type(c) == "table" and type(c.width) == "number" and c.width or 0.25
+  local share = math.min(math.max(width, 0.05), 0.9)
+  return math.max(20, math.floor(vim.o.columns * share))
 end
 
 ---@return boolean

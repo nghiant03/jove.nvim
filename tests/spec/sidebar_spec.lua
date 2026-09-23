@@ -61,7 +61,7 @@ T = MiniTest.new_set({
       real_variables = vars._variables
       real_kernelspecs = sidebar._kernelspecs
       saved_config_variables = require("jove").config.variables
-      require("jove").config.variables = { width = 40, auto_refresh = false }
+      require("jove").config.variables = { width = 0.4, auto_refresh = false }
       vars._variables = function(_, cb)
         cb({ variables = { { name = "alpha", type = "int", value = "42" } } })
       end
@@ -156,13 +156,13 @@ end
 
 T["width"] = MiniTest.new_set()
 
-T["width"]["clamps an oversized configured width"] = function()
-  require("jove").config.variables = { width = 500, auto_refresh = false }
+T["width"]["clamps an oversized configured share"] = function()
+  require("jove").config.variables = { width = 0.95, auto_refresh = false }
   local buf = make_buffer({ "# %%", "x = 1" })
   local win = sidebar.open(buf, "vars")
   expect_truthy(win ~= nil)
   local width = vim.api.nvim_win_get_width(win)
-  expect_truthy(width <= 80)
+  expect_truthy(width <= math.floor(vim.o.columns * 0.9))
   expect_truthy(width >= 20)
   sidebar.close(buf)
 end
