@@ -30,6 +30,9 @@ local function jump_to_hash(buf, hash)
   local target = cell_start_by_hash(buf, hash)
   if target then
     vim.api.nvim_win_set_cursor(win, { target, 0 })
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("normal! zt")
+    end)
   end
 end
 
