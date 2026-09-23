@@ -117,7 +117,7 @@ require("jove").setup({
   },
   variables = {
     auto_refresh = true,        -- refresh the variables inspector on idle
-    width = 32,                 -- inspector window width
+    width = 48,                 -- sidebar width
   },
   ui = {
     conceal_headers = true,     -- conceal # %% cell headers (front matter is hidden by stripping it on read)
@@ -165,9 +165,7 @@ require("jove").setup({
 | `:JoveClearOutput` | Clear outputs of the current cell |
 | `:JoveClearOutputs` | Clear all rendered outputs in this buffer |
 | `:JoveReload` | Reload the current notebook buffer from disk |
-| `:JoveVariables` | Toggle the sidebar (variables tab) |
-| `:JoveKernelInfo` | Toggle the sidebar (kernel tab: session, running kernels, installed kernelspecs) |
-| `:JoveToc` | Toggle the sidebar (table of contents tab) |
+| `:JoveSidebar` | Toggle the sidebar (variables, kernel info, table of contents; number keys switch tabs) |
 
 ### Keymaps and motions
 

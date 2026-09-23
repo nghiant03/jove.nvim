@@ -1,4 +1,4 @@
--- Kernel and session status for the statusline and info float.
+-- Kernel and session status for the statusline and the sidebar kernel tab.
 local state = require("jove.state")
 
 local M = {}
@@ -160,7 +160,7 @@ function M.installed_kernelspecs(cb)
 end
 
 ---Build the kernel info lines (session, running kernels, installed
----kernelspecs); used by the info float and the sidebar kernel tab.
+---kernelspecs) for the sidebar kernel tab.
 ---@param buf integer
 ---@param specs jove.ui.Kernelspec[]?
 ---@param err string?
@@ -220,73 +220,6 @@ function M.build_lines(buf, specs, err)
     end
   end
   return lines
-end
-
----@param buf integer?
----@return {buf: integer, lines: string[], opts: table}
-function M.info_float(buf)
-  buf = norm_buf(buf)
-  local lines = M.build_lines(buf, nil, nil)
-
-  local fbuf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
-  vim.bo[fbuf].buflisted = false
-  vim.bo[fbuf].bufhidden = "wipe"
-
-  local width = math.max(30, math.floor(vim.o.columns * 0.8))
-  local height = math.max(3, #lines)
-  local opts = {
-    relative = "editor",
-    width = width,
-    height = height,
-    row = math.floor((vim.o.lines - height) / 2),
-    col = math.floor((vim.o.columns - width) / 2),
-    border = "rounded",
-    style = "minimal",
-  }
-
-  M.installed_kernelspecs(function(specs, err)
-    if not vim.api.nvim_buf_is_valid(fbuf) or not vim.api.nvim_buf_is_valid(buf) then
-      return
-    end
-    local updated = M.build_lines(buf, specs, err)
-    vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, updated)
-    local win = vim.fn.bufwinid(fbuf)
-    if win ~= -1 and vim.api.nvim_win_get_config(win).relative ~= "" then
-      vim.api.nvim_win_set_height(win, math.max(3, #updated))
-    end
-  end)
-
-  return { buf = fbuf, lines = lines, opts = opts }
-end
-
----@param buf integer?
----@return integer? win
-function M.show_info(buf)
-  local float = M.info_float(buf)
-  local win = require("jove.ui.win").open(float.buf, true, float.opts, float.opts.width)
-  if not win then
-    pcall(vim.api.nvim_buf_delete, float.buf, { force = true })
-    return nil
-  end
-  local function close()
-    if vim.api.nvim_win_is_valid(win) then
-      pcall(vim.api.nvim_win_close, win, true)
-    end
-  end
-  vim.keymap.set(
-    "n",
-    "q",
-    close,
-    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
-  )
-  vim.keymap.set(
-    "n",
-    "<Esc>",
-    close,
-    { buffer = float.buf, nowait = true, silent = true, desc = "Jove: Close Kernel Panel" }
-  )
-  return win
 end
 
 return M

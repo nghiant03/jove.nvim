@@ -6,15 +6,6 @@ local state = require("jove.state")
 
 local M = {}
 
----@param buf integer?
----@return integer
-local function norm_buf(buf)
-  if buf == nil or buf == 0 then
-    return vim.api.nvim_get_current_buf()
-  end
-  return buf
-end
-
 ---@param s string
 ---@param max integer
 ---@return string
@@ -73,33 +64,6 @@ function M.format(vars, width)
     )
   end
   return lines
-end
-
----@param buf integer?
----@return boolean
-function M.is_open(buf)
-  return require("jove.ui.sidebar").is_open(norm_buf(buf))
-end
-
----@param buf integer?
-function M.toggle(buf)
-  require("jove.ui.sidebar").toggle(norm_buf(buf), "vars")
-end
-
----@param buf integer?
----@return integer? win
-function M.open(buf)
-  return require("jove.ui.sidebar").open(norm_buf(buf), "vars")
-end
-
----@param buf integer?
-function M.close(buf)
-  require("jove.ui.sidebar").close(norm_buf(buf))
-end
-
----@param buf integer?
-function M.refresh(buf)
-  require("jove.ui.sidebar").refresh(norm_buf(buf))
 end
 
 ---Fetch the variable list through the bridge seam.

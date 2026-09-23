@@ -125,14 +125,6 @@ vim.api.nvim_create_user_command("JoveReload", function()
   require("jove.buffer").reload(0)
 end, { desc = "Reload the current notebook buffer from disk" })
 
-vim.api.nvim_create_user_command("JoveVariables", function()
-  require("jove.ui.sidebar").toggle(0, "vars")
-end, { desc = "Toggle the sidebar (variables tab)" })
-
-vim.api.nvim_create_user_command("JoveKernelInfo", function()
-  require("jove.ui.sidebar").toggle(0, "kernel")
-end, { desc = "Toggle the sidebar (kernel tab: session, running kernels, installed kernelspecs)" })
-
-vim.api.nvim_create_user_command("JoveToc", function()
-  require("jove.ui.sidebar").toggle(0, "toc")
-end, { desc = "Toggle the sidebar (table of contents tab)" })
+vim.api.nvim_create_user_command("JoveSidebar", function()
+  require("jove.ui.sidebar").toggle(0)
+end, { desc = "Toggle the sidebar (variables, kernel info, table of contents)" })

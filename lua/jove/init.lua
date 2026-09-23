@@ -69,7 +69,7 @@ M.config = {
   },
   variables = {
     auto_refresh = true,
-    width = 32,
+    width = 48,
   },
   ui = {
     conceal_headers = true,

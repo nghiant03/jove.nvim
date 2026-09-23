@@ -2,6 +2,7 @@
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local vars = require("jove.ui.vars")
+local sidebar = require("jove.ui.sidebar")
 
 local T = MiniTest.new_set()
 
@@ -39,7 +40,7 @@ T = MiniTest.new_set({
     end,
     post_case = function()
       for _, buf in ipairs(created) do
-        pcall(vars.close, buf)
+        pcall(sidebar.close, buf)
         pcall(vim.api.nvim_buf_delete, buf, { force = true })
       end
       vars._variables = real_variables
@@ -139,16 +140,16 @@ T["sidebar"]["open fetches through the bridge seam, renders, and closes"] = func
     })
   end
 
-  local win = vars.open(buf)
+  local win = sidebar.open(buf, "vars")
   expect_truthy(win ~= nil)
-  MiniTest.expect.equality(vars.is_open(buf), true)
+  MiniTest.expect.equality(sidebar.is_open(buf), true)
   MiniTest.expect.equality(called, 1)
   local text = win_text(win)
   expect_truthy(text:find("alpha", 1, true) ~= nil)
   expect_truthy(text:find("'hello'", 1, true) ~= nil)
 
-  vars.close(buf)
-  MiniTest.expect.equality(vars.is_open(buf), false)
+  sidebar.close(buf)
+  MiniTest.expect.equality(sidebar.is_open(buf), false)
 end
 
 T["sidebar"]["toggle opens then closes"] = function()
@@ -156,10 +157,10 @@ T["sidebar"]["toggle opens then closes"] = function()
   vars._variables = function(_, cb)
     cb({ variables = {} })
   end
-  vars.toggle(buf)
-  MiniTest.expect.equality(vars.is_open(buf), true)
-  vars.toggle(buf)
-  MiniTest.expect.equality(vars.is_open(buf), false)
+  sidebar.toggle(buf)
+  MiniTest.expect.equality(sidebar.is_open(buf), true)
+  sidebar.toggle(buf)
+  MiniTest.expect.equality(sidebar.is_open(buf), false)
 end
 
 T["sidebar"]["shows the unsupported marker for non-python kernels"] = function()
@@ -167,9 +168,9 @@ T["sidebar"]["shows the unsupported marker for non-python kernels"] = function()
   vars._variables = function(_, cb)
     cb({ variables = nil, unsupported = "julia" })
   end
-  local win = vars.open(buf)
+  local win = sidebar.open(buf, "vars")
   expect_truthy(win_text(win):find("unsupported for julia", 1, true) ~= nil)
-  vars.close(buf)
+  sidebar.close(buf)
 end
 
 T["sidebar"]["refresh re-queries and re-renders"] = function()
@@ -178,13 +179,13 @@ T["sidebar"]["refresh re-queries and re-renders"] = function()
   vars._variables = function(_, cb)
     cb(payload)
   end
-  local win = vars.open(buf)
+  local win = sidebar.open(buf, "vars")
   expect_truthy(win_text(win):find("first", 1, true) ~= nil)
 
   payload = { variables = { { name = "second", type = "str", value = "2" } } }
-  vars.refresh(buf)
+  sidebar.refresh(buf)
   expect_truthy(win_text(win):find("second", 1, true) ~= nil)
-  vars.close(buf)
+  sidebar.close(buf)
 end
 
 T["sidebar"]["opens a vertical split by default and a float when configured"] = function()
@@ -197,16 +198,16 @@ T["sidebar"]["opens a vertical split by default and a float when configured"] = 
   local saved = jove.config.ui.window_mode
 
   jove.config.ui.window_mode = "vsplit"
-  local win = vars.open(buf)
+  local win = sidebar.open(buf, "vars")
   expect_truthy(win ~= nil)
   MiniTest.expect.equality(vim.api.nvim_win_get_config(win).relative, "")
-  vars.close(buf)
+  sidebar.close(buf)
 
   jove.config.ui.window_mode = "float"
-  win = vars.open(buf)
+  win = sidebar.open(buf, "vars")
   expect_truthy(win ~= nil)
   MiniTest.expect.equality(vim.api.nvim_win_get_config(win).relative, "editor")
-  vars.close(buf)
+  sidebar.close(buf)
 
   jove.config.ui.window_mode = saved
 end

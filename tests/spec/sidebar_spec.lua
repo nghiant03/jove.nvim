@@ -162,7 +162,7 @@ T["width"]["clamps an oversized configured width"] = function()
   local win = sidebar.open(buf, "vars")
   expect_truthy(win ~= nil)
   local width = vim.api.nvim_win_get_width(win)
-  expect_truthy(width <= 44)
+  expect_truthy(width <= 80)
   expect_truthy(width >= 20)
   sidebar.close(buf)
 end

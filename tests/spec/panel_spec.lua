@@ -1,4 +1,4 @@
--- Kernel panel: running-kernel enumeration and the three-section info float.
+-- Kernel panel: running-kernel enumeration and kernelspec listing.
 local MiniTest = require("mini.test")
 local bridge_mod = require("jove.bridge")
 local state = require("jove.state")
@@ -82,24 +82,6 @@ local function stub_kernel(name, status, alive)
       end,
     },
   }
-end
-
----@param fbuf integer
----@return string[]
-local function buf_lines(fbuf)
-  return vim.api.nvim_buf_get_lines(fbuf, 0, -1, false)
-end
-
----@param lines string[]
----@param needle string
----@return boolean
-local function has_line(lines, needle)
-  for _, line in ipairs(lines) do
-    if line:find(needle, 1, true) then
-      return true
-    end
-  end
-  return false
 end
 
 T = MiniTest.new_set({
@@ -289,107 +271,6 @@ T["installed_kernelspecs"]["reports an error and still stops the temporary bridg
     end),
     true
   )
-  job.restore()
-end
-
-T["info_float"] = MiniTest.new_set()
-
-T["info_float"]["renders three sections and fills specs asynchronously"] = function()
-  local job = fake_job()
-  job.install()
-  local buf = make_buffer("/tmp/jove_float.ipynb")
-  state.get(buf).kernel = stub_kernel("py", "idle", false)
-
-  local float = panel.info_float(buf)
-  created[#created + 1] = float.buf
-  local fbuf = float.buf
-  MiniTest.expect.equality(vim.bo[fbuf].buflisted, false)
-  MiniTest.expect.equality(vim.bo[fbuf].bufhidden, "wipe")
-  MiniTest.expect.equality(float.opts.relative, "editor")
-  MiniTest.expect.equality(float.opts.border, "rounded")
-  MiniTest.expect.equality(has_line(float.lines, "session"), true)
-  MiniTest.expect.equality(has_line(float.lines, "running kernels"), true)
-  MiniTest.expect.equality(has_line(float.lines, "installed kernelspecs"), true)
-  MiniTest.expect.equality(has_line(float.lines, "(loading…)"), true)
-
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
-  job.stdout(
-    '{"id":1,"result":{"kernelspecs":{"python3":{"display_name":"Python 3","language":"python"}}}}\n'
-  )
-  vim.wait(200, function()
-    return has_line(buf_lines(fbuf), "python3")
-  end)
-
-  local lines = buf_lines(fbuf)
-  MiniTest.expect.equality(has_line(lines, "python3  Python 3"), true)
-  MiniTest.expect.equality(has_line(lines, "(loading…)"), false)
-  job.restore()
-end
-
-T["info_float"]["ignores the async reply after the float buffer is wiped"] = function()
-  local job = fake_job()
-  job.install()
-  local buf = make_buffer("/tmp/jove_wipe.ipynb")
-  state.get(buf).kernel = stub_kernel("py", "idle", false)
-
-  local float = panel.info_float(buf)
-  vim.api.nvim_buf_delete(float.buf, { force = true })
-  MiniTest.expect.equality(vim.api.nvim_buf_is_valid(float.buf), false)
-
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
-  job.stdout(
-    '{"id":1,"result":{"kernelspecs":{"python3":{"display_name":"Python 3","language":"python"}}}}\n'
-  )
-  local ok = pcall(vim.wait, 200, function()
-    return false
-  end)
-  MiniTest.expect.equality(ok, true)
-  job.restore()
-end
-
-T["info_float"]["ignores the async reply after the source notebook is wiped"] = function()
-  local job = fake_job()
-  job.install()
-  local buf = make_buffer("/tmp/jove_bufwipe.ipynb")
-  state.get(buf).kernel = stub_kernel("py", "idle", false)
-
-  local float = panel.info_float(buf)
-  created[#created + 1] = float.buf
-  vim.api.nvim_buf_delete(buf, { force = true })
-  MiniTest.expect.equality(vim.api.nvim_buf_is_valid(buf), false)
-
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
-  job.stdout(
-    '{"id":1,"result":{"kernelspecs":{"python3":{"display_name":"Python 3","language":"python"}}}}\n'
-  )
-  local ok = pcall(vim.wait, 200, function()
-    return false
-  end)
-  MiniTest.expect.equality(ok, true)
-  MiniTest.expect.equality(has_line(buf_lines(float.buf), "(loading…)"), true)
-  job.restore()
-end
-
-T["info_float"]["resizes the open window when specs arrive"] = function()
-  local job = fake_job()
-  job.install()
-  local buf = make_buffer("/tmp/jove_resize.ipynb")
-  state.get(buf).kernel = stub_kernel("py", "idle", false)
-
-  local float = panel.info_float(buf)
-  created[#created + 1] = float.buf
-  local win = vim.api.nvim_open_win(float.buf, true, float.opts)
-
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
-  job.stdout(
-    '{"id":1,"result":{"kernelspecs":{"julia":{"display_name":"Julia","language":"julia"},"python3":{"display_name":"Python 3","language":"python"}}}}\n'
-  )
-  vim.wait(200, function()
-    return #buf_lines(float.buf) > #float.lines
-  end)
-  local expected = #buf_lines(float.buf)
-  MiniTest.expect.equality(vim.api.nvim_win_get_height(win), expected)
-  vim.api.nvim_win_close(win, true)
   job.restore()
 end
 

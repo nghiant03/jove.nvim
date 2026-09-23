@@ -24,7 +24,7 @@ M.tabs = {
 }
 
 -- Pane width never exceeds this, even if `variables.width` is set higher.
-local MAX_WIDTH = 44
+local MAX_WIDTH = 80
 -- Tab bar + separator rule occupy the first two buffer lines.
 local HEADER_LINES = 2
 
@@ -43,6 +43,10 @@ local HEADER_LINES = 2
 ---@type table<integer, jove.sidebar.Session>
 local sessions = {}
 M._sessions = sessions
+
+-- Last active tab per notebook buffer, so reopening restores it.
+---@type table<integer, string>
+local last_tab = {}
 
 -- Test seam for the installed-kernelspecs query.
 ---@param cb fun(specs: jove.ui.Kernelspec[]?, err: string?)
@@ -255,10 +259,9 @@ end
 ---@param tab string?
 function M.toggle(buf, tab)
   buf = norm_buf(buf)
-  tab = tab or "vars"
   local s = get(buf)
   if s then
-    if s.tab == tab then
+    if tab == nil or s.tab == tab then
       M.close(buf)
     else
       M.switch(buf, tab)
@@ -275,6 +278,7 @@ function M.close(buf)
   if not s then
     return
   end
+  last_tab[buf] = s.tab
   sessions[buf] = nil
   if s.unsub then
     pcall(s.unsub)
@@ -329,7 +333,7 @@ end
 ---@return integer? win
 function M.open(buf, tab)
   buf = norm_buf(buf)
-  tab = tab or "vars"
+  tab = tab or last_tab[buf] or "vars"
   local existing = get(buf)
   if existing then
     M.switch(buf, tab)
@@ -411,8 +415,11 @@ function M.open(buf, tab)
     once = true,
     callback = function()
       local s = sessions[buf]
-      if s and s.unsub then
-        pcall(s.unsub)
+      if s then
+        last_tab[buf] = s.tab
+        if s.unsub then
+          pcall(s.unsub)
+        end
       end
       sessions[buf] = nil
     end,
