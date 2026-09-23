@@ -65,7 +65,9 @@ Notes:
   hash** because jupytext py:percent round-trips drop cell ids.
 - `lua/jove/output.lua`, `lua/jove/mime.lua`, `lua/jove/ansi.lua`,
   `lua/jove/ui/` - rendering (inline extmark blocks, optional images via
-  `snacks.image`), variables inspector, kernel info panel, TOC. `ansi.lua`
+  `snacks.image`). `ui/sidebar.lua` is the single tabbed pane hosting the
+  variables, kernel info, and TOC views (content comes from `ui/vars.lua`,
+  `ui/panel.lua`, and `jove/toc.lua`); number keys switch tabs. `ansi.lua`
   owns all terminal escape handling: `strip` (drop sequences), `cr_concat`
   (carriage-return folding), and `parse` (map SGR styling to highlight spans,
   stateful across stream events).

@@ -159,11 +159,13 @@ function M.installed_kernelspecs(cb)
   end)
 end
 
+---Build the kernel info lines (session, running kernels, installed
+---kernelspecs); used by the info float and the sidebar kernel tab.
 ---@param buf integer
 ---@param specs jove.ui.Kernelspec[]?
 ---@param err string?
 ---@return string[]
-local function build_lines(buf, specs, err)
+function M.build_lines(buf, specs, err)
   local info = M.info(buf)
   local cur_st = state.peek(buf)
   local cur_kernel = cur_st and cur_st.kernel
@@ -224,7 +226,7 @@ end
 ---@return {buf: integer, lines: string[], opts: table}
 function M.info_float(buf)
   buf = norm_buf(buf)
-  local lines = build_lines(buf, nil, nil)
+  local lines = M.build_lines(buf, nil, nil)
 
   local fbuf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
@@ -247,7 +249,7 @@ function M.info_float(buf)
     if not vim.api.nvim_buf_is_valid(fbuf) or not vim.api.nvim_buf_is_valid(buf) then
       return
     end
-    local updated = build_lines(buf, specs, err)
+    local updated = M.build_lines(buf, specs, err)
     vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, updated)
     local win = vim.fn.bufwinid(fbuf)
     if win ~= -1 and vim.api.nvim_win_get_config(win).relative ~= "" then

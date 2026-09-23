@@ -68,6 +68,27 @@ function M.headings(buf)
   return out
 end
 
+---Jump the first window showing `buf` to `lnum`.
+---@param buf integer
+---@param lnum integer
+function M.jump(buf, lnum)
+  buf = norm_buf(buf)
+  local target
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(w) == buf then
+      target = w
+      break
+    end
+  end
+  if not target then
+    return
+  end
+  vim.api.nvim_set_current_win(target)
+  local line = math.min(math.max(1, lnum), vim.api.nvim_buf_line_count(buf))
+  vim.api.nvim_win_set_cursor(target, { line, 0 })
+  vim.cmd("normal! zz")
+end
+
 ---@param buf integer?
 function M.pick(buf)
   buf = norm_buf(buf)
@@ -96,20 +117,7 @@ function M.pick(buf)
     if not choice then
       return
     end
-    local target
-    for _, w in ipairs(vim.api.nvim_list_wins()) do
-      if vim.api.nvim_win_get_buf(w) == buf then
-        target = w
-        break
-      end
-    end
-    if not target then
-      return
-    end
-    vim.api.nvim_set_current_win(target)
-    local lnum = math.min(math.max(1, choice.lnum), vim.api.nvim_buf_line_count(buf))
-    vim.api.nvim_win_set_cursor(target, { lnum, 0 })
-    vim.cmd("normal! zz")
+    M.jump(buf, choice.lnum)
   end)
 end
 

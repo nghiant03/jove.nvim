@@ -27,8 +27,9 @@
   as truth.
 - **Cell ergonomics** — `ic`/`ac` cell text-objects, `[c`/`]c` cell motions,
   cell borders, per-cell execution counts and elapsed time.
-- **Tooling** — variable inspector sidebar, notebook table of contents, and a
-  kernel info panel with sessions and installed kernelspecs.
+- **Tooling** — a tabbed sidebar combining the variable inspector, notebook
+  table of contents, and kernel info (sessions and installed kernelspecs),
+  with number keys to switch tabs.
 
 ## Requirements
 
@@ -125,7 +126,7 @@ require("jove").setup({
     elapsed = true,             -- show per-cell elapsed time
     borders = true,             -- draw a closing line below each cell
     border_hl = nil,            -- cell border highlight: an hl group name (string, linked) or attrs table (e.g. { fg = "#ff9e64" }); nil keeps the default Comment link
-    window_mode = "vsplit",     -- how to open the variables inspector, kernel info panel, and output viewer: "float", "vsplit", or "hsplit"
+    window_mode = "vsplit",     -- how to open the sidebar and output viewer: "float", "vsplit", or "hsplit"
   },
   keymap = {
     run_cell = false,
@@ -164,9 +165,9 @@ require("jove").setup({
 | `:JoveClearOutput` | Clear outputs of the current cell |
 | `:JoveClearOutputs` | Clear all rendered outputs in this buffer |
 | `:JoveReload` | Reload the current notebook buffer from disk |
-| `:JoveVariables` | Toggle the variable inspector sidebar |
-| `:JoveKernelInfo` | Show kernel panel (current session, running kernels, installed kernelspecs) |
-| `:JoveToc` | Show a table of contents for the current notebook |
+| `:JoveVariables` | Toggle the sidebar (variables tab) |
+| `:JoveKernelInfo` | Toggle the sidebar (kernel tab: session, running kernels, installed kernelspecs) |
+| `:JoveToc` | Toggle the sidebar (table of contents tab) |
 
 ### Keymaps and motions
 

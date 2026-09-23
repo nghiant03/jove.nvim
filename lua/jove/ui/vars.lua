@@ -1,18 +1,9 @@
--- Variable-inspector sidebar.
+-- Variable-inspector data and formatting for the tabbed sidebar
+-- (`jove.ui.sidebar` owns the window).
 
 local state = require("jove.state")
 
 local M = {}
-
----@class jove.vars.Session
----@field win integer
----@field fbuf integer
----@field vars table[]
----@field unsupported string?
----@field unsub fun()?
-
----@type table<integer, jove.vars.Session>
-local sessions = {}
 
 ---@param buf integer?
 ---@return integer
@@ -21,19 +12,6 @@ local function norm_buf(buf)
     return vim.api.nvim_get_current_buf()
   end
   return buf
-end
-
----@return {width: integer, auto_refresh: boolean}
-local function config()
-  local ok, jove = pcall(require, "jove")
-  local c = ok and jove.config and jove.config.variables
-  if type(c) ~= "table" then
-    return { width = 32, auto_refresh = true }
-  end
-  return {
-    width = type(c.width) == "number" and c.width or 32,
-    auto_refresh = c.auto_refresh ~= false,
-  }
 end
 
 ---@param s string
@@ -96,184 +74,38 @@ function M.format(vars, width)
   return lines
 end
 
----@param buf integer
----@return jove.vars.Session?
-local function get(buf)
-  local s = sessions[buf]
-  if s and vim.api.nvim_win_is_valid(s.win) then
-    return s
-  end
-  return nil
-end
-
----@param buf integer
-local function render(buf)
-  local s = get(buf)
-  if not s or not vim.api.nvim_buf_is_valid(s.fbuf) then
-    return
-  end
-  local lines
-  if s.unsupported then
-    lines = { ("[variables unsupported for %s]"):format(s.unsupported) }
-  else
-    local width = vim.api.nvim_win_is_valid(s.win) and vim.api.nvim_win_get_width(s.win) or 32
-    lines = M.format(s.vars, width)
-  end
-  vim.api.nvim_buf_set_lines(s.fbuf, 0, -1, false, lines)
-end
-
----@param buf integer
+---@param buf integer?
 ---@return boolean
 function M.is_open(buf)
-  return get(norm_buf(buf)) ~= nil
+  return require("jove.ui.sidebar").is_open(norm_buf(buf))
 end
 
 ---@param buf integer?
 function M.toggle(buf)
-  buf = norm_buf(buf)
-  if get(buf) then
-    M.close(buf)
-  else
-    M.open(buf)
-  end
+  require("jove.ui.sidebar").toggle(norm_buf(buf), "vars")
 end
 
 ---@param buf integer?
 ---@return integer? win
 function M.open(buf)
-  buf = norm_buf(buf)
-  if get(buf) then
-    return sessions[buf].win
-  end
-  if not state.peek(buf) or not vim.api.nvim_buf_is_loaded(buf) then
-    vim.notify("[jove] variable inspector: not a notebook buffer", vim.log.levels.WARN)
-    return nil
-  end
-
-  local c = config()
-  local width = math.max(20, math.floor(c.width))
-  local height = math.max(5, vim.o.lines - 2)
-  local fbuf = vim.api.nvim_create_buf(false, true)
-  vim.bo[fbuf].buflisted = false
-  vim.bo[fbuf].bufhidden = "wipe"
-  vim.bo[fbuf].filetype = "jove-vars"
-
-  local win, err = require("jove.ui.win").open(fbuf, true, {
-    relative = "editor",
-    width = width,
-    height = height,
-    row = 0,
-    col = math.max(0, vim.o.columns - width),
-    style = "minimal",
-    border = "single",
-  }, width)
-  if not win then
-    pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
-    vim.notify("[jove] could not open variable inspector: " .. tostring(err), vim.log.levels.ERROR)
-    return nil
-  end
-
-  vim.wo[win].wrap = false
-  vim.wo[win].number = false
-  vim.wo[win].signcolumn = "no"
-  vim.wo[win].winfixwidth = true
-  vim.wo[win].cursorline = true
-  vim.wo[win].foldcolumn = "0"
-
-  sessions[buf] = { win = win, fbuf = fbuf, vars = {}, unsupported = nil, unsub = nil }
-
-  local function map(lhs, fn, desc)
-    vim.keymap.set("n", lhs, fn, { buffer = fbuf, nowait = true, silent = true, desc = desc })
-  end
-  map("q", function()
-    M.close(buf)
-  end, "Jove: Close Variable Inspector")
-  map("<Esc>", function()
-    M.close(buf)
-  end, "Jove: Close Variable Inspector")
-  map("r", function()
-    M.refresh(buf)
-  end, "Jove: Refresh Variables")
-  map("<CR>", function()
-    M.inspect(buf)
-  end, "Jove: Inspect Variable")
-
-  vim.api.nvim_create_autocmd("BufWipeout", {
-    buffer = fbuf,
-    once = true,
-    callback = function()
-      local s = sessions[buf]
-      if s and s.unsub then
-        pcall(s.unsub)
-      end
-      sessions[buf] = nil
-    end,
-  })
-
-  if c.auto_refresh then
-    local ok_x, execute = pcall(require, "jove.execute")
-    if ok_x and type(execute.on_status) == "function" then
-      sessions[buf].unsub = execute.on_status(buf, function(_, status)
-        if status == "ok" or status == "error" then
-          M.refresh(buf)
-        end
-      end)
-    end
-  end
-
-  M.refresh(buf)
-  return win
+  return require("jove.ui.sidebar").open(norm_buf(buf), "vars")
 end
 
 ---@param buf integer?
 function M.close(buf)
-  buf = norm_buf(buf)
-  local s = sessions[buf]
-  if not s then
-    return
-  end
-  sessions[buf] = nil
-  if s.unsub then
-    pcall(s.unsub)
-  end
-  if vim.api.nvim_win_is_valid(s.win) then
-    pcall(vim.api.nvim_win_close, s.win, true)
-  end
-  if vim.api.nvim_buf_is_valid(s.fbuf) then
-    pcall(vim.api.nvim_buf_delete, s.fbuf, { force = true })
-  end
+  require("jove.ui.sidebar").close(norm_buf(buf))
 end
 
 ---@param buf integer?
 function M.refresh(buf)
-  buf = norm_buf(buf)
-  local s = get(buf)
-  if not s then
-    return
-  end
-  M._variables(buf, function(result)
-    if not get(buf) then
-      return
-    end
-    if type(result) ~= "table" then
-      result = {}
-    end
-    s.unsupported = result.unsupported
-    s.vars = type(result.variables) == "table" and result.variables or {}
-    render(buf)
-  end)
+  require("jove.ui.sidebar").refresh(norm_buf(buf))
 end
 
+---Fetch the variable list through the bridge seam.
 ---@param buf integer
----@return string?
-local function current_name(buf)
-  local s = get(buf)
-  if not s then
-    return nil
-  end
-  local lnum = vim.api.nvim_win_get_cursor(s.win)[1]
-  local v = s.vars[lnum]
-  return v and v.name or nil
+---@param cb fun(result: table?)
+function M.fetch(buf, cb)
+  M._variables(buf, cb)
 end
 
 ---@param text string
@@ -319,25 +151,14 @@ function M.show_float(text)
   return win
 end
 
----@param buf integer?
-function M.inspect(buf)
-  buf = norm_buf(buf)
-  local s = get(buf)
-  if not s then
+---Show details for one variable in a float.
+---@param buf integer
+---@param name string
+---@param cached table?  vars entry ({name, type, value, ...}) used as fallback text
+function M.inspect_var(buf, name, cached)
+  if name == "" then
     return
   end
-  local name = current_name(buf)
-  if not name then
-    return
-  end
-  local cached
-  for _, v in ipairs(s.vars) do
-    if v.name == name then
-      cached = v
-      break
-    end
-  end
-
   local entry = state.peek(buf)
   local k = entry and entry.kernel
   if k and k.name and k.bridge and k.bridge:is_alive() then

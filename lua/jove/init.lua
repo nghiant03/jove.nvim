@@ -34,9 +34,9 @@ local M = {}
 ---  | border_hl: `string|nil` (an existing hl group to link `JoveCellBorder` to)
 ---  | or `table|nil` (attrs passed to `nvim_set_hl` for `JoveCellBorder`, e.g.
 ---  | `{ fg = "#ff9e64" }`). nil leaves the default link in place.
----  | window_mode: how to open the variables inspector, kernel info panel,
----  | variable detail view, and output viewer: "float", "vsplit" (default),
----  | or "hsplit".
+---  | window_mode: how to open the sidebar (variables, kernel info, TOC),
+---  | the variable detail view, and the output viewer: "float", "vsplit"
+---  | (default), or "hsplit".
 ---@field keymap table<string, string|false>
 
 ---@type jove.Config
