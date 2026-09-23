@@ -104,6 +104,37 @@ T["read via BufReadCmd"]["opens with acwrite buftype and py:percent lines"] = fu
   close_notebook(buf)
 end
 
+T["read via BufReadCmd"]["undo right after open keeps the content"] = function()
+  local path = tmp_copy_fixture()
+  local buf = open_notebook(path)
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("silent! normal! u")
+  end)
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false), lines)
+  MiniTest.expect.equality(vim.bo[buf].modified, false)
+
+  close_notebook(buf)
+end
+
+T["read via BufReadCmd"]["edits after open remain undoable"] = function()
+  local path = tmp_copy_fixture()
+  local buf = open_notebook(path)
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("normal! Goadded")
+  end)
+  MiniTest.expect.equality(vim.bo[buf].modified, true)
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("silent! normal! u")
+  end)
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false), lines)
+
+  close_notebook(buf)
+end
+
 T["read via BufReadCmd"]["new file: empty py:percent buffer, JSON deferred to write"] = function()
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
@@ -119,6 +150,11 @@ T["read via BufReadCmd"]["new file: empty py:percent buffer, JSON deferred to wr
   local st = state.get(buf)
   expect_same_path(st.path, path)
   MiniTest.expect.equality(st.json, nil)
+
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("silent! normal! u")
+  end)
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "# %%", "" })
 
   close_notebook(buf)
 end

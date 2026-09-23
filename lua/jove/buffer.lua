@@ -80,6 +80,19 @@ local function restore_cursor(buf, cursor, lines)
 end
 
 ---@param buf integer
+---@param lines string[]
+local function replace_lines(buf, lines)
+  if (state.peek(buf) or {}).path ~= nil then
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    return
+  end
+  local undolevels = vim.bo[buf].undolevels
+  vim.bo[buf].undolevels = -1
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].undolevels = undolevels
+end
+
+---@param buf integer
 ---@param path string
 ---@param opts {preserve_cursor: boolean?, guard_tick: integer?}?
 function M.read(buf, path, opts)
@@ -89,7 +102,7 @@ function M.read(buf, path, opts)
   if not vim.uv.fs_stat(path) then
     vim.bo[buf].buftype = "acwrite"
     vim.bo[buf].filetype = "python"
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "# %%", "" })
+    replace_lines(buf, { "# %%", "" })
     vim.bo[buf].modified = false
     state.get(buf).path = path
     return
@@ -142,7 +155,7 @@ function M.read(buf, path, opts)
         rest[#rest + 1] = ""
       end
 
-      vim.api.nvim_buf_set_lines(buf, 0, -1, false, rest)
+      replace_lines(buf, rest)
 
       local st = state.get(buf)
       st.path = path
