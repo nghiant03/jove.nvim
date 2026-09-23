@@ -167,6 +167,16 @@ T["width"]["clamps an oversized configured width"] = function()
   sidebar.close(buf)
 end
 
+T["width"]["accepts a fraction of the screen columns"] = function()
+  require("jove").config.variables = { width = 0.5, auto_refresh = false }
+  local buf = make_buffer({ "# %%", "x = 1" })
+  local win = sidebar.open(buf, "vars")
+  expect_truthy(win ~= nil)
+  local width = vim.api.nvim_win_get_width(win)
+  MiniTest.expect.equality(width, math.floor(vim.o.columns * 0.5))
+  sidebar.close(buf)
+end
+
 T["actions"] = MiniTest.new_set()
 
 T["actions"]["<CR> on the TOC tab jumps to the heading in the notebook window"] = function()

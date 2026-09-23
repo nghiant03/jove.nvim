@@ -29,6 +29,8 @@ local M = {}
 ---  | hl: output background tint — an existing hl group name (`string`, linked
 ---  | to `JoveOutput`) or attrs passed to `nvim_set_hl` (`table`); nil disables.
 ---@field variables table                Variables inspector options: { auto_refresh, width }.
+---  | width: sidebar width in columns, or a fraction (0 < width < 1) for a
+---  | share of the total screen columns.
 ---@field ui table
 ---  | UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders, border_hl, window_mode }.
 ---  | border_hl: `string|nil` (an existing hl group to link `JoveCellBorder` to)
