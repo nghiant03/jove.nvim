@@ -38,13 +38,19 @@ local function flatten(s)
   return out
 end
 
+---Format the variable table for the sidebar: a muted column-header row
+---followed by one row per variable. Also returns highlight spans
+---({line, col_start, col_end, hl_group}, 1-based content lines, byte cols)
+---and the number of leading non-item lines (the header), so the sidebar can
+---map cursor rows back to variable entries.
 ---@param vars table[]  { {name, type, value, size}, ... }
 ---@param width integer  Target display width.
----@return string[]
+---@return string[] lines, table[] spans, integer items_offset
 function M.format(vars, width)
   width = math.max(16, width or 32)
   if type(vars) ~= "table" or #vars == 0 then
-    return { "[no variables]" }
+    local msg = "No variables in scope"
+    return { msg }, { { 1, 0, #msg, "JoveSidebarMuted" } }, 1
   end
   local name_w, type_w = 4, 4
   for _, v in ipairs(vars) do
@@ -54,16 +60,27 @@ function M.format(vars, width)
   name_w = math.min(name_w, math.max(6, math.floor(width * 0.4)))
   type_w = math.min(type_w, math.max(4, math.floor(width * 0.3)))
   local value_w = math.max(1, width - name_w - type_w - 4)
-  local lines = {}
-  for _, v in ipairs(vars) do
-    local value = flatten(tostring(v.value or ""))
-    lines[#lines + 1] = ("%s  %s  %s"):format(
-      pad(truncate(tostring(v.name or ""), name_w), name_w),
-      pad(truncate(tostring(v.type or ""), type_w), type_w),
-      truncate(value, value_w)
-    )
+  local header = ("%s  %s  %s"):format(pad("Name", name_w), pad("Type", type_w), "Value")
+  local lines = { truncate(header, width) }
+  local spans = { { 1, 0, #lines[1], "JoveSidebarMuted" } }
+  for i, v in ipairs(vars) do
+    local name = pad(truncate(tostring(v.name or ""), name_w), name_w)
+    local type_col = #name + 2
+    local ty = pad(truncate(tostring(v.type or ""), type_w), type_w)
+    local value = truncate(flatten(tostring(v.value or "")), value_w)
+    lines[#lines + 1] = name .. "  " .. ty .. "  " .. value
+    local row = i + 1
+    local name_len = #(tostring(v.name or ""))
+    if name_len > 0 then
+      spans[#spans + 1] = { row, 0, math.min(name_len, #name), "JoveSidebarVarName" }
+    end
+    local type_len = #(tostring(v.type or ""))
+    if type_len > 0 then
+      spans[#spans + 1] =
+        { row, type_col, type_col + math.min(type_len, #ty), "JoveSidebarVarType" }
+    end
   end
-  return lines
+  return lines, spans, 1
 end
 
 ---Fetch the variable list through the bridge seam.

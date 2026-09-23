@@ -159,12 +159,14 @@ function M.installed_kernelspecs(cb)
   end)
 end
 
----Build the kernel info lines (session, running kernels, installed
----kernelspecs) for the sidebar kernel tab.
+---Build the kernel info content (session, running kernels, installed
+---kernelspecs) for the sidebar kernel tab. Also returns highlight spans
+---({line, col_start, col_end, hl_group}, 1-based lines, byte cols) so the
+---sidebar can style section titles, labels, and the active-kernel markers.
 ---@param buf integer
 ---@param specs jove.ui.Kernelspec[]?
 ---@param err string?
----@return string[]
+---@return string[] lines, table[] spans
 function M.build_lines(buf, specs, err)
   local info = M.info(buf)
   local cur_st = state.peek(buf)
@@ -175,51 +177,77 @@ function M.build_lines(buf, specs, err)
     name = "(unnamed)"
   end
 
-  local lines = {
-    "jove kernel info",
-    "",
-    "session",
-    string.rep("─", 16),
-    ("buffer : %s"):format(short_path(name)),
-    ("kernel : %s"):format(info.kernel or "(none)"),
-    ("status : %s"):format(info.status or "(none)"),
-    ("queued : %d"):format(info.queue_len or 0),
-    "",
-    "running kernels",
-    string.rep("─", 16),
-  }
+  local lines, spans = {}, {}
 
+  local function push(line)
+    lines[#lines + 1] = line
+    return #lines
+  end
+
+  local function section(title)
+    if #lines > 0 then
+      push("")
+    end
+    local lnum = push(title)
+    spans[#spans + 1] = { lnum, 0, #title, "JoveSidebarHeader" }
+  end
+
+  local function muted(line)
+    spans[#spans + 1] = { push(line), 0, #line, "JoveSidebarMuted" }
+  end
+
+  local function field(label, value)
+    local text = ("  %-7s %s"):format(label, value)
+    local lnum = push(text)
+    spans[#spans + 1] = { lnum, 2, 2 + #label, "JoveSidebarMuted" }
+  end
+
+  section("Session")
+  field("buffer", short_path(name))
+  field("kernel", info.kernel or "(none)")
+  field("status", info.status or "(none)")
+  field("queued", tostring(info.queue_len or 0))
+
+  section("Running kernels")
   local running = M.running_kernels()
   if #running == 0 then
-    lines[#lines + 1] = "(none)"
+    muted("  none")
   else
     for _, r in ipairs(running) do
-      local marker = r.buf == buf and "● " or "  "
-      lines[#lines + 1] = ("%s%s · %s · %s"):format(
-        marker,
-        short_path(r.path),
-        r.kernel or "(none)",
-        r.status or "(none)"
+      local current = r.buf == buf
+      local marker = current and "● " or "  "
+      local lnum = push(
+        ("  %s%s · %s · %s"):format(
+          marker,
+          short_path(r.path),
+          r.kernel or "(none)",
+          r.status or "(none)"
+        )
       )
+      if current then
+        spans[#spans + 1] = { lnum, 2, 2 + #marker, "JoveSidebarActive" }
+      end
     end
   end
 
-  lines[#lines + 1] = ""
-  lines[#lines + 1] = "installed kernelspecs"
-  lines[#lines + 1] = string.rep("─", 16)
+  section("Installed kernelspecs")
   if err then
-    lines[#lines + 1] = ("(unavailable: %s)"):format(err)
+    muted("  unavailable: " .. err)
   elseif specs == nil then
-    lines[#lines + 1] = "(loading…)"
+    muted("  loading…")
   elseif #specs == 0 then
-    lines[#lines + 1] = "(no kernelspecs installed)"
+    muted("  no kernelspecs installed")
   else
     for _, spec in ipairs(specs) do
-      local marker = spec.name == cur_name and "● " or "  "
-      lines[#lines + 1] = ("%s%s  %s"):format(marker, spec.name, spec.display_name or spec.name)
+      local current = spec.name == cur_name
+      local marker = current and "● " or "  "
+      local lnum = push(("  %s%s  %s"):format(marker, spec.name, spec.display_name or spec.name))
+      if current then
+        spans[#spans + 1] = { lnum, 2, 2 + #marker, "JoveSidebarActive" }
+      end
     end
   end
-  return lines
+  return lines, spans
 end
 
 return M

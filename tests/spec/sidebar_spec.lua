@@ -125,7 +125,7 @@ T["tabs"]["switching swaps content and the active-tab highlight"] = function()
   sidebar.switch(buf, "kernel")
   MiniTest.expect.equality(sidebar.current_tab(buf), "kernel")
   local kernel_text = win_text(win)
-  expect_truthy(kernel_text:find("session", 1, true) ~= nil)
+  expect_truthy(kernel_text:find("Session", 1, true) ~= nil)
   expect_truthy(kernel_text:find("python3", 1, true) ~= nil)
 
   sidebar.switch(buf, "toc")
@@ -195,10 +195,25 @@ T["actions"]["<CR> on the variables tab inspects the variable"] = function()
     inspected = name
   end
   local win = sidebar.open(buf, "vars")
-  vim.api.nvim_win_set_cursor(win, { 3, 0 }) -- first variable row
+  vim.api.nvim_win_set_cursor(win, { 4, 0 }) -- first variable row (after header)
   sidebar.activate(buf)
   vars.inspect_var = real_inspect
   MiniTest.expect.equality(inspected, "alpha")
+  sidebar.close(buf)
+end
+
+T["chrome"] = MiniTest.new_set()
+
+T["chrome"]["sidebar buffer is a non-modifiable nofile buffer without line numbers"] = function()
+  local buf = make_buffer({ "# %%", "x = 1" })
+  local win = sidebar.open(buf, "vars")
+  local fbuf = vim.api.nvim_win_get_buf(win)
+  MiniTest.expect.equality(vim.bo[fbuf].buftype, "nofile")
+  MiniTest.expect.equality(vim.bo[fbuf].modifiable, false)
+  MiniTest.expect.equality(vim.wo[win].number, false)
+  MiniTest.expect.equality(vim.wo[win].relativenumber, false)
+  MiniTest.expect.equality(vim.wo[win].signcolumn, "no")
+  MiniTest.expect.equality(vim.wo[win].statuscolumn, "")
   sidebar.close(buf)
 end
 

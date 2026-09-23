@@ -51,48 +51,57 @@ T = MiniTest.new_set({
 
 T["format"] = MiniTest.new_set()
 
-T["format"]["renders name, type, and value columns"] = function()
-  local lines = vars.format({
+T["format"]["renders a muted header row plus name, type, and value columns"] = function()
+  local lines, spans, items_offset = vars.format({
     { name = "alpha", type = "int", value = "42" },
     { name = "beta", type = "str", value = "'hello'" },
   }, 40)
-  MiniTest.expect.equality(#lines, 2)
-  expect_truthy(lines[1]:find("alpha", 1, true) ~= nil)
-  expect_truthy(lines[1]:find("int", 1, true) ~= nil)
-  expect_truthy(lines[1]:find("42", 1, true) ~= nil)
-  expect_truthy(lines[2]:find("'hello'", 1, true) ~= nil)
+  MiniTest.expect.equality(items_offset, 1)
+  MiniTest.expect.equality(#lines, 3)
+  expect_truthy(lines[1]:find("Name", 1, true) ~= nil)
+  expect_truthy(lines[2]:find("alpha", 1, true) ~= nil)
+  expect_truthy(lines[2]:find("int", 1, true) ~= nil)
+  expect_truthy(lines[2]:find("42", 1, true) ~= nil)
+  expect_truthy(lines[3]:find("'hello'", 1, true) ~= nil)
+  local groups = {}
+  for _, span in ipairs(spans) do
+    groups[#groups + 1] = span[4]
+  end
+  expect_truthy(vim.tbl_contains(groups, "JoveSidebarMuted"))
+  expect_truthy(vim.tbl_contains(groups, "JoveSidebarVarName"))
+  expect_truthy(vim.tbl_contains(groups, "JoveSidebarVarType"))
 end
 
 T["format"]["truncates long values to fit the width"] = function()
   local lines = vars.format({
     { name = "n", type = "list", value = string.rep("x", 200) },
   }, 30)
-  MiniTest.expect.equality(#lines, 1)
-  expect_truthy(vim.fn.strdisplaywidth(lines[1]) <= 30)
-  expect_truthy(lines[1]:find("…", 1, true) ~= nil)
+  MiniTest.expect.equality(#lines, 2)
+  expect_truthy(vim.fn.strdisplaywidth(lines[2]) <= 30)
+  expect_truthy(lines[2]:find("…", 1, true) ~= nil)
 end
 
 T["format"]["flattens embedded newlines in values for sidebar rows"] = function()
   local lines = vars.format({
     { name = "df", type = "DataFrame", value = "   a\n0  1\n1  2" },
   }, 40)
-  MiniTest.expect.equality(#lines, 1)
-  expect_truthy(not lines[1]:find("\n", 1, true))
-  expect_truthy(lines[1]:find("a", 1, true) ~= nil)
+  MiniTest.expect.equality(#lines, 2)
+  expect_truthy(not lines[2]:find("\n", 1, true))
+  expect_truthy(lines[2]:find("a", 1, true) ~= nil)
 end
 
 T["format"]["keeps empty values empty"] = function()
   local lines = vars.format({
     { name = "n", type = "NoneType", value = "" },
   }, 40)
-  MiniTest.expect.equality(#lines, 1)
-  expect_truthy(not lines[1]:find("\n", 1, true))
-  expect_truthy(lines[1]:find("NoneType", 1, true) ~= nil)
+  MiniTest.expect.equality(#lines, 2)
+  expect_truthy(not lines[2]:find("\n", 1, true))
+  expect_truthy(lines[2]:find("NoneType", 1, true) ~= nil)
 end
 
 T["format"]["handles the empty case"] = function()
-  MiniTest.expect.equality(vars.format({}, 40), { "[no variables]" })
-  MiniTest.expect.equality(vars.format(nil, 40), { "[no variables]" })
+  MiniTest.expect.equality(vars.format({}, 40), { "No variables in scope" })
+  MiniTest.expect.equality(vars.format(nil, 40), { "No variables in scope" })
 end
 
 T["show_float"] = MiniTest.new_set()
@@ -169,7 +178,7 @@ T["sidebar"]["shows the unsupported marker for non-python kernels"] = function()
     cb({ variables = nil, unsupported = "julia" })
   end
   local win = sidebar.open(buf, "vars")
-  expect_truthy(win_text(win):find("unsupported for julia", 1, true) ~= nil)
+  expect_truthy(win_text(win):find("unavailable for julia", 1, true) ~= nil)
   sidebar.close(buf)
 end
 

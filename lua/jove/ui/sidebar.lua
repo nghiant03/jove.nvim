@@ -10,6 +10,11 @@ local ns = vim.api.nvim_create_namespace("jove_sidebar")
 vim.api.nvim_set_hl(0, "JoveSidebarTab", { link = "TabLine", default = true })
 vim.api.nvim_set_hl(0, "JoveSidebarTabActive", { link = "TabLineSel", default = true })
 vim.api.nvim_set_hl(0, "JoveSidebarTabKey", { link = "Special", default = true })
+vim.api.nvim_set_hl(0, "JoveSidebarHeader", { link = "Title", default = true })
+vim.api.nvim_set_hl(0, "JoveSidebarMuted", { link = "Comment", default = true })
+vim.api.nvim_set_hl(0, "JoveSidebarVarName", { link = "Identifier", default = true })
+vim.api.nvim_set_hl(0, "JoveSidebarVarType", { link = "Type", default = true })
+vim.api.nvim_set_hl(0, "JoveSidebarActive", { link = "DiagnosticOk", default = true })
 
 ---@class jove.sidebar.Tab
 ---@field id string
@@ -38,6 +43,7 @@ local HEADER_LINES = 2
 ---@field kernel_err string?
 ---@field kernel_requested boolean
 ---@field toc jove.TocEntry[]
+---@field items_offset integer  Leading content lines that are not items.
 ---@field unsub fun()?
 
 ---@type table<integer, jove.sidebar.Session>
@@ -112,28 +118,37 @@ local function build_tab_bar(s)
   return table.concat(parts), spans
 end
 
+---Content for the active tab: lines plus highlight spans
+---({line, col_start, col_end, hl_group}, 1-based content lines, byte cols)
+---and the number of leading lines that are not activatable items.
 ---@param buf integer
 ---@param s jove.sidebar.Session
 ---@param width integer
----@return string[]
+---@return string[] lines, table[] spans, integer items_offset
 local function content_lines(buf, s, width)
   if s.tab == "vars" then
     if s.vars_unsupported then
-      return { ("[variables unsupported for %s]"):format(s.vars_unsupported) }
+      local msg = ("Variable inspection is unavailable for %s kernels"):format(s.vars_unsupported)
+      return { msg }, { { 1, 0, #msg, "JoveSidebarMuted" } }, 1
     end
     return require("jove.ui.vars").format(s.vars, width)
   end
   if s.tab == "kernel" then
-    return require("jove.ui.panel").build_lines(buf, s.kernel_specs, s.kernel_err)
+    local lines, spans = require("jove.ui.panel").build_lines(buf, s.kernel_specs, s.kernel_err)
+    return lines, spans, 0
   end
   if #s.toc == 0 then
-    return { "[no markdown headings]" }
+    local msg = "No markdown headings"
+    return { msg }, { { 1, 0, #msg, "JoveSidebarMuted" } }, 1
   end
-  local lines = {}
-  for _, h in ipairs(s.toc) do
+  local lines, spans = {}, {}
+  for i, h in ipairs(s.toc) do
     lines[#lines + 1] = string.rep("  ", math.max(0, h.level - 1)) .. h.title
+    if h.level <= 1 then
+      spans[#spans + 1] = { i, 0, #lines[i], "JoveSidebarHeader" }
+    end
   end
-  return lines
+  return lines, spans, 0
 end
 
 ---@param buf integer
@@ -144,8 +159,12 @@ local function render(buf)
   end
   local width = vim.api.nvim_win_get_width(s.win)
   local bar, spans = build_tab_bar(s)
-  local lines = { bar, string.rep("─", math.max(1, width - 1)) }
-  vim.list_extend(lines, content_lines(buf, s, width))
+  local rule = string.rep("─", math.max(1, width - 1))
+  local body, body_spans, items_offset = content_lines(buf, s, width)
+  local lines = { bar, rule }
+  vim.list_extend(lines, body)
+  s.items_offset = items_offset
+  vim.bo[s.fbuf].modifiable = true
   vim.api.nvim_buf_set_lines(s.fbuf, 0, -1, false, lines)
   vim.api.nvim_buf_clear_namespace(s.fbuf, ns, 0, -1)
   for _, span in ipairs(spans) do
@@ -154,6 +173,14 @@ local function render(buf)
       hl_group = span[3],
     })
   end
+  vim.api.nvim_buf_set_extmark(s.fbuf, ns, 1, 0, { end_col = #rule, hl_group = "JoveSidebarMuted" })
+  for _, span in ipairs(body_spans) do
+    vim.api.nvim_buf_set_extmark(s.fbuf, ns, span[1] + HEADER_LINES - 1, span[2], {
+      end_col = span[3],
+      hl_group = span[4],
+    })
+  end
+  vim.bo[s.fbuf].modifiable = false
 end
 
 ---@param buf integer
@@ -300,7 +327,7 @@ function M.activate(buf)
   if not s then
     return
   end
-  local idx = vim.api.nvim_win_get_cursor(s.win)[1] - HEADER_LINES
+  local idx = vim.api.nvim_win_get_cursor(s.win)[1] - HEADER_LINES - (s.items_offset or 0)
   if idx < 1 then
     return
   end
@@ -350,8 +377,11 @@ function M.open(buf, tab)
   local width = pane_width()
   local height = math.max(5, vim.o.lines - 2)
   local fbuf = vim.api.nvim_create_buf(false, true)
+  vim.bo[fbuf].buftype = "nofile"
   vim.bo[fbuf].buflisted = false
   vim.bo[fbuf].bufhidden = "wipe"
+  vim.bo[fbuf].swapfile = false
+  vim.bo[fbuf].modifiable = false
   vim.bo[fbuf].filetype = "jove-sidebar"
 
   local win, err = require("jove.ui.win").open(fbuf, true, {
@@ -371,10 +401,15 @@ function M.open(buf, tab)
 
   vim.wo[win].wrap = false
   vim.wo[win].number = false
+  vim.wo[win].relativenumber = false
   vim.wo[win].signcolumn = "no"
+  vim.wo[win].foldcolumn = "0"
+  vim.wo[win].statuscolumn = ""
+  vim.wo[win].list = false
+  vim.wo[win].spell = false
   vim.wo[win].winfixwidth = true
   vim.wo[win].cursorline = true
-  vim.wo[win].foldcolumn = "0"
+  vim.wo[win].cursorlineopt = "line"
 
   sessions[buf] = {
     win = win,
@@ -386,6 +421,7 @@ function M.open(buf, tab)
     kernel_err = nil,
     kernel_requested = false,
     toc = {},
+    items_offset = 0,
     unsub = nil,
   }
 
