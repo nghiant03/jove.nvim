@@ -165,7 +165,7 @@ require("jove").setup({
 | `:JoveClearOutput` | Clear outputs of the current cell |
 | `:JoveClearOutputs` | Clear all rendered outputs in this buffer |
 | `:JoveReload` | Reload the current notebook buffer from disk |
-| `:JoveSidebar` | Toggle the sidebar (variables, kernel info, table of contents; number keys switch tabs) |
+| `:JoveSidebar` | Toggle the sidebar (variables, kernel info, table of contents) |
 
 ### Keymaps and motions
 
