@@ -3,16 +3,11 @@ local cell = require("jove.cell")
 
 local execute = require("jove.execute")
 
-local state = require("jove.state")
-
 local chrome = require("jove.ui.chrome")
 
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("jove_cell_status")
-
-local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧" }
-local SPINNER_INTERVAL_MS = 120
 
 ---@type table<integer, table>
 local bufs = {}
@@ -22,79 +17,10 @@ local bufs = {}
 local function ensure(buf)
   local b = bufs[buf]
   if not b then
-    b = { marks = {}, spinner = nil, spinner_row = nil, timer = nil, unsub = nil }
+    b = { marks = {}, unsub = nil }
     bufs[buf] = b
   end
   return b
-end
-
----@param b table
-local function stop_spinner(buf, b)
-  if b.timer then
-    b.timer:stop()
-    b.timer:close()
-    b.timer = nil
-  end
-  if b.spinner then
-    pcall(vim.api.nvim_buf_del_extmark, buf, ns, b.spinner)
-    b.spinner = nil
-    b.spinner_row = nil
-  end
-end
-
----@param buf integer
----@param hash string
----@return string
-local function elapsed_suffix(buf, hash)
-  local cfg = require("jove").config
-  local ui = cfg.ui
-  if type(ui) == "table" and ui.elapsed == false then
-    return ""
-  end
-  local st = state.peek(buf)
-  local meta = st and st.exec and st.exec.meta
-  local m = meta and meta[hash]
-  if m and type(m.elapsed_ms) == "number" then
-    return (" %.1fs"):format(m.elapsed_ms / 1000)
-  end
-  return ""
-end
-
----@param buf integer
----@param lnum integer  1-based cell start line
----@param hash string
-local function start_spinner(buf, b, lnum, hash)
-  stop_spinner(buf, b)
-  local row = lnum - 1
-  b.spinner = vim.api.nvim_buf_set_extmark(buf, ns, row, 0, {
-    virt_text = { { SPINNER_FRAMES[1] .. elapsed_suffix(buf, hash), "DiagnosticInfo" } },
-    virt_text_pos = "eol",
-  })
-  b.spinner_row = row
-  local i = 0
-  local timer = vim.uv.new_timer()
-  b.timer = timer
-  timer:start(
-    0,
-    SPINNER_INTERVAL_MS,
-    vim.schedule_wrap(function()
-      if b.timer ~= timer or not vim.api.nvim_buf_is_valid(buf) then
-        if b.timer == timer then
-          b.timer = nil
-        end
-        timer:stop()
-        timer:close()
-        return
-      end
-      i = i + 1
-      local frame = SPINNER_FRAMES[(i % #SPINNER_FRAMES) + 1]
-      pcall(vim.api.nvim_buf_set_extmark, buf, ns, b.spinner_row, 0, {
-        id = b.spinner,
-        virt_text = { { frame .. elapsed_suffix(buf, hash), "DiagnosticInfo" } },
-        virt_text_pos = "eol",
-      })
-    end)
-  )
 end
 
 ---@return boolean
@@ -130,10 +56,6 @@ function M.on_status(buf, hash, status)
     return
   end
 
-  if status == "ok" or status == "error" then
-    stop_spinner(buf, b)
-  end
-
   local lnum = cell_lnum(buf, hash)
   if not lnum then
     if b.marks[hash] then
@@ -151,10 +73,6 @@ function M.on_status(buf, hash, status)
       priority = 10,
     })
     b.marks[hash] = id
-  end
-
-  if status == "running" then
-    start_spinner(buf, b, lnum, hash)
   end
 end
 
@@ -180,7 +98,6 @@ vim.api.nvim_create_autocmd("BufWipeout", {
   callback = function(ev)
     local b = bufs[ev.buf]
     if b then
-      stop_spinner(ev.buf, b)
       if b.unsub then
         pcall(b.unsub)
       end

@@ -532,31 +532,6 @@ T["signs"]["queued/running/ok swap in place, ok persists until rerun"] = functio
   br:reply({ status = "ok" })
 end
 
-T["signs"]["spinner appears while running and is removed on completion"] = function()
-  local buf = make_buffer(LINES)
-  local br = fake_bridge()
-  inject_kernel(br, buf)
-  ui.attach(buf)
-
-  execute.run_cell(buf, 1)
-  local status_ns = vim.api.nvim_create_namespace("jove_cell_status")
-  local marks = vim.api.nvim_buf_get_extmarks(buf, status_ns, 0, -1, { details = true })
-  local virt = {}
-  for _, m in ipairs(marks) do
-    if m[4].virt_text then
-      virt[#virt + 1] = m[4].virt_text[1][1]
-    end
-  end
-  MiniTest.expect.equality(#virt, 1)
-  MiniTest.expect.equality(virt[1]:len() > 0, true)
-
-  br:reply({ status = "ok" })
-  local after = vim.api.nvim_buf_get_extmarks(buf, status_ns, 0, -1, { details = true })
-  for _, m in ipairs(after) do
-    MiniTest.expect.equality(m[4].virt_text == nil, true)
-  end
-end
-
 T["output seam"]["late events cannot cross rerun or reload boundaries"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
