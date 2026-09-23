@@ -8,6 +8,12 @@ local M = {}
 
 M.ns = vim.api.nvim_create_namespace("jove_cell_chrome")
 
+local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧" }
+local SPINNER_INTERVAL_MS = 120
+
+-- Advances while any buffer has a running cell.
+local spin_frame = 0
+
 -- Highlight groups
 vim.api.nvim_set_hl(0, "JoveActiveCell", { link = "CursorLine", default = true })
 vim.api.nvim_set_hl(0, "JoveCellRule", { link = "Comment", default = true })
@@ -21,6 +27,7 @@ vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = true })
 ---@field group integer?    autocmd group for this buffer
 ---@field unsub fun()?      execute.on_status unsubscribe
 ---@field refresh_pending boolean? a vim.schedule() refresh is already queued
+---@field spin_timer uv.uv_timer_t?  spinner animation timer (running cells)
 ---@field attached boolean
 
 ---@type table<integer, jove.ChromeBook>
@@ -72,6 +79,7 @@ local function ensure(buf)
       group = nil,
       unsub = nil,
       refresh_pending = false,
+      spin_timer = nil,
       attached = false,
     }
     bufs[buf] = b
@@ -116,7 +124,7 @@ end
 ---@return string
 local function status_glyph(status)
   if status == "running" then
-    return "⠋"
+    return SPINNER_FRAMES[(spin_frame % #SPINNER_FRAMES) + 1]
   elseif status == "ok" then
     return "✓"
   elseif status == "error" then
@@ -190,6 +198,67 @@ local function build_rule(buf, c, cfg, cell_index)
   end
   ruled[#ruled + 1] = { "╮", "JoveCellBorder" }
   return ruled
+end
+
+---@param buf integer
+---@return boolean
+local function any_running(buf)
+  local st = state.peek(buf)
+  local status = st and st.exec and st.exec.status
+  if type(status) ~= "table" then
+    return false
+  end
+  for _, s in pairs(status) do
+    if s == "running" then
+      return true
+    end
+  end
+  return false
+end
+
+---@param b jove.ChromeBook
+local function stop_spinner(b)
+  if b.spin_timer then
+    b.spin_timer:stop()
+    b.spin_timer:close()
+    b.spin_timer = nil
+  end
+end
+
+-- Start or stop the spinner animation timer to match the running state.
+---@param buf integer
+---@param b jove.ChromeBook
+local function sync_spinner(buf, b)
+  if not any_running(buf) then
+    stop_spinner(b)
+    return
+  end
+  if b.spin_timer then
+    return
+  end
+  local timer = vim.uv.new_timer()
+  b.spin_timer = timer
+  timer:start(
+    SPINNER_INTERVAL_MS,
+    SPINNER_INTERVAL_MS,
+    vim.schedule_wrap(function()
+      if b.spin_timer ~= timer or not vim.api.nvim_buf_is_valid(buf) then
+        if b.spin_timer == timer then
+          b.spin_timer = nil
+        end
+        timer:stop()
+        timer:close()
+        return
+      end
+      if not any_running(buf) then
+        stop_spinner(b)
+        M.refresh(buf)
+        return
+      end
+      spin_frame = spin_frame + 1
+      M.refresh(buf)
+    end)
+  )
 end
 
 ---@param buf integer
@@ -321,6 +390,7 @@ function M.attach(buf)
     return
   end
   b.attached = true
+  sync_spinner(buf, b)
 
   local group = vim.api.nvim_create_augroup("jove_cell_chrome_" .. buf, { clear = true })
   b.group = group
@@ -349,6 +419,7 @@ function M.attach(buf)
   })
 
   b.unsub = execute.on_status(buf, function()
+    sync_spinner(buf, b)
     if b.refresh_pending then
       return
     end
@@ -371,6 +442,7 @@ function M.detach(buf)
   if not b then
     return
   end
+  stop_spinner(b)
   if b.group then
     pcall(vim.api.nvim_del_augroup_by_id, b.group)
   end
