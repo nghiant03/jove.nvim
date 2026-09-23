@@ -28,9 +28,10 @@ local M = {}
 ---  | own dedicated bordered block (boolean).
 ---  | hl: output background tint — an existing hl group name (`string`, linked
 ---  | to `JoveOutput`) or attrs passed to `nvim_set_hl` (`table`); nil disables.
----@field variables table                Variables inspector options: { auto_refresh, width }.
----  | width: sidebar width as a fraction of the total screen columns
----  | (0 < width < 1, default 0.25).
+---@field variables table                Variables inspector options: { auto_refresh, size }.
+---  | size: sidebar size as a fraction of the screen (0 < size < 1,
+---  | default 0.25): share of columns in vsplit/float mode, share of
+---  | lines in hsplit mode.
 ---@field ui table
 ---  | UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders, border_hl, window_mode }.
 ---  | border_hl: `string|nil` (an existing hl group to link `JoveCellBorder` to)
@@ -71,7 +72,7 @@ M.config = {
   },
   variables = {
     auto_refresh = true,
-    width = 0.25,
+    size = 0.25,
   },
   ui = {
     conceal_headers = true,
@@ -181,7 +182,7 @@ local function validate_config(cfg)
   vim.validate("output.hl", cfg.output.hl, { "string", "table" }, true)
   vim.validate("variables", cfg.variables, "table")
   vim.validate("variables.auto_refresh", cfg.variables.auto_refresh, "boolean")
-  vim.validate("variables.width", cfg.variables.width, function(v)
+  vim.validate("variables.size", cfg.variables.size, function(v)
     return type(v) == "number" and v > 0 and v < 1
   end, "fraction between 0 and 1")
   vim.validate("ui", cfg.ui, "table")

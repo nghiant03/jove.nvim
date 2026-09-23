@@ -36,7 +36,7 @@ T = MiniTest.new_set({
       created = {}
       real_variables = vars._variables
       saved_config_variables = require("jove").config.variables
-      require("jove").config.variables = { width = 0.4, auto_refresh = false }
+      require("jove").config.variables = { size = 0.4, auto_refresh = false }
     end,
     post_case = function()
       for _, buf in ipairs(created) do

@@ -67,14 +67,19 @@ local function norm_buf(buf)
   return buf
 end
 
----@return integer
-local function pane_width()
+---@return number
+local function pane_share()
   local ok, jove = pcall(require, "jove")
   local c = ok and jove.config and jove.config.variables
-  -- `variables.width` is a fraction of the total screen columns.
-  local width = type(c) == "table" and type(c.width) == "number" and c.width or 0.25
-  local share = math.min(math.max(width, 0.05), 0.9)
-  return math.max(20, math.floor(vim.o.columns * share))
+  -- `variables.size` is a fraction of the screen (columns, or lines when
+  -- the pane opens as a horizontal split).
+  local size = type(c) == "table" and type(c.size) == "number" and c.size or 0.25
+  return math.min(math.max(size, 0.05), 0.9)
+end
+
+---@return integer
+local function pane_width()
+  return math.max(20, math.floor(vim.o.columns * pane_share()))
 end
 
 ---@return boolean
@@ -373,8 +378,12 @@ function M.open(buf, tab)
     return nil
   end
 
+  local win_mod = require("jove.ui.win")
   local width = pane_width()
   local height = math.max(5, vim.o.lines - 2)
+  -- In hsplit mode the pane spans the full width and the share sets height.
+  local size = win_mod.mode() == "hsplit" and math.max(5, math.floor(vim.o.lines * pane_share()))
+    or width
   local fbuf = vim.api.nvim_create_buf(false, true)
   vim.bo[fbuf].buftype = "nofile"
   vim.bo[fbuf].buflisted = false
@@ -383,7 +392,7 @@ function M.open(buf, tab)
   vim.bo[fbuf].modifiable = false
   vim.bo[fbuf].filetype = "jove-sidebar"
 
-  local win, err = require("jove.ui.win").open(fbuf, true, {
+  local win, err = win_mod.open(fbuf, true, {
     relative = "editor",
     width = width,
     height = height,
@@ -391,7 +400,7 @@ function M.open(buf, tab)
     col = math.max(0, vim.o.columns - width),
     style = "minimal",
     border = "single",
-  }, width)
+  }, size)
   if not win then
     pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
     vim.notify("[jove] could not open sidebar: " .. tostring(err), vim.log.levels.ERROR)

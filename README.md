@@ -117,7 +117,7 @@ require("jove").setup({
   },
   variables = {
     auto_refresh = true,        -- refresh the variables inspector on idle
-    width = 0.25,               -- sidebar width as a fraction of the screen columns (0 < width < 1)
+    size = 0.25,                -- sidebar size as a fraction of the screen (columns, or lines in hsplit mode)
   },
   ui = {
     conceal_headers = true,     -- conceal # %% cell headers (front matter is hidden by stripping it on read)

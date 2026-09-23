@@ -61,7 +61,7 @@ T = MiniTest.new_set({
       real_variables = vars._variables
       real_kernelspecs = sidebar._kernelspecs
       saved_config_variables = require("jove").config.variables
-      require("jove").config.variables = { width = 0.4, auto_refresh = false }
+      require("jove").config.variables = { size = 0.4, auto_refresh = false }
       vars._variables = function(_, cb)
         cb({ variables = { { name = "alpha", type = "int", value = "42" } } })
       end
@@ -154,10 +154,10 @@ T["tabs"]["reopening while open keeps one window"] = function()
   sidebar.close(buf)
 end
 
-T["width"] = MiniTest.new_set()
+T["size"] = MiniTest.new_set()
 
-T["width"]["clamps an oversized configured share"] = function()
-  require("jove").config.variables = { width = 0.95, auto_refresh = false }
+T["size"]["clamps an oversized configured share"] = function()
+  require("jove").config.variables = { size = 0.95, auto_refresh = false }
   local buf = make_buffer({ "# %%", "x = 1" })
   local win = sidebar.open(buf, "vars")
   expect_truthy(win ~= nil)
@@ -167,14 +167,27 @@ T["width"]["clamps an oversized configured share"] = function()
   sidebar.close(buf)
 end
 
-T["width"]["accepts a fraction of the screen columns"] = function()
-  require("jove").config.variables = { width = 0.5, auto_refresh = false }
+T["size"]["accepts a fraction of the screen columns"] = function()
+  require("jove").config.variables = { size = 0.5, auto_refresh = false }
   local buf = make_buffer({ "# %%", "x = 1" })
   local win = sidebar.open(buf, "vars")
   expect_truthy(win ~= nil)
   local width = vim.api.nvim_win_get_width(win)
   MiniTest.expect.equality(width, math.floor(vim.o.columns * 0.5))
   sidebar.close(buf)
+end
+
+T["size"]["sets the pane height in hsplit mode"] = function()
+  local jove = require("jove")
+  jove.config.variables = { size = 0.5, auto_refresh = false }
+  local saved_mode = jove.config.ui.window_mode
+  jove.config.ui.window_mode = "hsplit"
+  local buf = make_buffer({ "# %%", "x = 1" })
+  local win = sidebar.open(buf, "vars")
+  expect_truthy(win ~= nil)
+  MiniTest.expect.equality(vim.api.nvim_win_get_height(win), math.floor(vim.o.lines * 0.5))
+  sidebar.close(buf)
+  jove.config.ui.window_mode = saved_mode
 end
 
 T["actions"] = MiniTest.new_set()
