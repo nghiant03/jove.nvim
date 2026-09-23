@@ -94,6 +94,36 @@ T["format"]["handles the empty case"] = function()
   MiniTest.expect.equality(vars.format(nil, 40), { "[no variables]" })
 end
 
+T["show_float"] = MiniTest.new_set()
+
+T["show_float"]["strips ANSI sequences and renders SGR styling as highlights"] = function()
+  local win = vars.show_float("\27[0;31mred\27[0m plain")
+  expect_truthy(win ~= nil)
+  local fbuf = vim.api.nvim_win_get_buf(win)
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(fbuf, 0, -1, false), { "red plain" })
+  local ns = vim.api.nvim_create_namespace("jove_vars_float")
+  local marks = vim.api.nvim_buf_get_extmarks(fbuf, ns, 0, -1, { details = true })
+  MiniTest.expect.equality(#marks, 1)
+  MiniTest.expect.equality(marks[1][3], 0)
+  MiniTest.expect.equality(marks[1][4].end_col, 3)
+  expect_truthy(type(marks[1][4].hl_group) == "string")
+  pcall(vim.api.nvim_win_close, win, true)
+end
+
+T["show_float"]["splits spans across lines"] = function()
+  local win = vars.show_float("one\n\27[1mtwo\27[0m")
+  expect_truthy(win ~= nil)
+  local fbuf = vim.api.nvim_win_get_buf(win)
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(fbuf, 0, -1, false), { "one", "two" })
+  local ns = vim.api.nvim_create_namespace("jove_vars_float")
+  local marks = vim.api.nvim_buf_get_extmarks(fbuf, ns, 0, -1, { details = true })
+  MiniTest.expect.equality(#marks, 1)
+  MiniTest.expect.equality(marks[1][2], 1)
+  MiniTest.expect.equality(marks[1][3], 0)
+  MiniTest.expect.equality(marks[1][4].end_col, 3)
+  pcall(vim.api.nvim_win_close, win, true)
+end
+
 T["sidebar"] = MiniTest.new_set()
 
 T["sidebar"]["open fetches through the bridge seam, renders, and closes"] = function()

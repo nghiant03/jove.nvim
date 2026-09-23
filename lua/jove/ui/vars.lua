@@ -1,6 +1,7 @@
 -- Variable-inspector data and formatting for the tabbed sidebar
 -- (`jove.ui.sidebar` owns the window).
 
+local ansi = require("jove.ansi")
 local state = require("jove.state")
 
 local M = {}
@@ -108,10 +109,45 @@ function M.fetch(buf, cb)
   M._variables(buf, cb)
 end
 
+---Apply ANSI highlight spans (byte offsets over the whole plain text) to the
+---float buffer, line by line.
+---@param fbuf integer
+---@param lines string[]
+---@param spans jove.AnsiSpan[]
+local function apply_spans(fbuf, lines, spans)
+  if #spans == 0 then
+    return
+  end
+  local ns = vim.api.nvim_create_namespace("jove_vars_float")
+  local starts = {}
+  local off = 0
+  for i, line in ipairs(lines) do
+    starts[i] = off
+    off = off + #line + 1
+  end
+  local li = 1
+  for _, span in ipairs(spans) do
+    local s, e, hl = span[1], span[2], span[3]
+    while li < #lines and starts[li] + #lines[li] < s do
+      li = li + 1
+    end
+    local lj = li
+    while lj <= #lines and starts[lj] < e do
+      local col_s = math.max(s - starts[lj], 0)
+      local col_e = math.min(e - starts[lj], #lines[lj])
+      if col_e > col_s then
+        vim.api.nvim_buf_set_extmark(fbuf, ns, lj - 1, col_s, { end_col = col_e, hl_group = hl })
+      end
+      lj = lj + 1
+    end
+  end
+end
+
 ---@param text string
 ---@return integer? win
 function M.show_float(text)
-  local lines = vim.split(text, "\n", { plain = true })
+  local plain, spans = ansi.parse(text)
+  local lines = vim.split(plain, "\n", { plain = true })
   local fbuf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
   vim.bo[fbuf].bufhidden = "wipe"
@@ -131,6 +167,7 @@ function M.show_float(text)
     pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
     return nil
   end
+  apply_spans(fbuf, lines, spans)
   local function close()
     if vim.api.nvim_win_is_valid(win) then
       pcall(vim.api.nvim_win_close, win, true)
