@@ -55,6 +55,13 @@ Notes:
 - `lua/jove/buffer.lua` - read/write/reload handlers. Conversion to/from
   `.ipynb` is async via `convert.lua` (jupytext CLI); completion state
   bookkeeping is scheduled onto the main loop.
+- `lua/jove/lang.lua` - language registry: kernelspec language -> filetype,
+  jupytext percent-format stem (`py`/`jl`/`R`/`js`/`ts`), comment leader, and
+  known LSP server names. Extend with `require("jove.lang").register(id, spec)`.
+  The resolved id is cached per buffer as `state.lang`.
+- `lua/jove/lsp.lua` - opt-in LSP auto-attach (`lsp.auto_attach` +
+  `lsp.servers[lang]`); starts only servers with an existing
+  `vim.lsp.config` entry, never invents cmd/root_dir.
 - `lua/jove/state.lua` - per-buffer state registry (`state.get(buf)`), cleaned
   up on BufWipeout. Other modules attach their slots (`cells`, `kernel`,
   `exec`, `outputs`, `front_matter`) to this table.
@@ -87,9 +94,11 @@ Notes:
   these outside tests.
 - Test specs use mini.test: `MiniTest.new_set` with hooks, nested sets by
   topic; specs that need a real job inject fakes at `bridge_mod._impl`.
-- Front matter (`# ---` fenced jupytext header) is stripped from the buffer on
-  read and restored on write (`buffer.lua` `split_front`); cell markers are
-  `# %%` (concealed when `ui.conceal_headers` is on).
+- Front matter (`# ---` fenced jupytext header, comment leader per language)
+  is stripped from the buffer on read and restored on write (`buffer.lua`
+  `split_front`); cell markers are `<comment> %%` (e.g. `# %%` for
+  python/julia/r, `// %%` for javascript/typescript) and concealed when
+  `ui.conceal_headers` is on.
 - Wire protocol details that matter: output events can arrive after the
   execute reply (10s late-iopub grace in the sidecar); each execution gets a
   unique wire key so reruns invalidate the previous run's output routing;

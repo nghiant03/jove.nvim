@@ -14,8 +14,9 @@
 
 ## Features
 
-- **Native buffers** — notebooks open as ordinary Python buffers; pyright,
-  ruff, copilot, treesitter and git tooling attach like any other file.
+- **Native buffers** — notebooks open as ordinary buffers in the kernel's
+  language; pyright, ruff, copilot, treesitter and git tooling attach like
+  any other file (see [Languages and LSP](#languages-and-lsp)).
 - **Built-in kernel client** — a first-party Python bridge starts and
   supervises one kernel per notebook; if it dies, it restarts automatically.
   No molten, no browser.
@@ -137,8 +138,54 @@ require("jove").setup({
     goto_running_cell = false,
     toggle_follow_running = false,
   },
+  lsp = {
+    auto_attach = false,        -- start the servers in `servers` on notebook open
+    servers = {},               -- language id -> vim.lsp.config server names,
+                                -- e.g. { python = { "pyright" }, javascript = { "ts_ls" } }
+  },
 })
 ```
+
+## Languages and LSP
+
+The notebook's kernelspec language drives the buffer: filetype, jupytext
+percent format, and cell-marker comment leader all come from a language
+registry (`lua/jove/lang.lua`). Built-in languages:
+
+| Language | Filetype | Cell marker | Known servers |
+|---|---|---|---|
+| Python | `python` | `# %%` | pyright, basedpyright, ruff |
+| Julia | `julia` | `# %%` | julials |
+| R | `r` | `# %%` | r_language_server |
+| JavaScript | `javascript` | `// %%` | ts_ls |
+| TypeScript | `typescript` | `// %%` | ts_ls |
+
+Unknown languages fall back to Python conventions (with a warning). Register
+more yourself:
+
+```lua
+require("jove.lang").register("scala", { fmt = "scala", comment = "//", servers = { "metals" } })
+```
+
+Because the buffer carries the language's real filetype, any LSP server you
+have configured (via `vim.lsp.enable()` / nvim-lspconfig) attaches to
+notebook buffers automatically — completion, hover, signature help and
+diagnostics included; project root is resolved from the notebook's
+directory. If you prefer jove to start the servers for you, opt in:
+
+```lua
+opts = {
+  lsp = {
+    auto_attach = true,
+    servers = { python = { "pyright" }, javascript = { "ts_ls" } },
+  },
+}
+```
+
+Jove never invents server commands or root dirs: `auto_attach` only starts
+servers that already have a `vim.lsp.config` entry (e.g. from
+nvim-lspconfig). `:checkhealth jove` reports the attached LSP clients for
+every open notebook buffer.
 
 ## Usage
 
@@ -169,8 +216,8 @@ require("jove").setup({
 
 ### Keymaps and motions
 
-On jove buffers (python, julia, r, javascript filetypes backed by an
-`.ipynb`):
+On jove buffers (python, julia, r, javascript, typescript filetypes backed by
+an `.ipynb`):
 
 - `ic` / `ac` cell text-objects (operator-pending and visual modes) — always
   on, no extra plugin needed.
