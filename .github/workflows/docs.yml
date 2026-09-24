@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: ${{ github.workflow }}-main
@@ -22,8 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Tag pushes check out a detached HEAD, which git-auto-commit-action
-          # cannot commit from; always build docs from the main branch.
           ref: main
 
       - name: Generate doc/jove.txt from README.md
@@ -34,7 +33,14 @@ jobs:
           pandoc: README.md
 
       - name: Commit generated vimdoc
+        id: autocommit
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "docs: generate doc/jove.txt via panvimdoc"
           file_pattern: doc/jove.txt
+
+      - name: Run CI on the generated commit
+        if: steps.autocommit.outputs.changes_detected == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref main
