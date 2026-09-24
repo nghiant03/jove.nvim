@@ -159,7 +159,7 @@ T["installed_kernelspecs"]["reuses a live bridge and sorts specs by name"] = fun
   job.install()
   local bridge = bridge_mod.new()
   bridge:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   local buf = make_buffer("/tmp/jove_reuse.ipynb")
   state.get(buf).kernel = { name = "py", status = "idle", bridge = bridge }
@@ -200,7 +200,7 @@ T["installed_kernelspecs"]["starts a temporary bridge and stops it"] = function(
     got.err = err
     got.called = true
   end)
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
   job.stdout(
     '{"id":1,"result":{"kernelspecs":{"python3":{"display_name":"Python 3","language":"python"}}}}\n'
   )
@@ -256,7 +256,7 @@ T["installed_kernelspecs"]["reports an error and still stops the temporary bridg
     got.err = err
     got.called = true
   end)
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
   job.stdout('{"id":1,"error":{"ename":"x","message":"y"}}\n')
   vim.wait(200, function()
     return got.called

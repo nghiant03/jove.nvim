@@ -189,8 +189,6 @@ def test_ready_and_list_kernelspecs(bridge):
     ready = bridge.messages[0]
     assert ready["event"] == "ready"
     assert ready["params"]["protocol"] == 1
-    assert isinstance(ready["params"]["version"], str)
-    assert ready["params"]["version"]
 
     msg = bridge.request("list_kernelspecs")
     specs = msg["result"]["kernelspecs"]
@@ -544,15 +542,3 @@ def test_late_iopub_after_execute_reply_still_tagged():
     )
     outputs = [m["params"] for m in conn.msgs if m.get("event") == "output"]
     assert all(p["cell"] != "never-sent" for p in outputs)
-
-
-def test_version_matches_pyproject() -> None:
-    import re
-    from pathlib import Path
-
-    import jove_bridge
-
-    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
-    match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(), re.MULTILINE)
-    assert match, "pyproject.toml has no version field"
-    assert jove_bridge.__version__ == match.group(1)

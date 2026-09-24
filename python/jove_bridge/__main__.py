@@ -7,7 +7,6 @@ import sys
 import threading
 from typing import Any, Optional
 
-from . import __version__
 from .kernel import KernelError
 from .session import DEFERRED, BridgeSession
 
@@ -113,7 +112,7 @@ def _handle_line(conn: Connection, session: BridgeSession, line: str) -> bool:
 
 def main(stdin: Optional[Any] = None, stdout: Optional[Any] = None) -> int:
     conn = Connection(stdout if stdout is not None else sys.stdout)
-    conn.send_event("ready", {"protocol": 1, "version": __version__})
+    conn.send_event("ready", {"protocol": 1})
     session = BridgeSession(conn)
     poller = threading.Thread(
         target=session.poll_forever, name="jove-bridge-poll", daemon=True

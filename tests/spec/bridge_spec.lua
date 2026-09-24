@@ -80,7 +80,7 @@ T["line buffering"]["assembles JSON split across chunks"] = function()
   end)
 
   -- One ready line, then a kernel_status event split across two chunks.
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n{"event":"kernel_status"')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n{"event":"kernel_status"')
   job.stdout(',"params":{"status":"busy"}}\n')
   vim.wait(200, function()
     return #events > 0
@@ -134,7 +134,7 @@ T["requests"]["queue before ready, flush in order, route by id"] = function()
   MiniTest.expect.equality(#job.sent, 0)
 
   b:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   MiniTest.expect.equality(#job.sent, 2)
   local first = vim.json.decode(job.sent[1])
@@ -161,7 +161,7 @@ T["requests"]["deliver error responses as err"] = function()
   job.install()
   local b = bridge_mod.new()
   b:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   local called, result, err
   b:request("restart", {}, function(r, e)
@@ -183,7 +183,7 @@ T["requests"]["time out when no response arrives"] = function()
   job.install()
   local b = bridge_mod.new()
   b:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   local called, result, err
   b:request("execute", { code = "1" }, function(r, e)
@@ -203,7 +203,7 @@ T["requests"]["timeout_ms = false disables the timer"] = function()
   job.install()
   local b = bridge_mod.new()
   b:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   local called, result, err
   b:request("execute", { code = "1" }, function(r, e)
@@ -225,7 +225,7 @@ T["lifecycle"]["respawns on unexpected exit with backoff"] = function()
   job.install()
   local b = bridge_mod.new()
   b:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   -- Pending request at death time must be failed, then the bridge respawns.
   local called, result, err
@@ -250,7 +250,7 @@ T["lifecycle"]["does not respawn after user-initiated stop"] = function()
   job.install()
   local b = bridge_mod.new()
   b:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   local stopped = false
   b:stop(function()
@@ -270,7 +270,7 @@ T["lifecycle"]["sends shutdown request before killing the job"] = function()
   job.install()
   local b = bridge_mod.new()
   b:start()
-  job.stdout('{"event":"ready","params":{"protocol":1,"version":"0.1"}}\n')
+  job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
   b:stop()
   vim.wait(200, function()
