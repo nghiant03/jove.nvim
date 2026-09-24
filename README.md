@@ -150,9 +150,7 @@ require("jove").setup({
 
 ## Languages and LSP
 
-The notebook's kernelspec language drives the buffer: filetype, jupytext
-percent format, and cell-marker comment leader all come from a language
-registry (`lua/jove/lang.lua`). Built-in languages:
+Built-in languages:
 
 | Language | Filetype | Cell marker | Known servers |
 |---|---|---|---|
@@ -162,7 +160,7 @@ registry (`lua/jove/lang.lua`). Built-in languages:
 | JavaScript | `javascript` | `// %%` | ts_ls |
 | TypeScript | `typescript` | `// %%` | ts_ls |
 
-Unknown languages fall back to Python conventions (with a warning). Register
+Unknown languages fall back to Python conventions. Register
 more yourself:
 
 ```lua
@@ -170,10 +168,8 @@ require("jove.lang").register("scala", { fmt = "scala", comment = "//", servers 
 ```
 
 Because the buffer carries the language's real filetype, any LSP server you
-have configured (via `vim.lsp.enable()` / nvim-lspconfig) attaches to
-notebook buffers automatically — completion, hover, signature help and
-diagnostics included; project root is resolved from the notebook's
-directory. If you prefer jove to start the servers for you, opt in:
+have configured  attaches to notebook buffers automatically. If you prefer 
+jove to start the servers for you:
 
 ```lua
 opts = {
@@ -183,11 +179,6 @@ opts = {
   },
 }
 ```
-
-Jove never invents server commands or root dirs: `auto_attach` only starts
-servers that already have a `vim.lsp.config` entry (e.g. from
-nvim-lspconfig). `:checkhealth jove` reports the attached LSP clients for
-every open notebook buffer.
 
 ## Usage
 
