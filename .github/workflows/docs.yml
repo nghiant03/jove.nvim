@@ -2,11 +2,18 @@ name: Docs
 
 on:
   push:
+    branches: [main]
+    paths: [README.md]
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-main
+  cancel-in-progress: false
 
 jobs:
   vimdoc:
@@ -14,9 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tag pushes check out a detached HEAD, which git-auto-commit-action
+          # cannot commit from; always build docs from the main branch.
+          ref: main
 
       - name: Generate doc/jove.txt from README.md
-        uses: kdheepak/panvimdoc@main
+        uses: kdheepak/panvimdoc@v6.0.0
         with:
           vimdoc: jove
           description: Native .ipynb editing for Neovim via jupytext
