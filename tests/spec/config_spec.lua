@@ -236,6 +236,25 @@ T["setup"]["raises on invalid opt types"] = function()
   MiniTest.expect.equality(jove.config.jupytext, defaults.jupytext)
 end
 
+T["setup"]["lsp: nested validation and merge"] = function()
+  MiniTest.expect.equality(jove.config.lsp.auto_attach, false)
+  MiniTest.expect.error(function()
+    jove.setup({ lsp = { auto_attach = "yes" } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ lsp = { servers = "pyright" } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ lsp = { servers = { python = "pyright" } } })
+  end)
+  MiniTest.expect.error(function()
+    jove.setup({ lsp = { servers = { python = { 42 } } } })
+  end)
+  jove.setup({ lsp = { auto_attach = true, servers = { python = { "pyright" } } } })
+  MiniTest.expect.equality(jove.config.lsp.auto_attach, true)
+  MiniTest.expect.equality(jove.config.lsp.servers.python, { "pyright" })
+end
+
 T["setup"]["called twice is safe (no duplicate FileType autocmds)"] = function()
   local keymaps = {
     run_cell = "<leader>x",

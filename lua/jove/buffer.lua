@@ -95,6 +95,7 @@ function M.read(buf, path, opts)
     local st = state.get(buf)
     st.path = path
     st.lang = lang.default.id
+    require("jove.lsp").attach(buf)
     return
   end
 
@@ -158,6 +159,8 @@ function M.read(buf, path, opts)
 
       vim.bo[buf].filetype = spec.filetype
       vim.bo[buf].modified = false
+
+      require("jove.lsp").attach(buf)
 
       if cursor then
         restore_cursor(buf, cursor, rest)

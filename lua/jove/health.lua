@@ -127,6 +127,35 @@ function M.check()
   if vim.g.loaded_molten == 1 or vim.fn.exists(":MoltenInit") == 2 then
     h.warn("molten-nvim is loaded; jove no longer uses it — remove it (see README migration)")
   end
+
+  local lang_mod = require("jove.lang")
+  local lsp_cfg = cfg.lsp or {}
+  local bufs = require("jove.state").buffers()
+  if #bufs == 0 then
+    h.info("LSP: no notebook buffers open; open a .ipynb to check server attach")
+  end
+  for _, buf in ipairs(bufs) do
+    local st = require("jove.state").peek(buf)
+    local spec = lang_mod.for_buffer(buf)
+    local name = vim.fn.fnamemodify((st and st.path) or vim.api.nvim_buf_get_name(buf), ":t")
+    local clients = vim.lsp.get_clients({ bufnr = buf })
+    if #clients > 0 then
+      local names = {}
+      for _, c in ipairs(clients) do
+        names[#names + 1] = c.name
+      end
+      h.ok(("LSP %s (%s): %s attached"):format(name, spec.id, table.concat(names, ", ")))
+    else
+      local hint = #spec.servers > 0 and ("; known servers: " .. table.concat(spec.servers, ", "))
+        or ""
+      h.warn(("LSP %s (%s): no language server attached%s"):format(name, spec.id, hint))
+    end
+  end
+  if lsp_cfg.auto_attach then
+    local langs = vim.tbl_keys(lsp_cfg.servers or {})
+    table.sort(langs)
+    h.info("LSP auto_attach enabled for: " .. table.concat(langs, ", "))
+  end
 end
 
 return M

@@ -41,6 +41,12 @@ local M = {}
 ---  | the variable detail view, and the output viewer: "float", "vsplit"
 ---  | (default), or "hsplit".
 ---@field keymap table<string, string|false>
+---@field lsp table                      LSP integration: { auto_attach, servers }.
+---  | auto_attach: start the servers listed in `servers` for the notebook's
+---  | language on open (boolean, default false); servers enabled via
+---  | vim.lsp.enable()/nvim-lspconfig attach on their own regardless.
+---  | servers: map of kernelspec language id to vim.lsp.config server names
+---  | (`table<string, string[]>`), e.g. { python = { "pyright" } }.
 
 ---@type jove.Config
 M.config = {
@@ -91,6 +97,10 @@ M.config = {
     goto_running_cell = false,
     toggle_follow_running = false,
   },
+  lsp = {
+    auto_attach = false,
+    servers = {},
+  },
 }
 
 ---@param v any
@@ -114,6 +124,7 @@ local KNOWN_KEYS = {
   variables = true,
   ui = true,
   keymap = true,
+  lsp = true,
 }
 local KNOWN_KEYMAP_KEYS = {
   run_cell = true,
@@ -198,6 +209,15 @@ local function validate_config(cfg)
   vim.validate("keymap", cfg.keymap, "table")
   for k, v in pairs(cfg.keymap) do
     vim.validate(("keymap.%s"):format(k), v, is_keymap_lhs)
+  end
+  vim.validate("lsp", cfg.lsp, "table")
+  vim.validate("lsp.auto_attach", cfg.lsp.auto_attach, "boolean")
+  vim.validate("lsp.servers", cfg.lsp.servers, "table")
+  for lang_id, servers in pairs(cfg.lsp.servers) do
+    vim.validate(("lsp.servers.%s"):format(lang_id), servers, "table")
+    for i, name in ipairs(servers) do
+      vim.validate(("lsp.servers.%s[%d]"):format(lang_id, i), name, "string")
+    end
   end
 end
 
