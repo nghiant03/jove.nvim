@@ -159,7 +159,7 @@ local function warn_unknown_opts(opts)
       if not warned[key] then
         warned[key] = true
         vim.notify(
-          ("[jove] unknown option '%s' (molten-era or typo?) — check :h jove-config"):format(key),
+          ("[jove] unknown option '%s'"):format(key),
           vim.log.levels.WARN
         )
       end

@@ -38,7 +38,7 @@ T["setup"]["accepts no opts"] = function()
   MiniTest.expect.equality(jove.config.bridge_python, defaults.bridge_python)
 end
 
-T["setup"]["shim: warns on unknown top-level option (molten-era or typo)"] = function()
+T["setup"]["shim: warns on unknown top-level option"] = function()
   local notes = {}
   local orig = vim.notify
   vim.notify = function(msg, level)
@@ -51,7 +51,7 @@ T["setup"]["shim: warns on unknown top-level option (molten-era or typo)"] = fun
   MiniTest.expect.equality(notes[1].level, vim.log.levels.WARN)
   MiniTest.expect.equality(
     notes[1].msg,
-    "[jove] unknown option 'molten' (molten-era or typo?) — check :h jove-config"
+    "[jove] unknown option 'molten'"
   )
   MiniTest.expect.equality(jove.config.molten, {})
 end
@@ -68,7 +68,7 @@ T["setup"]["shim: warns on unknown keymap member; validates known ones still"] =
   MiniTest.expect.equality(#notes, 1)
   MiniTest.expect.equality(
     notes[1].msg,
-    "[jove] unknown option 'keymap.bogus' (molten-era or typo?) — check :h jove-config"
+    "[jove] unknown option 'keymap.bogus'"
   )
   MiniTest.expect.equality(jove.config.keymap.bogus, "x")
   MiniTest.expect.error(function()
