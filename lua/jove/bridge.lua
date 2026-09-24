@@ -43,6 +43,9 @@ function M.resolve_python(cfg_value)
   if vim.env.VIRTUAL_ENV and vim.env.VIRTUAL_ENV ~= "" then
     table.insert(candidates, vim.fs.joinpath(vim.env.VIRTUAL_ENV, "bin", "python"))
   end
+  if vim.g.python3_host_prog and vim.g.python3_host_prog ~= "" then
+    table.insert(candidates, vim.g.python3_host_prog)
+  end
   for _, path in ipairs(candidates) do
     if vim.uv.fs_stat(path) then
       return path
@@ -57,7 +60,7 @@ local function path_sep()
 end
 
 ---@class jove.bridge.Opts
----@field bridge_python string?  Interpreter override (default: $CONDA_PREFIX/bin/python -> $VIRTUAL_ENV/bin/python -> "python3").
+---@field bridge_python string?  Interpreter override (default: $CONDA_PREFIX/bin/python -> $VIRTUAL_ENV/bin/python -> g:python3_host_prog -> "python3").
 ---@field timeout_ms integer|boolean?  Default per-request timeout in ms; `false`/0 disables (execute uses no timeout). Default 15000.
 ---@field trace boolean?  Log wire traffic at TRACE level.
 ---@field respawn boolean?  Auto-respawn on unexpected exit with backoff (default true).

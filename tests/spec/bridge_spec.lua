@@ -306,4 +306,64 @@ T["lifecycle"]["readiness timeout fails queued requests once"] = function()
   MiniTest.expect.equality(replies, { "bridge readiness timeout" })
 end
 
+T["resolve_python"] = MiniTest.new_set()
+
+---Run fn with conda/venv env vars and g:python3_host_prog cleared, restoring after.
+local function with_clean_env(fn)
+  local saved = {
+    conda = vim.env.CONDA_PREFIX,
+    venv = vim.env.VIRTUAL_ENV,
+    host = vim.g.python3_host_prog,
+  }
+  vim.env.CONDA_PREFIX = nil
+  vim.env.VIRTUAL_ENV = nil
+  vim.g.python3_host_prog = nil
+  local ok, err = pcall(fn)
+  vim.env.CONDA_PREFIX = saved.conda
+  vim.env.VIRTUAL_ENV = saved.venv
+  vim.g.python3_host_prog = saved.host
+  if not ok then
+    error(err, 0)
+  end
+end
+
+T["resolve_python"]["falls back to cfg value when no env or host prog"] = function()
+  with_clean_env(function()
+    MiniTest.expect.equality(bridge_mod.resolve_python("/cfg/python"), "/cfg/python")
+    MiniTest.expect.equality(bridge_mod.resolve_python(nil), "python3")
+  end)
+end
+
+T["resolve_python"]["prefers g:python3_host_prog over cfg fallback"] = function()
+  with_clean_env(function()
+    local host = vim.fn.tempname()
+    vim.fn.writefile({}, host)
+    vim.g.python3_host_prog = host
+    MiniTest.expect.equality(bridge_mod.resolve_python("/cfg/python"), host)
+    vim.fn.delete(host)
+  end)
+end
+
+T["resolve_python"]["ignores g:python3_host_prog when the file does not exist"] = function()
+  with_clean_env(function()
+    vim.g.python3_host_prog = "/nonexistent/host/python"
+    MiniTest.expect.equality(bridge_mod.resolve_python("/cfg/python"), "/cfg/python")
+  end)
+end
+
+T["resolve_python"]["active virtualenv beats g:python3_host_prog"] = function()
+  with_clean_env(function()
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir .. "/bin", "p")
+    vim.fn.writefile({}, dir .. "/bin/python")
+    vim.env.VIRTUAL_ENV = dir
+    local host = vim.fn.tempname()
+    vim.fn.writefile({}, host)
+    vim.g.python3_host_prog = host
+    MiniTest.expect.equality(bridge_mod.resolve_python("/cfg/python"), dir .. "/bin/python")
+    vim.fn.delete(dir, "rf")
+    vim.fn.delete(host)
+  end)
+end
+
 return T
