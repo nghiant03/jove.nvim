@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver bump applied to the latest tag"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      version:
+        description: "Explicit version (e.g. 0.3.0); overrides bump"
+        type: string
+        required: false
+      force:
+        description: "Release even if the latest CI run on main is not green"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify CI is green on main
+        if: ${{ !inputs.force }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          conclusion="$(gh run list --workflow ci.yml --branch main --limit 1 --json conclusion --jq '.[0].conclusion')"
+          if [ "$conclusion" != "success" ]; then
+            echo "error: latest CI run on main concluded '$conclusion' (expected 'success')" >&2
+            echo "fix CI first, or re-run with 'force' enabled" >&2
+            exit 1
+          fi
+
+      - name: Resolve next version
+        id: version
+        run: |
+          set -euo pipefail
+          # Historical tags are bare semver (0.2.7); releases from here on are
+          # v-prefixed (v0.2.8). Consider both shapes when finding the latest.
+          current="$(git tag -l | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n1 || true)"
+          current="${current:-0.0.0}"
+
+          if [ -n "${{ inputs.version }}" ]; then
+            next="${{ inputs.version }}"
+            next="${next#v}"
+            if ! echo "$next" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "error: invalid version '$next' (expected MAJOR.MINOR.PATCH)" >&2
+              exit 1
+            fi
+          else
+            IFS=. read -r major minor patch <<< "$current"
+            case "${{ inputs.bump }}" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+              *) echo "error: unknown bump '${{ inputs.bump }}'" >&2; exit 1 ;;
+            esac
+            next="$major.$minor.$patch"
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$next" >/dev/null \
+            || git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
+            echo "error: a tag for $next already exists" >&2
+            exit 1
+          fi
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$next (current: $current)"
+
+      - name: Tag and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.version.outputs.next }}" -m "Release v${{ steps.version.outputs.next }}"
+          git push origin "v${{ steps.version.outputs.next }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "v${{ steps.version.outputs.next }}" --generate-notes --verify-tag
+
+      # Pushes made with GITHUB_TOKEN do not trigger other workflows, so the
+      # docs regeneration (normally fired by the v* tag) is dispatched here.
+      - name: Regenerate vimdoc
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docs.yml
