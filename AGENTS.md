@@ -49,6 +49,10 @@ Notes:
 - CI (`.github/workflows/ci.yml`) runs stylua, selene, the mini.test suite on
   Neovim v0.11.4 + stable (Linux/macOS), ruff check/format, and bridge pytest
   on Python 3.10 + 3.13. Lowest supported targets: Neovim 0.11, Python 3.10.
+- Releases are cut by `.github/workflows/release.yml` (Actions > Release >
+  Run workflow): it computes the next tag from the latest `v*` tag (bare
+  semver tags like `0.2.7` also count), pushes it, creates the GitHub
+  Release, and dispatches vimdoc regeneration. Never tag by hand.
 - `plugin/jove.lua` - startup entry: registers `BufReadCmd`/`BufWriteCmd`/
   `FileChangedShell` on `*.ipynb` and all `:Jove*` commands. Config lives in
   `lua/jove/init.lua` (`require("jove").setup`), NOT here.
@@ -81,6 +85,8 @@ Notes:
 - `python/jove_bridge/` - stdio sidecar: `__main__.py` (envelope loop, bounded
   writer queue), `session.py` (method dispatch + iopub/shell routing),
   `kernel.py` (thin jupyter_client wrapper raising `KernelError(code, msg)`).
+  The package is intentionally unversioned (`version = "0.0.0"` in
+  `pyproject.toml`); the plugin versions via git tags.
 
 ## Conventions and gotchas
 
@@ -114,5 +120,5 @@ Notes:
 - jove conflicts with `jupytext.nvim` by design (both register
   `BufReadCmd *.ipynb`); the conflict check lives in `plugin/jove.lua` and
   `health.lua`.
-- `doc/jove.txt` is generated from README.md by panvimdoc on version tags; do
-  not hand-edit it.
+- `doc/jove.txt` is generated from README.md by panvimdoc (on README changes
+  to `main` and after each release); do not hand-edit it.

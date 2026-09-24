@@ -49,6 +49,7 @@ Run `:checkhealth jove` to verify the requirements
 ```lua
 {
   "nghiant03/jove.nvim",
+  version = "v*", -- pin to the latest release tag; drop to track main
   lazy = false,
   opts = {
     auto_kernel = true,
