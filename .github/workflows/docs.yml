@@ -20,7 +20,7 @@ jobs:
     name: Generate vimdoc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Tag pushes check out a detached HEAD, which git-auto-commit-action
           # cannot commit from; always build docs from the main branch.
@@ -34,7 +34,7 @@ jobs:
           pandoc: README.md
 
       - name: Commit generated vimdoc
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "docs: generate doc/jove.txt via panvimdoc"
           file_pattern: doc/jove.txt
