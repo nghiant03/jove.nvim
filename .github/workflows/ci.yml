@@ -16,7 +16,6 @@ concurrency:
 env:
   UV_VERSION: "0.12.14"
   MINI_TEST_SHA: "3cc4c29be99531b3fc4fb99f3fa964b492166728"
-  # SHA256 of selene-0.31.0-linux.zip from the selene 0.31.0 GitHub release.
   SELENE_SHA256: "dac452422747999ec4919bbb8bb52992b66aae533b60022bf005669de8616671"
 
 jobs:
@@ -80,8 +79,6 @@ jobs:
           cache-dependency-glob: python/uv.lock
 
       - name: Install jupytext + bridge deps
-        # jupyter_client/ipykernel enable the real-sidecar e2e spec
-        # (bridge_e2e_spec.lua) which self-skips without them.
         run: uv sync --project python --locked --extra dev --python 3.12
 
       - name: Cache mini.test

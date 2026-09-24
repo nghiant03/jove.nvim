@@ -34,10 +34,29 @@ jobs:
 
       - name: Commit generated vimdoc
         id: autocommit
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "docs: generate doc/jove.txt via panvimdoc"
-          file_pattern: doc/jove.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if git diff --quiet -- doc/jove.txt; then
+            echo "changes_detected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sha=$(git rev-parse HEAD:doc/jove.txt)
+          content=$(base64 -w 0 doc/jove.txt)
+
+          jq -n \
+            --arg message "docs: generate doc/jove.txt via panvimdoc" \
+            --arg content "$content" \
+            --arg sha "$sha" \
+            '{message: $message, content: $content, sha: $sha, branch: "main"}' |
+            gh api \
+              --method PUT \
+              "repos/$GITHUB_REPOSITORY/contents/doc/jove.txt" \
+              --input -
+
+          echo "changes_detected=true" >> "$GITHUB_OUTPUT"
 
       - name: Run CI on the generated commit
         if: steps.autocommit.outputs.changes_detected == 'true'
