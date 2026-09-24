@@ -84,7 +84,8 @@ The kernel needs a Python interpreter that can `import jupyter_client` and
 
 1. `$CONDA_PREFIX/bin/python` (active conda env)
 2. `$VIRTUAL_ENV/bin/python` (active virtualenv)
-3. your configured `bridge_python` value (default `"python3"`)
+3. `g:python3_host_prog` (Neovim’s configured Python host)
+4. your configured `bridge_python` value (default `"python3"`)
 
 If you launch Neovim from outside the environment that has the Jupyter stack,
 set the fallback explicitly:
@@ -105,7 +106,7 @@ Full option list with defaults:
       jupytext = "jupytext",        -- path to the jupytext binary
       bridge_python = "python3",    -- fallback Python for the kernel helper
                                     -- (see "Python environment" above for the
-                                    -- conda/venv precedence)
+                                    -- conda/venv/host-prog precedence)
       auto_kernel = true,           -- start kernel automatically on open
       auto_import_outputs = true,   -- render persisted outputs on open/reload
       auto_export_outputs = true,   -- merge session outputs into the .ipynb on save
