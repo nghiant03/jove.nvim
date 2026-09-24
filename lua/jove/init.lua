@@ -158,10 +158,7 @@ local function warn_unknown_opts(opts)
     for _, key in ipairs(keys_to_check) do
       if not warned[key] then
         warned[key] = true
-        vim.notify(
-          ("[jove] unknown option '%s'"):format(key),
-          vim.log.levels.WARN
-        )
+        vim.notify(("[jove] unknown option '%s'"):format(key), vim.log.levels.WARN)
       end
     end
   end

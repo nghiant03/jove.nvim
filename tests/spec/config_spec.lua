@@ -49,10 +49,7 @@ T["setup"]["shim: warns on unknown top-level option"] = function()
 
   MiniTest.expect.equality(#notes, 1)
   MiniTest.expect.equality(notes[1].level, vim.log.levels.WARN)
-  MiniTest.expect.equality(
-    notes[1].msg,
-    "[jove] unknown option 'molten'"
-  )
+  MiniTest.expect.equality(notes[1].msg, "[jove] unknown option 'molten'")
   MiniTest.expect.equality(jove.config.molten, {})
 end
 
@@ -66,10 +63,7 @@ T["setup"]["shim: warns on unknown keymap member; validates known ones still"] =
   vim.notify = orig
 
   MiniTest.expect.equality(#notes, 1)
-  MiniTest.expect.equality(
-    notes[1].msg,
-    "[jove] unknown option 'keymap.bogus'"
-  )
+  MiniTest.expect.equality(notes[1].msg, "[jove] unknown option 'keymap.bogus'")
   MiniTest.expect.equality(jove.config.keymap.bogus, "x")
   MiniTest.expect.error(function()
     jove.setup({ keymap = { run_cell = 42 } })
