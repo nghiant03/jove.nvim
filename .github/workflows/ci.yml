@@ -4,9 +4,20 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_VERSION: "0.12.14"
+  MINI_TEST_SHA: "3cc4c29be99531b3fc4fb99f3fa964b492166728"
+  # SHA256 of selene-0.31.0-linux.zip from the selene 0.31.0 GitHub release.
+  SELENE_SHA256: "dac452422747999ec4919bbb8bb52992b66aae533b60022bf005669de8616671"
 
 jobs:
   stylua:
@@ -14,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: JohnnyMorganz/stylua-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -25,11 +38,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install selene
         run: |
           curl -sL -o selene.zip \
             https://github.com/Kampfkarren/selene/releases/download/0.31.0/selene-0.31.0-linux.zip
-          unzip selene.zip
+          echo "$SELENE_SHA256  selene.zip" | sha256sum --check -
+          unzip -o selene.zip
           chmod +x selene
       - name: Lint
         run: ./selene .
@@ -45,6 +61,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: rhysd/action-setup-vim@v1
         with:
@@ -57,30 +75,45 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.12.14"
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
       - name: Install jupytext + bridge deps
         # jupyter_client/ipykernel enable the real-sidecar e2e spec
         # (bridge_e2e_spec.lua) which self-skips without them.
         run: uv sync --project python --locked --extra dev --python 3.12
 
+      - name: Cache mini.test
+        id: mini-test
+        uses: actions/cache@v4
+        with:
+          path: .testdeps/mini.test
+          key: mini-test-${{ env.MINI_TEST_SHA }}
+
       - name: Fetch mini.test
+        if: steps.mini-test.outputs.cache-hit != 'true'
         run: |
           mkdir -p .testdeps
           git init .testdeps/mini.test
-          git -C .testdeps/mini.test fetch --depth 1 https://github.com/nvim-mini/mini.test 3cc4c29be99531b3fc4fb99f3fa964b492166728
+          git -C .testdeps/mini.test fetch --depth 1 https://github.com/nvim-mini/mini.test ${{ env.MINI_TEST_SHA }}
           git -C .testdeps/mini.test checkout --detach FETCH_HEAD
 
       - name: Run tests
         run: uv run --project python --locked --extra dev bash scripts/run_tests.sh
 
   python-quality:
+    name: ruff (check + format)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.12.14"
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
       - run: uv run --project python --locked --extra dev ruff check python
       - run: uv run --project python --locked --extra dev ruff format --check python
 
@@ -95,6 +128,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -102,7 +137,9 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.12.14"
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
       - name: Install bridge with dev extras
         working-directory: python
