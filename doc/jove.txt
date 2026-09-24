@@ -1,0 +1,293 @@
+*jove.txt*                       Native .ipynb editing for Neovim via jupytext
+                             For NVIM v0.8.0    Last change: 2026 September 24
+
+==============================================================================
+Table of Contents                                     *jove-table-of-contents*
+
+1. jove.nvim                                                  |jove-jove.nvim|
+  - Features                                         |jove-jove.nvim-features|
+  - Requirements                                 |jove-jove.nvim-requirements|
+  - Installation                                 |jove-jove.nvim-installation|
+  - Configuration                               |jove-jove.nvim-configuration|
+  - Languages and LSP                       |jove-jove.nvim-languages-and-lsp|
+  - Usage                                               |jove-jove.nvim-usage|
+
+==============================================================================
+1. jove.nvim                                                  *jove-jove.nvim*
+
+
+  **Jupyter notebooks, edited natively in Neovim.** _Jove — /dʒoʊv/, as in
+  Jupiter._
+
+FEATURES                                             *jove-jove.nvim-features*
+
+- **Native buffers** — notebooks open as ordinary buffers in the kernel’s
+    language; pyright, ruff, copilot, treesitter and git tooling attach like
+    any other file (see |jove-jove.nvim-languages-and-lsp|).
+- **Built-in kernel client** — a first-party Python bridge starts and
+    supervises one kernel per notebook; if it dies, it restarts automatically.
+    No molten, no browser.
+- **Inline outputs** — text, tables, tracebacks and images (PNG/JPEG via
+    `snacks.image`) render in bordered blocks below each cell, with signs and a
+    spinner for queued/running/done state.
+- **True round-tripping** — session outputs and execution counts merge back
+    into the `.ipynb` on save; cleared outputs stay cleared; reload treats disk
+    as truth.
+- **Cell ergonomics** — `ic`/`ac` cell text-objects, `[c`/`]c` cell motions,
+    cell borders, per-cell execution counts and elapsed time.
+- **Tooling** — a tabbed sidebar combining the variable inspector, notebook
+    table of contents, and kernel info (sessions and installed kernelspecs),
+    with number keys to switch tabs.
+
+
+REQUIREMENTS                                     *jove-jove.nvim-requirements*
+
+- Neovim ≥ 0.11
+- `jupytext` <https://github.com/mwouts/jupytext>
+- A Python interpreter with `jupyter_client` and
+    `ipykernel` installed:
+- `snacks.nvim` <https://github.com/folke/snacks.nvim> (optional): Image rendering
+
+Run `:checkhealth jove` to verify the requirements
+
+
+INSTALLATION                                     *jove-jove.nvim-installation*
+
+
+LAZY.NVIM (RECOMMENDED) ~
+
+>lua
+    {
+      "nghiant03/jove.nvim",
+      version = "v*", -- pin to the latest release tag; drop to track main
+      lazy = false,
+      opts = {
+        auto_kernel = true,
+        keymap = {
+          run_cell  = "<leader>x",
+          next_cell = "]h",
+          prev_cell = "[h",
+        },
+      },
+    }
+<
+
+
+  [!important] **Do not** load `jupytext.nvim` with jove since both register
+  `BufReadCmd` on `*.ipynb`. Jove detects it and refuses to register its handlers
+  with a warning.
+
+PYTHON ENVIRONMENT ~
+
+The kernel needs a Python interpreter that can `import jupyter_client` and
+`ipykernel`. Jove picks one automatically, in this order:
+
+1. `$CONDA_PREFIX/bin/python` (active conda env)
+2. `$VIRTUAL_ENV/bin/python` (active virtualenv)
+3. your configured `bridge_python` value (default `"python3"`)
+
+If you launch Neovim from outside the environment that has the Jupyter stack,
+set the fallback explicitly:
+
+>lua
+    opts = {
+      bridge_python = "/home/you/envs/jupyter/bin/python",
+    }
+<
+
+
+CONFIGURATION                                   *jove-jove.nvim-configuration*
+
+Full option list with defaults:
+
+>lua
+    require("jove").setup({
+      jupytext = "jupytext",        -- path to the jupytext binary
+      bridge_python = "python3",    -- fallback Python for the kernel helper
+                                    -- (see "Python environment" above for the
+                                    -- conda/venv precedence)
+      auto_kernel = true,           -- start kernel automatically on open
+      auto_import_outputs = true,   -- render persisted outputs on open/reload
+      auto_export_outputs = true,   -- merge session outputs into the .ipynb on save
+      persist_exec_counts = true,   -- persist kernel execution counts into the .ipynb
+      elapsed = true,               -- show per-cell elapsed execution time
+      auto_reload = false,          -- auto-reload when the .ipynb changes on disk
+      cell_motions = true,          -- map [c / ]c cell motions
+      signs = {
+        queued = "…",               -- gutter sign: queued for execution
+        running = "▶",              -- gutter sign: currently running
+        ok = "✓",                   -- gutter sign: finished successfully
+        error = "✗",                -- gutter sign: finished with an error
+      },
+      output = {
+        max_lines = 50,             -- inline output truncation limit
+        images = true,              -- render images via snacks.image when available
+        image_max_width = 80,       -- cap rendered image width in terminal cells (nil disables)
+        image_max_height = 40,      -- cap rendered image height in terminal cells (nil disables)
+        header = true,              -- draw the Output block's `┌─ Out[n] ─┐` top frame; false renders content + guide rail only
+        guide = "▎ ",               -- per-line inner output rail (before the text); false disables it
+        inside_border = false,      -- render output inside the cell border instead of its own bordered block below it
+        hl = nil,                   -- output background tint: hl group name (string, linked) or attrs table; nil disables
+      },
+      variables = {
+        auto_refresh = true,        -- refresh the variables inspector on idle
+        size = 0.25,                -- sidebar size as a fraction of the screen (columns, or lines in hsplit mode)
+      },
+      ui = {
+        conceal_headers = true,     -- conceal # %% cell headers (front matter is hidden by stripping it on read)
+        active_cell = true,         -- highlight the active cell
+        exec_counts = true,         -- show per-cell execution counts
+        elapsed = true,             -- show per-cell elapsed time
+        borders = true,             -- draw a closing line below each cell
+        border_hl = nil,            -- cell border highlight: an hl group name (string, linked) or attrs table (e.g. { fg = "#ff9e64" }); nil keeps the default Comment link
+        window_mode = "vsplit",     -- how to open the sidebar and output viewer: "float", "vsplit", or "hsplit"
+      },
+      keymap = {
+        run_cell = false,
+        run_and_advance = false,
+        run_selection = false,
+        next_cell = false,
+        prev_cell = false,
+        goto_running_cell = false,
+        toggle_follow_running = false,
+      },
+      lsp = {
+        auto_attach = false,        -- start the servers in `servers` on notebook open
+        servers = {},               -- language id -> vim.lsp.config server names,
+                                    -- e.g. { python = { "pyright" }, javascript = { "ts_ls" } }
+      },
+    })
+<
+
+
+LANGUAGES AND LSP                           *jove-jove.nvim-languages-and-lsp*
+
+The notebook’s kernelspec language drives the buffer: filetype, jupytext
+percent format, and cell-marker comment leader all come from a language
+registry (`lua/jove/lang.lua`). Built-in languages:
+
+  Language     Filetype     Cell marker   Known servers
+  ------------ ------------ ------------- -----------------------------
+  Python       python       # %%          pyright, basedpyright, ruff
+  Julia        julia        # %%          julials
+  R            r            # %%          r_language_server
+  JavaScript   javascript   // %%         ts_ls
+  TypeScript   typescript   // %%         ts_ls
+Unknown languages fall back to Python conventions (with a warning). Register
+more yourself:
+
+>lua
+    require("jove.lang").register("scala", { fmt = "scala", comment = "//", servers = { "metals" } })
+<
+
+Because the buffer carries the language’s real filetype, any LSP server you
+have configured (via `vim.lsp.enable()` / nvim-lspconfig) attaches to notebook
+buffers automatically — completion, hover, signature help and diagnostics
+included; project root is resolved from the notebook’s directory. If you
+prefer jove to start the servers for you, opt in:
+
+>lua
+    opts = {
+      lsp = {
+        auto_attach = true,
+        servers = { python = { "pyright" }, javascript = { "ts_ls" } },
+      },
+    }
+<
+
+Jove never invents server commands or root dirs: `auto_attach` only starts
+servers that already have a `vim.lsp.config` entry (e.g. from nvim-lspconfig).
+`:checkhealth jove` reports the attached LSP clients for every open notebook
+buffer.
+
+
+USAGE                                                   *jove-jove.nvim-usage*
+
+
+COMMANDS ~
+
+  -----------------------------------------------------------------------
+  Command                             Action
+  ----------------------------------- -----------------------------------
+  :JoveRunCell                        Run current notebook cell
+
+  :JoveRunAbove                       Run all notebook cells above the
+                                      cursor
+
+  :JoveRunAll                         Run all notebook cells
+
+  :JoveRunSelection                   Run the visual selection as one
+                                      unit
+
+  :JoveRunCellAndAdvance              Run the current cell and jump to
+                                      the next
+
+  :JoveNextCell                       Jump to next notebook cell
+
+  :JovePrevCell                       Jump to previous notebook cell
+
+  :JoveGotoRunningCell                Jump to the currently executing
+                                      cell
+
+  :JoveToggleFollowRunning            Toggle following the currently
+                                      executing cell with the cursor
+
+  :JoveInitKernel                     Start a kernel for the current
+                                      notebook
+
+  :JoveSelectKernel                   Pick a kernelspec for the current
+                                      notebook (replaces running kernel)
+
+  :JoveInterrupt                      Interrupt the running execution
+
+  :JoveRestartKernel                  Restart the current notebook kernel
+
+  :JoveShutdownKernel                 Shut down the current notebook
+                                      kernel and bridge
+
+  :JoveToggleOutput                   Show/hide rendered outputs of the
+                                      current cell
+
+  :JoveOpenOutput                     Open the current cell’s outputs in
+                                      a float
+
+  :JoveClearOutput                    Clear outputs of the current cell
+
+  :JoveClearOutputs                   Clear all rendered outputs in this
+                                      buffer
+
+  :JoveReload                         Reload the current notebook buffer
+                                      from disk
+
+  :JoveSidebar                        Toggle the sidebar (variables,
+                                      kernel info, table of contents)
+  -----------------------------------------------------------------------
+
+KEYMAPS AND MOTIONS ~
+
+On jove buffers (python, julia, r, javascript, typescript filetypes backed by
+an `.ipynb`):
+
+- `ic` / `ac` cell text-objects (operator-pending and visual modes) — always
+    on, no extra plugin needed.
+- `[c` / `]c` cell motions (normal mode) — on by default; disable with
+    `cell_motions = false`.
+- Everything under `keymap = {}` is opt-in; all bindings default to disabled.
+
+>lua
+    opts = {
+      keymap = {
+        run_cell              = "<leader>x",  -- normal: run cell under cursor
+        run_and_advance       = "<leader>X",  -- normal: run cell, jump to next
+        run_selection         = "<leader>xx", -- visual: run selection as one unit
+        next_cell             = "]h",
+        prev_cell             = "[h",
+        goto_running_cell     = "<leader>j",  -- normal: jump to the running cell
+        toggle_follow_running = "<leader>J",  -- normal: cursor follows the running cell
+      },
+    }
+<
+
+Generated by panvimdoc <https://github.com/kdheepak/panvimdoc>
+
+vim:tw=78:ts=8:noet:ft=help:norl:
