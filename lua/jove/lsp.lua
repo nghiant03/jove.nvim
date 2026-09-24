@@ -1,17 +1,9 @@
--- LSP integration for notebook buffers.
---
--- Jove buffers carry the language's filetype, so servers enabled via
--- vim.lsp.enable()/nvim-lspconfig attach on their own (root detection uses
--- the .ipynb's directory). This module adds the opt-in `lsp.auto_attach`
--- path: start the servers the user declared in `lsp.servers[lang]`, reusing
--- their vim.lsp.config entries (jove never invents cmd/root_dir).
-
+-- LSP integration
 local lang = require("jove.lang")
 local state = require("jove.state")
 
 local M = {}
 
--- Test seam (see AGENTS.md): specs inject fakes here; do not use elsewhere.
 local impl = {
   get_clients = vim.lsp.get_clients,
   start = vim.lsp.start,
@@ -34,8 +26,6 @@ function M._reset()
   warned_missing = {}
 end
 
----Attach one configured server to the buffer unless a client with the same
----name is already attached.
 ---@param buf integer
 ---@param name string
 function M._attach_one(buf, name)
@@ -65,8 +55,6 @@ function M._attach_one(buf, name)
   end
 end
 
----Attach the servers configured for the buffer's language. No-op unless
----`lsp.auto_attach` is set; called after the notebook filetype is resolved.
 ---@param buf integer
 function M.attach(buf)
   local cfg = require("jove").config.lsp

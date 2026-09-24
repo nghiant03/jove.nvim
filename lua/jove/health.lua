@@ -124,10 +124,6 @@ function M.check()
     h.ok("no conflicting .ipynb plugin detected")
   end
 
-  if vim.g.loaded_molten == 1 or vim.fn.exists(":MoltenInit") == 2 then
-    h.warn("molten-nvim is loaded; jove no longer uses it — remove it (see README migration)")
-  end
-
   local lang_mod = require("jove.lang")
   local lsp_cfg = cfg.lsp or {}
   local bufs = require("jove.state").buffers()

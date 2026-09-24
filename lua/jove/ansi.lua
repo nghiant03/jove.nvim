@@ -1,5 +1,4 @@
--- ANSI escape sequence handling: stripping, carriage-return folding, and
--- mapping SGR styling to highlight spans for buffer rendering.
+-- ANSI escape sequence handling
 
 local M = {}
 
@@ -7,7 +6,6 @@ local CSI = "\27%[[0-?]*[ -/]*[@-~]"
 local OSC_ST = "\27%].-\27\\"
 local OSC_BEL = "\27%][^\7]*\7"
 
----Remove all ANSI escape sequences (CSI, OSC, lone ESC) and carriage returns.
 ---@param s any
 ---@return any
 function M.strip(s)
@@ -17,9 +15,6 @@ function M.strip(s)
   return (s:gsub(OSC_ST, ""):gsub(OSC_BEL, ""):gsub(CSI, ""):gsub("\27", ""):gsub("\r", ""))
 end
 
----Concatenate terminal-style text honoring carriage returns: "\r" restarts
----the current line, dropping everything since the last "\n" (Jupyter classic
----semantics, what tqdm-style progress bars rely on).
 ---@param existing string  text accumulated so far (may end mid-line)
 ---@param new string       incoming text
 ---@return string
@@ -55,7 +50,6 @@ end
 -- Span of styled text: 0-indexed byte range [start, end) in the plain text,
 -- plus the highlight group to apply.
 
--- xterm default palette for the 16 basic colors; `g:terminal_color_N` wins.
 local BASIC16 = {
   "#000000",
   "#cd0000",
@@ -114,7 +108,6 @@ vim.api.nvim_create_autocmd("ColorScheme", {
   end,
 })
 
----Resolve a set of SGR attributes to a (cached) highlight group.
 ---@param attrs jove.AnsiAttrs
 ---@return string
 local function hl_for(attrs)
@@ -145,7 +138,6 @@ local function hl_for(attrs)
   return name
 end
 
----Apply one SGR parameter list (e.g. "1;38;5;34") to the attribute set.
 ---@param attrs jove.AnsiAttrs
 ---@param params_str string
 local function apply_sgr(attrs, params_str)
@@ -207,10 +199,6 @@ local function apply_sgr(attrs, params_str)
   end
 end
 
----Parse terminal text: strip escape sequences and map SGR styling to
----highlight spans. Stateless by default; pass the returned state back in to
----continue a stream whose escape sequence or style spans several inputs.
----Non-SGR sequences (cursor movement, OSC, ...) are dropped like `strip`.
 ---@param text string
 ---@param state jove.AnsiState?
 ---@return string plain

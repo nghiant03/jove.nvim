@@ -1,5 +1,4 @@
 -- Notebook output persistence.
-
 local state = require("jove.state")
 local cell = require("jove.cell")
 local convert = require("jove.convert")

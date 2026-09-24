@@ -1,5 +1,4 @@
 -- Output storage and extmark rendering.
-
 local state = require("jove.state")
 local cell = require("jove.cell")
 local mime = require("jove.mime")

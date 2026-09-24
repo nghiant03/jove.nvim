@@ -1,5 +1,4 @@
 -- Normalize an output event's mime bundle.
-
 local ansi = require("jove.ansi")
 
 local M = {}

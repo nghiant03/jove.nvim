@@ -1,7 +1,4 @@
--- Language registry: maps notebook kernelspec languages to the buffer
--- conventions jove needs (filetype, jupytext percent-format stem, comment
--- leader) plus the known LSP server names used for docs and health hints.
-
+-- Language registry
 local M = {}
 
 ---@class jove.Lang
@@ -59,8 +56,6 @@ function M._reset()
   warned_unknown = {}
 end
 
----Register (or override) a language. All fields except id are optional and
----fall back to the python defaults for the missing pieces.
 ---@param id string          Kernelspec language id, e.g. "scala".
 ---@param spec {filetype: string?, fmt: string?, comment: string?, servers: string[]?}
 function M.register(id, spec)
@@ -77,8 +72,6 @@ function M.register(id, spec)
   }
 end
 
----Resolve a kernelspec language id to its spec; unknown ids fall back to
----python with a one-time warning.
 ---@param id string?
 ---@return jove.Lang
 function M.get(id)
@@ -103,7 +96,6 @@ function M.get(id)
   return M.default
 end
 
----Resolve the language of a parsed .ipynb JSON document.
 ---@param json table?
 ---@return jove.Lang
 function M.for_notebook(json)
@@ -114,7 +106,6 @@ function M.for_notebook(json)
   return M.get(l)
 end
 
----Resolve the language of a jove buffer (set on read; python before that).
 ---@param buf integer
 ---@return jove.Lang
 function M.for_buffer(buf)
