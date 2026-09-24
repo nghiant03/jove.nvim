@@ -95,15 +95,23 @@ local function split_lines(out)
   return vim.split(out, "\n", { plain = true })
 end
 
+---@param opts {fmt: string?}?
+---@return string  percent format for jupytext, e.g. "py:percent"
+local function percent_fmt(opts)
+  local fmt = (opts and opts.fmt) or require("jove.lang").default.fmt
+  return fmt .. ":percent"
+end
+
 ---@param path string
 ---@param cb fun(lines: string[]?, err: string?)
-function M.read(path, cb)
+---@param opts {fmt: string?}?  fmt: percent-format stem ("py", "js", ...); default python
+function M.read(path, cb, opts)
   read_file(path, function(data, err)
     if not data then
       return cb(nil, err)
     end
     run(
-      { "--from", "ipynb", "--to", "py:percent", "--output", "-" },
+      { "--from", "ipynb", "--to", percent_fmt(opts), "--output", "-" },
       data,
       function(stdout, stderr, code)
         if code ~= 0 then
@@ -118,30 +126,28 @@ end
 ---@param path string
 ---@param lines string[]
 ---@param cb fun(bytes: string?, err: string?)
-function M.write(path, lines, cb)
+---@param opts {fmt: string?}?  fmt: percent-format stem ("py", "js", ...); default python
+function M.write(path, lines, cb, opts)
   local stdin = table.concat(lines, "\n") .. "\n"
+  local from = percent_fmt(opts)
 
   if vim.uv.fs_stat(path) == nil then
-    run(
-      { "--from", "py:percent", "--to", "ipynb", "--output", "-" },
-      stdin,
-      function(stdout, stderr, code)
-        if code ~= 0 then
-          return cb(nil, ((stderr ~= "" and stderr) or "jupytext write failed"))
-        end
-        local bytes = stdout or ""
-        local ok, werr = M.atomic_write(path, bytes)
-        if not ok then
-          return cb(nil, werr)
-        end
-        cb(bytes, nil)
+    run({ "--from", from, "--to", "ipynb", "--output", "-" }, stdin, function(stdout, stderr, code)
+      if code ~= 0 then
+        return cb(nil, ((stderr ~= "" and stderr) or "jupytext write failed"))
       end
-    )
+      local bytes = stdout or ""
+      local ok, werr = M.atomic_write(path, bytes)
+      if not ok then
+        return cb(nil, werr)
+      end
+      cb(bytes, nil)
+    end)
     return
   end
 
   run(
-    { "--from", "py:percent", "--to", "ipynb", "--update", "--output", path },
+    { "--from", from, "--to", "ipynb", "--update", "--output", path },
     stdin,
     function(_, stderr, code)
       if code ~= 0 then

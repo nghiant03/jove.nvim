@@ -5,6 +5,7 @@ local M = {}
 ---@field path string?        Path of the .ipynb backing this buffer (set on successful read).
 ---@field json table?         Parsed .ipynb JSON, refreshed on read and write.
 ---@field last_write string?  Checksum of the last written bytes, used to suppress self-triggered reloads.
+---@field lang string?        Kernelspec language id (see jove.lang), set on read.
 
 ---@type table<integer, jove.BufferState>
 local registry = {}
@@ -47,6 +48,18 @@ end
 ---@param buf integer
 function M.clear(buf)
   registry[buf] = nil
+end
+
+---@return integer[]  valid buffer handles with jove state, sorted
+function M.buffers()
+  local bufs = {}
+  for buf in pairs(registry) do
+    if vim.api.nvim_buf_is_valid(buf) then
+      bufs[#bufs + 1] = buf
+    end
+  end
+  table.sort(bufs)
+  return bufs
 end
 
 return M

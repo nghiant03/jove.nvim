@@ -323,6 +323,98 @@ T["write round-trips"]["preserves kernelspec even with stripped front matter on 
   close_notebook(buf)
 end
 
+T["javascript notebooks"] = MiniTest.new_set()
+
+local JS_FIXTURE = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "smoke_js.ipynb")
+
+---@return string path
+local function tmp_copy_js_fixture()
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  local path = vim.fs.joinpath(dir, "smoke_js.ipynb")
+  local ok = vim.uv.fs_copyfile(JS_FIXTURE, path)
+  expect_truthy(ok)
+  return path
+end
+
+T["javascript notebooks"]["read: js:percent lines, javascript filetype, // front matter stripped"] = function()
+  local path = tmp_copy_js_fixture()
+  vim.cmd("edit " .. vim.fn.fnameescape(path))
+  local buf = vim.api.nvim_get_current_buf()
+  local settled = vim.wait(30000, function()
+    local st = state.peek(buf)
+    return st ~= nil
+      and st.path ~= nil
+      and st.json ~= nil
+      and vim.bo[buf].filetype == "javascript"
+      and not vim.bo[buf].modified
+  end, 10)
+  expect_truthy(settled)
+
+  local st = state.get(buf)
+  MiniTest.expect.equality(st.lang, "javascript")
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local has_marker = false
+  for _, l in ipairs(lines) do
+    MiniTest.expect.equality(l:match("^// %-%-") == nil, true)
+    MiniTest.expect.equality(l:match("^# %%") == nil, true)
+    if l:match("^// %%") then
+      has_marker = true
+    end
+  end
+  expect_truthy(has_marker)
+
+  local fm = st.front_matter
+  expect_truthy(type(fm) == "table" and #fm >= 2 and fm[1] == "// ---")
+  close_notebook(buf)
+end
+
+T["javascript notebooks"]["write: edits land in the ipynb via js:percent, kernelspec preserved"] = function()
+  local path = tmp_copy_js_fixture()
+  vim.cmd("edit " .. vim.fn.fnameescape(path))
+  local buf = vim.api.nvim_get_current_buf()
+  local settled = vim.wait(30000, function()
+    local st = state.peek(buf)
+    return st ~= nil and st.path ~= nil and st.json ~= nil and vim.bo[buf].filetype == "javascript"
+  end, 10)
+  expect_truthy(settled)
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local edit_at
+  for i, l in ipairs(lines) do
+    if l:find("console.log", 1, true) then
+      edit_at = i
+      break
+    end
+  end
+  expect_truthy(edit_at ~= nil)
+  vim.api.nvim_buf_set_lines(buf, edit_at - 1, edit_at, false, { 'console.log("edited")' })
+
+  vim.cmd("write")
+  local done = vim.wait(30000, function()
+    local st = state.peek(buf)
+    return st ~= nil and st.last_write ~= nil and not vim.bo[buf].modified
+  end, 10)
+  expect_truthy(done)
+
+  local bytes = read_disk(path)
+  expect_truthy(bytes ~= nil)
+  local ok, nb = pcall(vim.json.decode, bytes)
+  expect_truthy(ok)
+  MiniTest.expect.equality(nb.metadata.kernelspec.language, "javascript")
+  local found_edited = false
+  for _, c in ipairs(nb.cells) do
+    local src = type(c.source) == "table" and table.concat(c.source, "\n") or tostring(c.source)
+    if src:find("edited", 1, true) then
+      found_edited = true
+      break
+    end
+  end
+  expect_truthy(found_edited)
+  close_notebook(buf)
+end
+
 T["changed_shell"] = MiniTest.new_set()
 
 T["changed_shell"]["suppresses our own last write silently"] = function()

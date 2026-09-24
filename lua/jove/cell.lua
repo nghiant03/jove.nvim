@@ -12,9 +12,11 @@ local M = {}
 ---@field header integer?     lnum of the `# %%` header; nil for the synthetic pre-header cell
 
 ---@param line string
+---@param comment string  comment leader of the buffer language ("#", "//", ...)
 ---@return boolean
-local function is_header(line)
-  return line == "# %%" or line:sub(1, 5) == "# %% "
+local function is_header(line, comment)
+  local prefix = comment .. " %%"
+  return line == prefix or line:sub(1, #prefix + 1) == prefix .. " "
 end
 
 ---@param line string
@@ -43,8 +45,9 @@ function M.dup_key(sha, n)
 end
 
 ---@param lines string[]
+---@param comment string  comment leader of the buffer language ("#", "//", ...)
 ---@return jove.Cell[]
-local function parse_cells(lines)
+local function parse_cells(lines, comment)
   local cells = {}
   local cur = nil -- cell currently being built
   local counts = {} -- sha -> occurrences so far (duplicate suffixing)
@@ -68,7 +71,7 @@ local function parse_cells(lines)
   end
 
   for i, line in ipairs(lines) do
-    if is_header(line) then
+    if is_header(line, comment) then
       if cur then
         finish(i - 1)
       end
@@ -100,13 +103,14 @@ end
 function M.all(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
   local entry = state.get(buf)
+  local lang = require("jove.lang").get(entry.lang)
   local tick = vim.b[buf].changedtick
   local cache = entry.cells
-  if cache and cache.tick == tick then
+  if cache and cache.tick == tick and cache.lang == lang.id then
     return cache.list
   end
-  local list = parse_cells(vim.api.nvim_buf_get_lines(buf, 0, -1, false))
-  entry.cells = { list = list, tick = tick }
+  local list = parse_cells(vim.api.nvim_buf_get_lines(buf, 0, -1, false), lang.comment)
+  entry.cells = { list = list, tick = tick, lang = lang.id }
   return list
 end
 

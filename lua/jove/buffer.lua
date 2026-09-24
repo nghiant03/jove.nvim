@@ -4,6 +4,7 @@ local convert = require("jove.convert")
 local persist = require("jove.persist")
 local state = require("jove.state")
 local kernel = require("jove.kernel")
+local lang = require("jove.lang")
 
 local M = {}
 
@@ -13,14 +14,16 @@ local read_seq = {}
 local flights = {}
 
 ---@param lines string[]
+---@param comment string  comment leader of the buffer language ("#", "//", ...)
 ---@return string[]?, string[]
-local function split_front(lines)
+local function split_front(lines, comment)
+  local fence = comment .. " ---"
   local first = lines[1]
-  if not first or first:match("^# %-%-%-%s*$") == nil then
+  if not first or not first:match("^" .. vim.pesc(fence) .. "%s*$") then
     return nil, lines
   end
   for i = 2, #lines do
-    if lines[i]:match("^# %-%-%-%s*$") then
+    if lines[i]:match("^" .. vim.pesc(fence) .. "%s*$") then
       local front = {}
       for j = 1, i do
         front[j] = lines[j]
@@ -33,21 +36,6 @@ local function split_front(lines)
     end
   end
   return nil, lines
-end
-
----@param json table?
----@return string
-local function filetype_for(json)
-  local lang = json
-    and json.metadata
-    and json.metadata.kernelspec
-    and json.metadata.kernelspec.language
-  if not lang then
-    return "python"
-  end
-  lang = tostring(lang):lower()
-  local map = { python = "python", julia = "julia", r = "r", javascript = "javascript" }
-  return map[lang] or "python"
 end
 
 ---@param path string
@@ -102,13 +90,20 @@ function M.read(buf, path, opts)
   if not vim.uv.fs_stat(path) then
     vim.bo[buf].buftype = "acwrite"
     vim.bo[buf].filetype = "python"
-    replace_lines(buf, { "# %%", "" })
+    replace_lines(buf, { lang.default.comment .. " %%", "" })
     vim.bo[buf].modified = false
-    state.get(buf).path = path
+    local st = state.get(buf)
+    st.path = path
+    st.lang = lang.default.id
     return
   end
 
   vim.bo[buf].buftype = "acwrite"
+
+  -- Resolve the language up front: jupytext needs the matching percent
+  -- format (`js:percent`, ...) to emit comment markers the buffer can parse.
+  local json = read_json(path)
+  local spec = lang.for_notebook(json)
 
   local seq = (read_seq[buf] or 0) + 1
   read_seq[buf] = seq
@@ -138,9 +133,6 @@ function M.read(buf, path, opts)
         return
       end
 
-      local json = read_json(path)
-      local ft = filetype_for(json)
-
       local cursor
       if opts.preserve_cursor then
         local win = vim.fn.bufwinid(buf)
@@ -149,9 +141,10 @@ function M.read(buf, path, opts)
         end
       end
 
-      local front, rest = split_front(lines)
+      local front, rest = split_front(lines, spec.comment)
 
-      if rest[#rest] and rest[#rest]:match("^# %%") then
+      local marker_prefix = spec.comment .. " %%"
+      if rest[#rest] and rest[#rest]:sub(1, #marker_prefix) == marker_prefix then
         rest[#rest + 1] = ""
       end
 
@@ -161,8 +154,9 @@ function M.read(buf, path, opts)
       st.path = path
       st.json = json
       st.front_matter = front
+      st.lang = spec.id
 
-      vim.bo[buf].filetype = ft
+      vim.bo[buf].filetype = spec.filetype
       vim.bo[buf].modified = false
 
       if cursor then
@@ -183,14 +177,15 @@ function M.read(buf, path, opts)
         require("jove.output").clear(buf, nil, { skip_dirty = true })
       end
     end)
-  end)
+  end, { fmt = spec.fmt })
 end
 
 ---@param buf integer
 ---@param path string
 ---@param tick integer  -- changedtick captured at request time
 ---@param lines string[]  -- buffer lines captured at request time
-local function start_write(buf, path, tick, lines)
+---@param fmt string?  jupytext percent-format stem ("py", "js", ...)
+local function start_write(buf, path, tick, lines, fmt)
   local cfg = require("jove").config
   local flight = flights[buf]
   flight.in_flight = true
@@ -239,12 +234,12 @@ local function start_write(buf, path, tick, lines)
         local plines = flight.pending_lines
         flight.pending_tick = nil
         flight.pending_lines = nil
-        start_write(buf, path, ptick, plines)
+        start_write(buf, path, ptick, plines, fmt)
       else
         flights[buf] = nil
       end
     end)
-  end)
+  end, { fmt = fmt })
 end
 
 ---@param buf integer
@@ -254,7 +249,9 @@ function M.write(buf, path)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 
   local st = state.peek(buf)
-  if st and st.front_matter and not lines[1]:match("^# %-%-") then
+  local spec = lang.get(st and st.lang or nil)
+  local fence_prefix = spec.comment .. " --"
+  if st and st.front_matter and not lines[1]:match("^" .. vim.pesc(fence_prefix)) then
     local merged = {}
     for _, l in ipairs(st.front_matter) do
       merged[#merged + 1] = l
@@ -274,7 +271,7 @@ function M.write(buf, path)
   end
 
   flights[buf] = { in_flight = false, dirty = false, pending_tick = nil, pending_lines = nil }
-  start_write(buf, path, tick, lines)
+  start_write(buf, path, tick, lines, spec.fmt)
 end
 
 ---@param a string

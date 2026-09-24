@@ -11,6 +11,7 @@ local function expect_truthy(cond)
 end
 
 local FIXTURE = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "smoke.ipynb")
+local JS_FIXTURE = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "smoke_js.ipynb")
 
 ---@return string path
 local function tmp_copy_fixture()
@@ -84,6 +85,23 @@ T["read"]["fails gracefully on a non-notebook file"] = function()
   expect_truthy(type(err) == "string" and #err > 0)
 end
 
+T["read"]["js:percent lines from a javascript notebook"] = function()
+  local lines, err = async_call(function(cb)
+    return convert.read(JS_FIXTURE, cb, { fmt = "js" })
+  end)
+  MiniTest.expect.equality(err, nil)
+  expect_truthy(type(lines) == "table" and #lines > 0)
+  MiniTest.expect.equality(lines[1], "// ---")
+  local has_cell_marker = false
+  for _, l in ipairs(lines) do
+    if l:match("^// %%") then
+      has_cell_marker = true
+      break
+    end
+  end
+  expect_truthy(has_cell_marker)
+end
+
 T["write"] = MiniTest.new_set()
 
 T["write"]["round-trips without changing the py:percent text"] = function()
@@ -153,6 +171,33 @@ T["write"]["new path: converts via stdout and writes atomically"] = function()
   local entries = vim.fn.readdir(dir)
   MiniTest.expect.equality(#entries, 1)
   MiniTest.expect.equality(entries[1], "fresh.ipynb")
+end
+
+T["write"]["js:percent round-trips a javascript notebook"] = function()
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  local path = vim.fs.joinpath(dir, "smoke_js.ipynb")
+  expect_truthy(vim.uv.fs_copyfile(JS_FIXTURE, path))
+
+  local lines = async_call(function(cb)
+    return convert.read(path, cb, { fmt = "js" })
+  end)
+  expect_truthy(type(lines) == "table")
+
+  local bytes, werr = async_call(function(cb)
+    return convert.write(path, lines, cb, { fmt = "js" })
+  end)
+  MiniTest.expect.equality(werr, nil)
+  expect_truthy(type(bytes) == "string" and #bytes > 0)
+
+  local reread = async_call(function(cb)
+    return convert.read(path, cb, { fmt = "js" })
+  end)
+  MiniTest.expect.equality(reread, lines)
+
+  local ok, nb = pcall(vim.json.decode, bytes)
+  expect_truthy(ok)
+  MiniTest.expect.equality(nb.metadata.kernelspec.language, "javascript")
 end
 
 T["version"] = MiniTest.new_set()

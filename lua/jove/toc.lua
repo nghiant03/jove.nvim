@@ -15,16 +15,18 @@ local function norm_buf(buf)
 end
 
 ---@param line string
+---@param comment string  comment leader of the buffer language ("#", "//", ...)
 ---@return string
-local function strip_comment(line)
-  if line:sub(1, 2) == "# " then
-    return line:sub(3)
-  end
-  if line == "#" then
+local function strip_comment(line, comment)
+  if line == comment then
     return ""
   end
-  if line:sub(1, 1) == "#" then
-    return line:sub(2)
+  if line:sub(1, #comment) == comment then
+    local rest = line:sub(#comment + 1)
+    if rest:sub(1, 1) == " " then
+      rest = rest:sub(2)
+    end
+    return rest
   end
   return line
 end
@@ -47,12 +49,13 @@ function M.headings(buf)
     out[#out + 1] = { level = 0, title = title, cell_idx = 0, lnum = 1 }
   end
 
+  local comment = require("jove.lang").for_buffer(buf).comment
   for idx, c in ipairs(cell.all(buf)) do
     if c.kind == "markdown" then
       local body_start = c.header and c.header + 1 or c.start_lnum
       local lines = vim.api.nvim_buf_get_lines(buf, body_start - 1, c.end_lnum, false)
       for _, raw in ipairs(lines) do
-        local text = strip_comment(raw)
+        local text = strip_comment(raw, comment)
         local hashes, heading = text:match("^(#+)%s+(.+)$")
         if hashes and heading then
           out[#out + 1] = {

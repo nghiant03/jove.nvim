@@ -100,6 +100,39 @@ T["parse"]["bare `# %%` is a header"] = function()
   release_buffer(buf)
 end
 
+T["parse"]["uses the buffer language's comment leader (// %% for javascript)"] = function()
+  local buf = make_buffer({ "// %% a", "const x = 1;", "// %% [markdown]", "// # hi" })
+  state.get(buf).lang = "javascript"
+  local cells = cell.all(buf)
+  MiniTest.expect.equality(#cells, 2)
+  MiniTest.expect.equality(cells[1].header, 1)
+  MiniTest.expect.equality(cells[1].kind, "code")
+  MiniTest.expect.equality(cells[2].header, 3)
+  MiniTest.expect.equality(cells[2].kind, "markdown")
+  release_buffer(buf)
+end
+
+T["parse"]["python markers are body lines in a javascript buffer"] = function()
+  local buf = make_buffer({ "// %% a", "# %%", "const x = 1;" })
+  state.get(buf).lang = "javascript"
+  local cells = cell.all(buf)
+  MiniTest.expect.equality(#cells, 1)
+  MiniTest.expect.equality(cells[1].end_lnum, 3)
+  release_buffer(buf)
+end
+
+T["parse"]["re-parses when the buffer language changes (cache keys on lang)"] = function()
+  local buf = make_buffer({ "// %% a", "const x = 1;" })
+  local py_cells = cell.all(buf)
+  MiniTest.expect.equality(#py_cells, 1)
+  MiniTest.expect.equality(py_cells[1].header, nil)
+  state.get(buf).lang = "javascript"
+  local js_cells = cell.all(buf)
+  MiniTest.expect.equality(#js_cells, 1)
+  MiniTest.expect.equality(js_cells[1].header, 1)
+  release_buffer(buf)
+end
+
 T["hash"] = MiniTest.new_set()
 
 T["hash"]["preserves significant whitespace within source lines"] = function()
