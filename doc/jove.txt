@@ -1,5 +1,5 @@
 *jove.txt*                       Native .ipynb editing for Neovim via jupytext
-                             For NVIM v0.8.0    Last change: 2026 September 24
+                             For NVIM v0.8.0    Last change: 2026 September 25
 
 ==============================================================================
 Table of Contents                                     *jove-table-of-contents*
@@ -63,11 +63,6 @@ LAZY.NVIM (RECOMMENDED) ~
       lazy = false,
       opts = {
         auto_kernel = true,
-        keymap = {
-          run_cell  = "<leader>x",
-          next_cell = "]h",
-          prev_cell = "[h",
-        },
       },
     }
 <
@@ -143,15 +138,6 @@ Full option list with defaults:
         border_hl = nil,            -- cell border highlight: an hl group name (string, linked) or attrs table (e.g. { fg = "#ff9e64" }); nil keeps the default Comment link
         window_mode = "vsplit",     -- how to open the sidebar and output viewer: "float", "vsplit", or "hsplit"
       },
-      keymap = {
-        run_cell = false,
-        run_and_advance = false,
-        run_selection = false,
-        next_cell = false,
-        prev_cell = false,
-        goto_running_cell = false,
-        toggle_follow_running = false,
-      },
       lsp = {
         auto_attach = false,        -- start the servers in `servers` on notebook open
         servers = {},               -- language id -> vim.lsp.config server names,
@@ -197,60 +183,64 @@ USAGE                                                   *jove-jove.nvim-usage*
 
 COMMANDS ~
 
+Everything lives under a single `:Jove` command with tab-completed subcommands
+(`:Jove <Tab>` lists them). The old flat `:JoveFoo` commands still work as
+deprecated aliases and will be removed in 0.5.0.
+
   -----------------------------------------------------------------------
   Command                             Action
   ----------------------------------- -----------------------------------
-  :JoveRunCell                        Run current notebook cell
+  :Jove run-cell                      Run current notebook cell
 
-  :JoveRunAbove                       Run all notebook cells above the
+  :Jove run-above                     Run all notebook cells above the
                                       cursor
 
-  :JoveRunAll                         Run all notebook cells
+  :Jove run-all                       Run all notebook cells
 
-  :JoveRunSelection                   Run the visual selection as one
+  :Jove run-selection                 Run the visual selection as one
                                       unit
 
-  :JoveRunCellAndAdvance              Run the current cell and jump to
+  :Jove run-cell-and-advance          Run the current cell and jump to
                                       the next
 
-  :JoveNextCell                       Jump to next notebook cell
+  :Jove next-cell                     Jump to next notebook cell
 
-  :JovePrevCell                       Jump to previous notebook cell
+  :Jove prev-cell                     Jump to previous notebook cell
 
-  :JoveGotoRunningCell                Jump to the currently executing
+  :Jove goto-running-cell             Jump to the currently executing
                                       cell
 
-  :JoveToggleFollowRunning            Toggle following the currently
+  :Jove toggle-follow-running         Toggle following the currently
                                       executing cell with the cursor
 
-  :JoveInitKernel                     Start a kernel for the current
+  :Jove init-kernel                   Start a kernel for the current
                                       notebook
 
-  :JoveSelectKernel                   Pick a kernelspec for the current
+  :Jove select-kernel                 Pick a kernelspec for the current
                                       notebook (replaces running kernel)
 
-  :JoveInterrupt                      Interrupt the running execution
+  :Jove interrupt                     Interrupt the running execution
 
-  :JoveRestartKernel                  Restart the current notebook kernel
+  :Jove restart-kernel                Restart the current notebook kernel
 
-  :JoveShutdownKernel                 Shut down the current notebook
+  :Jove shutdown-kernel               Shut down the current notebook
                                       kernel and bridge
 
-  :JoveToggleOutput                   Show/hide rendered outputs of the
+  :Jove toggle-output                 Show/hide rendered outputs of the
                                       current cell
 
-  :JoveOpenOutput                     Open the current cell’s outputs in
+  :Jove open-output                   Open the current cell’s outputs in
                                       a float
 
-  :JoveClearOutput                    Clear outputs of the current cell
+  :Jove clear-output                  Clear outputs of the current cell
 
-  :JoveClearOutputs                   Clear all rendered outputs in this
+  :Jove clear-outputs                 Clear all rendered outputs in this
                                       buffer
 
-  :JoveReload                         Reload the current notebook buffer
+  :Jove reload                        Reload the current notebook buffer
                                       from disk
 
-  :JoveSidebar                        Toggle the sidebar (variables,
+  :Jove sidebar                       Toggle the sidebar (variables,
                                       kernel info, table of contents)
   -----------------------------------------------------------------------
 
@@ -262,22 +252,48 @@ an `.ipynb`):
 - `ic` / `ac` cell text-objects (operator-pending and visual modes) — always
     on, no extra plugin needed.
 - `[c` / `]c` cell motions (normal mode) — on by default; disable with
-    `cell_motions = false`.
-- Everything under `keymap = {}` is opt-in; all bindings default to disabled.
+    `cell_motions = false`. Jove never clobbers your own bindings: the defaults
+    are skipped if you already mapped `[c`/`]c` or bound something to the
+    corresponding `<Plug>` mapping.
+- Jove defines no other keymaps by itself. Bind the buffer-local `<Plug>`
+    mappings to your own keys instead:
 
 >lua
-    opts = {
-      keymap = {
-        run_cell              = "<leader>x",  -- normal: run cell under cursor
-        run_and_advance       = "<leader>X",  -- normal: run cell, jump to next
-        run_selection         = "<leader>xx", -- visual: run selection as one unit
-        next_cell             = "]h",
-        prev_cell             = "[h",
-        goto_running_cell     = "<leader>j",  -- normal: jump to the running cell
-        toggle_follow_running = "<leader>J",  -- normal: cursor follows the running cell
-      },
-    }
+    vim.keymap.set("n", "<leader>x", "<Plug>(JoveRunCell)", { desc = "Run cell" })
+    vim.keymap.set("n", "<leader>X", "<Plug>(JoveRunCellAndAdvance)", { desc = "Run cell, advance" })
+    vim.keymap.set("x", "<leader>xx", "<Plug>(JoveRunSelection)", { desc = "Run selection" })
+    vim.keymap.set("n", "<leader>j", "<Plug>(JoveGotoRunningCell)", { desc = "Go to running cell" })
+    vim.keymap.set("n", "<leader>J", "<Plug>(JoveToggleFollowRunning)", { desc = "Follow running cell" })
 <
+
+Available `<Plug>` mappings (active on notebook buffers only):
+
+  -----------------------------------------------------------------------
+  Mapping                             Action
+  ----------------------------------- -----------------------------------
+  <Plug>(JoveRunCell)                 Run current notebook cell
+
+  <Plug>(JoveRunAbove)                Run all notebook cells above the
+                                      cursor
+
+  <Plug>(JoveRunAll)                  Run all notebook cells
+
+  <Plug>(JoveRunSelection)            Run the visual selection as one
+                                      unit (visual mode)
+
+  <Plug>(JoveRunCellAndAdvance)       Run the current cell and jump to
+                                      the next
+
+  <Plug>(JoveNextCell)                Jump to next notebook cell
+
+  <Plug>(JovePrevCell)                Jump to previous notebook cell
+
+  <Plug>(JoveGotoRunningCell)         Jump to the currently executing
+                                      cell
+
+  <Plug>(JoveToggleFollowRunning)     Toggle following the currently
+                                      executing cell
+  -----------------------------------------------------------------------
 
 Generated by panvimdoc <https://github.com/kdheepak/panvimdoc>
 
