@@ -241,10 +241,7 @@ T["setup"]["lsp: nested validation and merge"] = function()
   MiniTest.expect.equality(jove.config.lsp.servers.python, { "pyright" })
 end
 
-T["setup"]["called twice is safe (no duplicate FileType autocmds)"] = function()
-  -- The FileType autocmd for <Plug> mappings is registered once at plugin
-  -- load (plugin/jove.lua), not by setup(). nvim_get_autocmds returns one
-  -- record per pattern (python/julia/r/javascript/typescript).
+T["setup"]["called twice is safe"] = function()
   local before = vim.api.nvim_get_autocmds({ group = "jove_keymaps", event = "FileType" })
 
   jove.setup({})

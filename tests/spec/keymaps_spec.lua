@@ -190,7 +190,7 @@ T["plug_mappings"]["skips motion defaults when the user bound the <Plug> mapping
   MiniTest.expect.equality(buf_lhs(buf, "n", "[c") ~= nil, true)
 end
 
-T["plug_mappings"]["cell_motions = false disables the default motions"] = function()
+T["plug_mappings"]["cell_motions is false disables the default motions"] = function()
   require("jove").config.cell_motions = false
   local buf = attach_notebook_buffer(LINES)
   require("jove").config.cell_motions = true

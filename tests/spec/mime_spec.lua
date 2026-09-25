@@ -102,7 +102,7 @@ T["ordering"]["image/png|jpeg become image chunks with base64 data preserved"] =
   MiniTest.expect.equality(chunks[2], { kind = "image", mime = "image/jpeg", data = "/9j/4AAQ" })
 end
 
-T["ordering"]["image/svg+xml becomes a text note (no direct svg support)"] = function()
+T["ordering"]["image/svg+xml becomes a text note"] = function()
   local chunks = mime.render({ kind = "display_data", mime = { ["image/svg+xml"] = "<svg/>" } })
   MiniTest.expect.equality(#chunks, 1)
   MiniTest.expect.equality(chunks[1].kind, "note")
@@ -135,7 +135,7 @@ end
 
 T["error"] = MiniTest.new_set()
 
-T["error"]["ename: evalue chunk first, stripped traceback after, ErrorMsg hl"] = function()
+T["error"]["ename evalue chunk first, stripped traceback after, ErrorMsg hl"] = function()
   local chunks = mime.render({
     kind = "error",
     ename = "ValueError",

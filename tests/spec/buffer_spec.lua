@@ -127,7 +127,7 @@ T["read"]["edits after open remain undoable"] = function()
   close_notebook(buf)
 end
 
-T["read"]["new file: empty py:percent buffer, JSON deferred to write"] = function()
+T["read"]["empty py:percent buffer, JSON deferred to write in new file"] = function()
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
   local path = vim.fs.joinpath(dir, "new.ipynb")
@@ -253,7 +253,7 @@ T["write"]["saves edits as valid ipynb and records last_write"] = function()
   close_notebook(buf)
 end
 
-T["write"]["coalesces two rapid writes (single-flight)"] = function()
+T["write"]["coalesces two rapid writes"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
@@ -323,7 +323,7 @@ local function tmp_copy_js_fixture()
   return path
 end
 
-T["javascript"]["read: js:percent lines, javascript filetype, // front matter stripped"] = function()
+T["javascript"]["read js:percent lines, javascript filetype, with front matter stripped"] = function()
   local path = tmp_copy_js_fixture()
   vim.cmd("edit " .. vim.fn.fnameescape(path))
   local buf = vim.api.nvim_get_current_buf()
@@ -356,7 +356,7 @@ T["javascript"]["read: js:percent lines, javascript filetype, // front matter st
   close_notebook(buf)
 end
 
-T["javascript"]["write: edits land in the ipynb via js:percent, kernelspec preserved"] = function()
+T["javascript"]["edits land in the ipynb via js:percent, kernelspec preserved"] = function()
   local path = tmp_copy_js_fixture()
   vim.cmd("edit " .. vim.fn.fnameescape(path))
   local buf = vim.api.nvim_get_current_buf()

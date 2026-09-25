@@ -60,7 +60,7 @@ end
 
 T["to_nbformat"] = MiniTest.new_set()
 
-T["to_nbformat"]["stream: name + text from the mime bundle"] = function()
+T["to_nbformat"]["name and text from the mime bundle"] = function()
   local out = persist.to_nbformat({
     cell = "h",
     kind = "stream",
@@ -72,7 +72,7 @@ T["to_nbformat"]["stream: name + text from the mime bundle"] = function()
   MiniTest.expect.equality(out.text, "boom\n")
 end
 
-T["to_nbformat"]["execute_result: data passthrough + metadata"] = function()
+T["to_nbformat"]["data passthrough and metadata after execute"] = function()
   local out =
     persist.to_nbformat({ cell = "h", kind = "execute_result", mime = { ["text/plain"] = "49" } })
   MiniTest.expect.equality(out.output_type, "execute_result")
@@ -81,7 +81,7 @@ T["to_nbformat"]["execute_result: data passthrough + metadata"] = function()
   MiniTest.expect.equality(out.execution_count, vim.NIL)
 end
 
-T["to_nbformat"]["execute_result: bridge execution_count passthrough"] = function()
+T["to_nbformat"]["bridge execution_count passthrough after execute"] = function()
   local out = persist.to_nbformat({
     cell = "h",
     kind = "execute_result",
@@ -116,7 +116,7 @@ T["to_nbformat"]["display_data and error keep ANSI traceback raw"] = function()
   MiniTest.expect.equality(err.traceback, tb)
 end
 
-T["to_nbformat"]["unknown kind -> nil"] = function()
+T["to_nbformat"]["unknown kind to nil"] = function()
   MiniTest.expect.equality(persist.to_nbformat({ kind = "mystery" }) == nil, true)
   MiniTest.expect.equality(persist.to_nbformat({}) == nil, true)
 end
@@ -142,7 +142,7 @@ end
 
 T["to_raw"] = MiniTest.new_set()
 
-T["to_raw"]["stream: string text and line-list text both join to a string"] = function()
+T["to_raw"]["string text and line-list text both join to a string after execute"] = function()
   local a = persist.to_raw({ output_type = "stream", name = "stdout", text = "42\n" })
   MiniTest.expect.equality(a.kind, "stream")
   MiniTest.expect.equality(a.name, "stdout")
@@ -155,7 +155,7 @@ T["to_raw"]["stream: string text and line-list text both join to a string"] = fu
   MiniTest.expect.equality(c.mime["text/plain"], "one\ntwo")
 end
 
-T["to_raw"]["data bundles: list values normalized to strings for mime.render"] = function()
+T["to_raw"]["list values normalized to strings for mime.render in data bundles"] = function()
   local r = persist.to_raw({
     output_type = "execute_result",
     data = { ["text/plain"] = { "49\n" }, ["text/html"] = "<b>49</b>" },
@@ -165,7 +165,7 @@ T["to_raw"]["data bundles: list values normalized to strings for mime.render"] =
   MiniTest.expect.equality(r.mime["text/html"], "<b>49</b>")
 end
 
-T["to_raw"]["error: ename/evalue/traceback pass through raw"] = function()
+T["to_raw"]["ename/evalue/traceback pass through raw in error"] = function()
   local tb = { "\27[0;31merr\27[0m" }
   local r = persist.to_raw({ output_type = "error", ename = "E", evalue = "v", traceback = tb })
   MiniTest.expect.equality(r.kind, "error")
@@ -174,7 +174,7 @@ T["to_raw"]["error: ename/evalue/traceback pass through raw"] = function()
   MiniTest.expect.equality(r.traceback, tb)
 end
 
-T["to_raw"]["unknown type -> nil"] = function()
+T["to_raw"]["unknown type to nil"] = function()
   MiniTest.expect.equality(persist.to_raw({ output_type = "mystery" }) == nil, true)
   MiniTest.expect.equality(persist.to_raw({}) == nil, true)
 end
@@ -198,7 +198,7 @@ local NB = {
   },
 }
 
-T["merge_into"]["session outputs replace matched cells; unmatched keep preserved"] = function()
+T["merge_into"]["session outputs replace matched cells, unmatched keep preserved"] = function()
   local store = {
     [cell.hash_source(NB.cells[1].source)] = {
       raw = { { cell = "h", kind = "execute_result", mime = { ["text/plain"] = "session-1" } } },
@@ -226,7 +226,7 @@ T["merge_into"]["session outputs replace matched cells; unmatched keep preserved
   MiniTest.expect.equality(merged == 4, false)
 end
 
-T["merge_into"]["tombstone: seen-but-cleared hash writes empty outputs"] = function()
+T["merge_into"]["seen-but-cleared hash writes empty outputs"] = function()
   local nb = vim.deepcopy(NB)
   local seen_hashes = {
     [cell.hash_source(NB.cells[1].source)] = true,
@@ -273,7 +273,7 @@ T["merge_into"]["run meta count replaces null on cells and execute_result output
   MiniTest.expect.equality(nb.cells[2].execution_count == nil, true)
 end
 
-T["merge_into"]["meta-only cell: run count persists with no store/seen"] = function()
+T["merge_into"]["run count persists with no store/seen for meta only cell"] = function()
   local nb = vim.deepcopy(NB)
   local h1 = cell.hash_source(NB.cells[1].source)
   local meta = { [h1] = { count = 4 } }
@@ -284,7 +284,7 @@ T["merge_into"]["meta-only cell: run count persists with no store/seen"] = funct
   MiniTest.expect.equality(nb.cells[2].execution_count == nil, true)
 end
 
-T["merge_into"]["persist_counts=false: cell and execute_result outputs have null execution_count"] = function()
+T["merge_into"]["cell and execute_result outputs have null execution_count when persists_exec_count is false"] = function()
   local nb = vim.deepcopy(NB)
   local h1 = cell.hash_source(NB.cells[1].source)
   local store = {
@@ -306,7 +306,7 @@ T["merge_into"]["persist_counts=false: cell and execute_result outputs have null
   MiniTest.expect.equality(nb.cells[1].outputs[1].execution_count, vim.NIL)
 end
 
-T["merge_into"]["empty store / malformed notebook -> 0, untouched"] = function()
+T["merge_into"]["empty store or malformed notebook then untouched"] = function()
   local nb = vim.deepcopy(NB)
   MiniTest.expect.equality(persist.merge_into(nb, {}), 0)
   MiniTest.expect.equality(persist.merge_into(nb, nil), 0)
@@ -317,7 +317,7 @@ end
 
 T["export"] = MiniTest.new_set()
 
-T["export"]["merges, temp+renames, refreshes json + checksum"] = function()
+T["export"]["complete export pipeline"] = function()
   local path = tmp_copy_fixture()
   local bytes = read_disk(path)
   local nb = vim.json.decode(bytes)
@@ -398,7 +398,7 @@ T["export"]["persists session exec counts from exec.meta"] = function()
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["export"]["persist_exec_counts=false: result output count is null on disk"] = function()
+T["export"]["result output count is null on disk"] = function()
   local path = tmp_copy_fixture()
   local bytes = read_disk(path)
   local nb = vim.json.decode(bytes)

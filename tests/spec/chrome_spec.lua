@@ -165,7 +165,7 @@ end
 
 T["conceal"] = MiniTest.new_set()
 
-T["conceal"]["conceals every cell header (front matter is stripped upstream)"] = function()
+T["conceal"]["conceals every cell header"] = function()
   local buf = make_buffer({
     "# ---",
     "title: x",
@@ -183,14 +183,14 @@ T["conceal"]["conceals every cell header (front matter is stripped upstream)"] =
   release_buffer(buf)
 end
 
-T["conceal"]["no front matter => only header replacement rules"] = function()
+T["conceal"]["no front matter then only header replacement rules"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
   chrome.refresh(buf)
   MiniTest.expect.equality(overlay_rule_count(buf), 2)
   release_buffer(buf)
 end
 
-T["conceal"]["conceal_headers = false disables header replacement"] = function()
+T["conceal"]["conceal_headers is false disables header replacement"] = function()
   local cfg = require("jove").config
   local saved = cfg.ui
   cfg.ui = { conceal_headers = false }
@@ -227,7 +227,7 @@ T["rules"]["renders count/elapsed/status from exec.meta and status"] = function(
   release_buffer(buf)
 end
 
-T["rules"]["exec_counts/elapsed = false omit those chunks"] = function()
+T["rules"]["exec_counts/elapsed equals false omit those chunks"] = function()
   local cfg = require("jove").config
   local saved = cfg.ui
   cfg.ui = { exec_counts = false, elapsed = false }
@@ -284,7 +284,7 @@ T["active_cell"]["CursorMoved autocmd updates the highlight"] = function()
   release_buffer(buf)
 end
 
-T["active_cell"]["active_cell = false draws no highlight"] = function()
+T["active_cell"]["active_cell is false draws no highlight"] = function()
   local cfg = require("jove").config
   local saved = cfg.ui
   cfg.ui = { active_cell = false }
@@ -341,7 +341,7 @@ T["borders"]["bottom border drawn below cell end"] = function()
   release_buffer(buf)
 end
 
-T["borders"]["borders = false disables the bottom border but keeps the top"] = function()
+T["borders"]["borders is false disables the bottom border but keeps the top"] = function()
   local cfg = require("jove").config
   local saved = cfg.ui
   cfg.ui = { borders = false }
@@ -363,9 +363,6 @@ end
 T["border_hl"] = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      -- JoveCellBorder is a module-level global; restore its documented
-      -- default before each subcase so attrs leaking from a previous test
-      -- cannot be mistaken for a passed assertion.
       vim.api.nvim_set_hl(0, "JoveCellBorder", { link = "Comment", default = false })
     end,
     post_case = function()
@@ -381,8 +378,6 @@ T["border_hl"]["string value links JoveCellBorder to the named group"] = functio
   cfg.ui = { border_hl = "MyBorder" }
   local buf = make_buffer({ "# %% a", "x1" })
   chrome.refresh(buf)
-  -- The rendered rule still addresses JoveCellBorder (not MyBorder), but the
-  -- group now resolves MyBorder through the link.
   local found = false
   for _, m in ipairs(marks(buf)) do
     for _, chunk in ipairs(rule_chunks(m[4]) or {}) do
@@ -411,8 +406,6 @@ T["border_hl"]["table value passes attrs straight to nvim_set_hl"] = function()
 end
 
 T["border_hl"]["nil leaves JoveCellBorder at the default Comment link"] = function()
-  -- pre_case already reset to the link form; emulate "the user never set
-  -- border_hl" with cfg.ui empty.
   local cfg = require("jove").config
   local saved = cfg.ui
   cfg.ui = {}

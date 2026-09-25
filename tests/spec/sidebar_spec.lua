@@ -191,7 +191,7 @@ end
 
 T["actions"] = MiniTest.new_set()
 
-T["actions"]["<CR> on the TOC tab jumps to the heading in the notebook window"] = function()
+T["actions"]["enter on the TOC tab jumps to the heading in the notebook window"] = function()
   local buf = make_buffer({
     "# %% [markdown]",
     "# # Title A",
@@ -209,7 +209,7 @@ T["actions"]["<CR> on the TOC tab jumps to the heading in the notebook window"] 
   sidebar.close(buf)
 end
 
-T["actions"]["<CR> on the variables tab inspects the variable"] = function()
+T["actions"]["enter on the variables tab inspects the variable"] = function()
   local buf = make_buffer({ "# %%", "x = 1" })
   local inspected
   local real_inspect = vars.inspect_var

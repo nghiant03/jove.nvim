@@ -97,7 +97,7 @@ T["pick"]["lists indented headings and jumps to the chosen cell"] = function()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 5)
 end
 
-T["pick"]["notifies (no picker) when the notebook has no headings"] = function()
+T["pick"]["notifies when the notebook has no headings"] = function()
   local buf = make_buffer({ "# %% code", "x = 1" })
   local real_select, real_notify = vim.ui.select, vim.notify
   local called, note = false, nil

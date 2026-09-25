@@ -118,7 +118,7 @@ T["write"]["round-trips without changing the py:percent text"] = function()
   MiniTest.expect.equality(reread, lines)
 end
 
-T["write"]["existing path: jupytext writes the file, Lua only reads it back"] = function()
+T["write"]["jupytext writes the file, Lua only reads it back"] = function()
   local path = tmp_copy_fixture()
   local lines = async_call(function(cb)
     return convert.read(path, cb)
@@ -139,7 +139,7 @@ T["write"]["existing path: jupytext writes the file, Lua only reads it back"] = 
   MiniTest.expect.equality(#nb.cells, 3)
 end
 
-T["write"]["new path: converts via stdout and writes atomically"] = function()
+T["write"]["converts via stdout and writes atomically"] = function()
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
   local path = vim.fs.joinpath(dir, "fresh.ipynb")

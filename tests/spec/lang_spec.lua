@@ -24,7 +24,7 @@ end
 
 T["get"] = MiniTest.new_set()
 
-T["get"]["returns the default (python) for nil"] = function()
+T["get"]["returns the default for nil"] = function()
   MiniTest.expect.equality(lang.get(nil).id, "python")
 end
 

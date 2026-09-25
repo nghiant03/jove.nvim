@@ -96,7 +96,7 @@ end
 
 T["queue"] = MiniTest.new_set()
 
-T["queue"]["runs serially: next request only after previous reply"] = function()
+T["queue"]["next request only after previous reply"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
@@ -118,7 +118,7 @@ T["queue"]["runs serially: next request only after previous reply"] = function()
   MiniTest.expect.equality(execute.queue_len(buf), 0)
 end
 
-T["queue"]["sends the cell BODY (header excluded), keyed by content hash"] = function()
+T["queue"]["sends the cell body, keyed by content hash"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
@@ -133,7 +133,7 @@ T["queue"]["sends the cell BODY (header excluded), keyed by content hash"] = fun
   MiniTest.expect.equality(req.opts.timeout_ms, false)
 end
 
-T["queue"]["no kernel: notifies and drops the queue"] = function()
+T["queue"]["notifies and drops the queue when no kernel"] = function()
   local buf = make_buffer(LINES)
   execute.run_all(buf)
   MiniTest.expect.equality(execute.queue_len(buf), 0)
@@ -163,7 +163,7 @@ T["queue"]["kernel gone mid-queue: remaining items dropped as error"] = function
   MiniTest.expect.equality(execute.status(buf, h3), "error")
 end
 
-T["queue"]["no-kernel enqueue: already-queued items dropped as error"] = function()
+T["queue"]["already-queued items dropped as error when no kernel enqueued"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
@@ -193,7 +193,7 @@ end
 
 T["status"] = MiniTest.new_set()
 
-T["status"]["queued -> running -> ok, per hash"] = function()
+T["status"]["cell status test"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
@@ -284,7 +284,7 @@ end
 
 T["meta"] = MiniTest.new_set()
 
-T["meta"]["response count + elapsed recorded per hash"] = function()
+T["meta"]["response count and elapsed recorded per hash"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
@@ -414,7 +414,7 @@ T["batch"]["run_above enqueues code cells up to and including the cursor"] = fun
   br2:reply({ status = "ok" })
 end
 
-T["batch"]["one cell.all pass per batch (cached parse)"] = function()
+T["batch"]["one cell.all pass per batch"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)

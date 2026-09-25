@@ -518,7 +518,7 @@ T["priority"]["outside output uses highlight priority 200"] = function()
   release_buffer(buf)
 end
 
-T["priority"]["inside_border = true restores the default extmark priority"] = function()
+T["priority"]["inside_border is true restores the default extmark priority"] = function()
   local orig = jove.config.output.inside_border
   jove.config.output.inside_border = true
   local buf = make_buffer({ "# %% a", "print(1)" })
@@ -531,7 +531,7 @@ end
 
 T["decoration"] = MiniTest.new_set()
 
-T["decoration"]["header = false omits the rule and keeps content only"] = function()
+T["decoration"]["header is false omits the rule and keeps content only"] = function()
   local orig = jove.config.output.header
   jove.config.output.header = false
   local buf = make_buffer({ "# %% a", "print(1)" })
@@ -542,7 +542,7 @@ T["decoration"]["header = false omits the rule and keeps content only"] = functi
   release_buffer(buf)
 end
 
-T["decoration"]["guide = false omits the inner padding rail"] = function()
+T["decoration"]["guide is false omits the inner padding rail"] = function()
   local orig = jove.config.output.guide
   jove.config.output.guide = false
   local buf = make_buffer({ "# %% a", "print(1)" })
@@ -837,7 +837,7 @@ T["open_float"]["opens a vertical split by default"] = function()
   release_buffer(buf)
 end
 
-T["open_float"]["honors ui.window_mode = float"] = function()
+T["open_float"]["honors ui.window_mode is float"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   output.push(buf, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "x" } })
   local saved = jove.config.ui.window_mode
@@ -850,7 +850,7 @@ T["open_float"]["honors ui.window_mode = float"] = function()
   release_buffer(buf)
 end
 
-T["open_float"]["honors ui.window_mode = hsplit"] = function()
+T["open_float"]["honors ui.window_mode is hsplit"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   output.push(buf, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "x" } })
   local saved = jove.config.ui.window_mode

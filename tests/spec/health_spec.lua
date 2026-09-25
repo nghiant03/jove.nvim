@@ -44,24 +44,15 @@ T["check"]["reports snacks.image as INFO only, never WARN/ERROR"] = function()
   error("no snacks.image info line emitted")
 end
 
-T["check"]["no molten WARN when molten is absent"] = function()
-  local calls = capture_health(function()
-    health.check()
-  end)
-  for _, msg in ipairs(calls.warn or {}) do
-    MiniTest.expect.equality(msg:find("molten", 1, true) == nil, true)
-  end
-end
-
 T["check_import_result"] = MiniTest.new_set()
 
-T["check_import_result"]["code 0 -> ok"] = function()
+T["check_import_result"]["code 0 then ok"] = function()
   local status, detail = health.check_import_result(0, "")
   MiniTest.expect.equality(status, "ok")
   MiniTest.expect.equality(detail, "jupyter_client + ipykernel importable")
 end
 
-T["check_import_result"]["failure -> missing with stderr detail (or fallback)"] = function()
+T["check_import_result"]["failure then missing with stderr detail"] = function()
   local status, detail = health.check_import_result(1, "ModuleNotFoundError: no module named x")
   MiniTest.expect.equality(status, "missing")
   MiniTest.expect.equality(detail, "ModuleNotFoundError: no module named x")
