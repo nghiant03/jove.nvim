@@ -43,88 +43,47 @@ vim.api.nvim_create_autocmd({ "FileChangedShell" }, {
       return
     end
     vim.notify(
-      ("[jove] %s changed on disk; reload with :JoveReload to pick up changes."):format(ev.match),
+      ("[jove] %s changed on disk; reload with :Jove reload to pick up changes."):format(ev.match),
       vim.log.levels.WARN
     )
   end,
 })
 
-vim.api.nvim_create_user_command("JoveRunCell", function()
-  require("jove.keymaps").run_cell()
-end, { desc = "Run current notebook cell" })
+vim.api.nvim_create_user_command("Jove", function(opts)
+  require("jove.commands").dispatch(opts)
+end, {
+  nargs = "+",
+  desc = "Jove notebook commands: :Jove <subcommand>",
+  complete = function(arg_lead, cmdline)
+    return require("jove.commands").complete(arg_lead, cmdline)
+  end,
+})
 
-vim.api.nvim_create_user_command("JoveRunAbove", function()
-  require("jove.keymaps").run_above()
-end, { desc = "Run all notebook cells above the cursor" })
-
-vim.api.nvim_create_user_command("JoveRunAll", function()
-  require("jove.keymaps").run_all()
-end, { desc = "Run all notebook cells" })
-
-vim.api.nvim_create_user_command("JoveNextCell", function()
-  require("jove.keymaps").next_cell()
-end, { desc = "Jump to next notebook cell" })
-
-vim.api.nvim_create_user_command("JovePrevCell", function()
-  require("jove.keymaps").prev_cell()
-end, { desc = "Jump to previous notebook cell" })
-
-vim.api.nvim_create_user_command("JoveGotoRunningCell", function()
-  require("jove.keymaps").goto_running_cell()
-end, { desc = "Jump to the currently executing cell" })
-
-vim.api.nvim_create_user_command("JoveToggleFollowRunning", function()
-  require("jove.keymaps").toggle_follow_running()
-end, { desc = "Toggle following the currently executing cell with the cursor" })
-
-vim.api.nvim_create_user_command("JoveInitKernel", function()
-  require("jove.kernel").init(0)
-end, { desc = "Start a kernel for the current notebook" })
-
-vim.api.nvim_create_user_command("JoveSelectKernel", function()
-  require("jove.kernel").select(0)
-end, { desc = "Pick a kernelspec for the current notebook (replaces running kernel)" })
-
-vim.api.nvim_create_user_command("JoveInterrupt", function()
-  require("jove.execute").interrupt(0)
-end, { desc = "Interrupt the running execution" })
-
-vim.api.nvim_create_user_command("JoveRestartKernel", function()
-  require("jove.kernel").restart(0)
-end, { desc = "Restart the current notebook kernel" })
-
-vim.api.nvim_create_user_command("JoveShutdownKernel", function()
-  require("jove.kernel").shutdown(0)
-end, { desc = "Shut down the current notebook kernel and bridge" })
-
-vim.api.nvim_create_user_command("JoveRunSelection", function()
-  require("jove.execute").run_selection(0)
-end, { desc = "Run the visual selection as one unit" })
-
-vim.api.nvim_create_user_command("JoveRunCellAndAdvance", function()
-  require("jove.execute").run_cell_and_advance(0)
-end, { desc = "Run the current cell and jump to the next" })
-
-vim.api.nvim_create_user_command("JoveToggleOutput", function()
-  require("jove.output").toggle(0)
-end, { desc = "Show/hide rendered outputs of the current cell" })
-
-vim.api.nvim_create_user_command("JoveOpenOutput", function()
-  require("jove.output").open_float(0)
-end, { desc = "Open the current cell's outputs in a float" })
-
-vim.api.nvim_create_user_command("JoveClearOutput", function()
-  require("jove.output").clear_at_cursor(0)
-end, { desc = "Clear outputs of the current cell" })
-
-vim.api.nvim_create_user_command("JoveClearOutputs", function()
-  require("jove.output").clear(0)
-end, { desc = "Clear all rendered outputs in this buffer" })
-
-vim.api.nvim_create_user_command("JoveReload", function()
-  require("jove.buffer").reload(0)
-end, { desc = "Reload the current notebook buffer from disk" })
-
-vim.api.nvim_create_user_command("JoveSidebar", function()
-  require("jove.ui.sidebar").toggle(0)
-end, { desc = "Toggle the sidebar (variables, kernel info, table of contents)" })
+local legacy = {
+  JoveClearOutput = "clear-output",
+  JoveClearOutputs = "clear-outputs",
+  JoveGotoRunningCell = "goto-running-cell",
+  JoveInitKernel = "init-kernel",
+  JoveInterrupt = "interrupt",
+  JoveNextCell = "next-cell",
+  JoveOpenOutput = "open-output",
+  JovePrevCell = "prev-cell",
+  JoveReload = "reload",
+  JoveRestartKernel = "restart-kernel",
+  JoveRunAbove = "run-above",
+  JoveRunAll = "run-all",
+  JoveRunCell = "run-cell",
+  JoveRunCellAndAdvance = "run-cell-and-advance",
+  JoveRunSelection = "run-selection",
+  JoveSelectKernel = "select-kernel",
+  JoveShutdownKernel = "shutdown-kernel",
+  JoveSidebar = "sidebar",
+  JoveToggleFollowRunning = "toggle-follow-running",
+  JoveToggleOutput = "toggle-output",
+}
+for old, sub in pairs(legacy) do
+  vim.api.nvim_create_user_command(old, function()
+    vim.deprecate(":" .. old, ":Jove " .. sub, "0.5.0", "jove.nvim")
+    require("jove.commands").dispatch({ fargs = { sub } })
+  end, { desc = ("Deprecated, use :Jove %s"):format(sub) })
+end

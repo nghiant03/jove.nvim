@@ -17,7 +17,7 @@ vim.api.nvim_set_hl(0, "JoveOutputGuide", { link = "Comment", default = true })
 vim.api.nvim_set_hl(0, "JoveOutputGuideError", { link = "DiagnosticError", default = true })
 vim.api.nvim_set_hl(0, "JoveOutput", { default = true })
 
-local OPEN_CMD = ":JoveOpenOutput"
+local OPEN_CMD = ":Jove open-output"
 
 ---@param fn fun()
 local function safe(fn)

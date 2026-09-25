@@ -11,7 +11,7 @@ M._output = function()
   return ok and m or nil
 end
 
-local NO_KERNEL_MSG = "No kernel — run :JoveInitKernel"
+local NO_KERNEL_MSG = "No kernel detected! Run :Jove init-kernel"
 
 ---@param buf integer
 ---@return integer

@@ -315,7 +315,7 @@ function M.changed_shell(buf, path)
   if cfg.auto_reload then
     if vim.bo[buf].modified then
       vim.notify(
-        ("[jove] %s changed on disk; buffer has unsaved changes — :JoveReload to discard them"):format(
+        ("[jove] %s changed on disk; buffer has unsaved changes — :Jove reload to discard them"):format(
           path
         ),
         vim.log.levels.WARN

@@ -184,28 +184,32 @@ opts = {
 
 ### Commands
 
+Everything lives under a single `:Jove` command with tab-completed
+subcommands (`:Jove <Tab>` lists them). The old flat `:JoveFoo` commands
+still work as deprecated aliases and will be removed in 0.5.0.
+
 | Command | Action |
 |---|---|
-| `:JoveRunCell` | Run current notebook cell |
-| `:JoveRunAbove` | Run all notebook cells above the cursor |
-| `:JoveRunAll` | Run all notebook cells |
-| `:JoveRunSelection` | Run the visual selection as one unit |
-| `:JoveRunCellAndAdvance` | Run the current cell and jump to the next |
-| `:JoveNextCell` | Jump to next notebook cell |
-| `:JovePrevCell` | Jump to previous notebook cell |
-| `:JoveGotoRunningCell` | Jump to the currently executing cell |
-| `:JoveToggleFollowRunning` | Toggle following the currently executing cell with the cursor |
-| `:JoveInitKernel` | Start a kernel for the current notebook |
-| `:JoveSelectKernel` | Pick a kernelspec for the current notebook (replaces running kernel) |
-| `:JoveInterrupt` | Interrupt the running execution |
-| `:JoveRestartKernel` | Restart the current notebook kernel |
-| `:JoveShutdownKernel` | Shut down the current notebook kernel and bridge |
-| `:JoveToggleOutput` | Show/hide rendered outputs of the current cell |
-| `:JoveOpenOutput` | Open the current cell's outputs in a float |
-| `:JoveClearOutput` | Clear outputs of the current cell |
-| `:JoveClearOutputs` | Clear all rendered outputs in this buffer |
-| `:JoveReload` | Reload the current notebook buffer from disk |
-| `:JoveSidebar` | Toggle the sidebar (variables, kernel info, table of contents) |
+| `:Jove run-cell` | Run current notebook cell |
+| `:Jove run-above` | Run all notebook cells above the cursor |
+| `:Jove run-all` | Run all notebook cells |
+| `:Jove run-selection` | Run the visual selection as one unit |
+| `:Jove run-cell-and-advance` | Run the current cell and jump to the next |
+| `:Jove next-cell` | Jump to next notebook cell |
+| `:Jove prev-cell` | Jump to previous notebook cell |
+| `:Jove goto-running-cell` | Jump to the currently executing cell |
+| `:Jove toggle-follow-running` | Toggle following the currently executing cell with the cursor |
+| `:Jove init-kernel` | Start a kernel for the current notebook |
+| `:Jove select-kernel` | Pick a kernelspec for the current notebook (replaces running kernel) |
+| `:Jove interrupt` | Interrupt the running execution |
+| `:Jove restart-kernel` | Restart the current notebook kernel |
+| `:Jove shutdown-kernel` | Shut down the current notebook kernel and bridge |
+| `:Jove toggle-output` | Show/hide rendered outputs of the current cell |
+| `:Jove open-output` | Open the current cell's outputs in a float |
+| `:Jove clear-output` | Clear outputs of the current cell |
+| `:Jove clear-outputs` | Clear all rendered outputs in this buffer |
+| `:Jove reload` | Reload the current notebook buffer from disk |
+| `:Jove sidebar` | Toggle the sidebar (variables, kernel info, table of contents) |
 
 ### Keymaps and motions
 
