@@ -719,9 +719,9 @@ T["import"]["ignores unknown hashes and non-jove buffers without erroring"] = fu
   release_buffer(orphan)
 end
 
-T["buf = 0 (current buffer)"] = MiniTest.new_set()
+T["buf_0"] = MiniTest.new_set()
 
-T["buf = 0 (current buffer)"]["toggle(0, lnum) toggles the current buffer's cell"] = function()
+T["buf_0"]["toggle(0, lnum) toggles the current buffer's cell"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   local hash = cell_hash(buf)
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "hello" } })
@@ -738,7 +738,7 @@ T["buf = 0 (current buffer)"]["toggle(0, lnum) toggles the current buffer's cell
   release_buffer(buf)
 end
 
-T["buf = 0 (current buffer)"]["clear(0, hash) and clear(0) clear the current buffer"] = function()
+T["buf_0"]["clear(0, hash) and clear(0) clear the current buffer"] = function()
   local buf = make_buffer({ "# %% a", "x", "# %% b", "y" })
   local h1, h2 = cell.all(buf)[1].hash, cell.all(buf)[2].hash
   output.push(buf, h1, { kind = "stream", mime = { ["text/plain"] = "a" } })
@@ -757,7 +757,7 @@ T["buf = 0 (current buffer)"]["clear(0, hash) and clear(0) clear the current buf
   release_buffer(buf)
 end
 
-T["buf = 0 (current buffer)"]["push(0, ...) attaches to the current buffer"] = function()
+T["buf_0"]["push(0, ...) attaches to the current buffer"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   vim.api.nvim_set_current_buf(buf)
   output.push(0, cell_hash(buf), { kind = "stream", mime = { ["text/plain"] = "hello" } })

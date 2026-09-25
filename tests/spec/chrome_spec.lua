@@ -4,7 +4,9 @@ local state = require("jove.state")
 
 local T = MiniTest.new_set()
 
-T["code bottom border stays between source and output on screen"] = function()
+T["borders"] = MiniTest.new_set()
+
+T["borders"]["bottom border stays between source and output on screen"] = function()
   local child = MiniTest.new_child_neovim()
   child.start({ "-u", "scripts/minimal_init.lua" })
   local ok, err = pcall(function()
@@ -250,9 +252,9 @@ T["rules"]["no kernel state does not crash and renders a blank-count rule"] = fu
   release_buffer(buf)
 end
 
-T["active cell"] = MiniTest.new_set()
+T["active_cell"] = MiniTest.new_set()
 
-T["active cell"]["highlights the body of the cell under the cursor"] = function()
+T["active_cell"]["highlights the body of the cell under the cursor"] = function()
   local buf = make_buffer({ "# %% a", "x1", "x2", "# %% b", "y1" })
   chrome.refresh(buf)
   vim.api.nvim_win_set_cursor(0, { 2, 0 }) -- inside cell a body
@@ -264,7 +266,7 @@ T["active cell"]["highlights the body of the cell under the cursor"] = function(
   release_buffer(buf)
 end
 
-T["active cell"]["CursorMoved autocmd updates the highlight"] = function()
+T["active_cell"]["CursorMoved autocmd updates the highlight"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1", "y2" })
   chrome.attach(buf)
   vim.api.nvim_win_set_cursor(0, { 2, 0 }) -- cell a body (line 2)
@@ -282,7 +284,7 @@ T["active cell"]["CursorMoved autocmd updates the highlight"] = function()
   release_buffer(buf)
 end
 
-T["active cell"]["active_cell = false draws no highlight"] = function()
+T["active_cell"]["active_cell = false draws no highlight"] = function()
   local cfg = require("jove").config
   local saved = cfg.ui
   cfg.ui = { active_cell = false }
@@ -305,8 +307,6 @@ T["detach"]["clears all chrome extmarks"] = function()
   MiniTest.expect.equality(#marks(buf), 0)
   release_buffer(buf)
 end
-
-T["borders"] = MiniTest.new_set()
 
 T["borders"]["top rule uses box corners and cell index"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })

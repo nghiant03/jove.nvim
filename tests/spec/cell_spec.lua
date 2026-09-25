@@ -198,9 +198,9 @@ T["at"]["returns nil outside the buffer"] = function()
   release_buffer(buf)
 end
 
-T["next/prev"] = MiniTest.new_set()
+T["next_prev"] = MiniTest.new_set()
 
-T["next/prev"]["walks the header lnums"] = function()
+T["next_prev"]["walks the header lnums"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1", "# %% c", "z1" })
   MiniTest.expect.equality(cell.next(buf, 0), 1)
   MiniTest.expect.equality(cell.next(buf, 1), 3)
@@ -215,7 +215,7 @@ T["next/prev"]["walks the header lnums"] = function()
   release_buffer(buf)
 end
 
-T["next/prev"]["skips the synthetic pre-header cell"] = function()
+T["next_prev"]["skips the synthetic pre-header cell"] = function()
   local buf = make_buffer({ "import os", "# %% a", "x1" })
   MiniTest.expect.equality(cell.next(buf, 1), 2)
   MiniTest.expect.equality(cell.next(buf, 2), nil)
@@ -223,7 +223,7 @@ T["next/prev"]["skips the synthetic pre-header cell"] = function()
   release_buffer(buf)
 end
 
-T["next/prev"]["next is nil at the bottom, prev nil at the top"] = function()
+T["next_prev"]["next is nil at the bottom, prev nil at the top"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1" })
   expect_truthy(cell.next(buf, 3) == nil)
   expect_truthy(cell.next(buf, 4) == nil)

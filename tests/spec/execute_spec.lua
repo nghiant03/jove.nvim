@@ -335,9 +335,9 @@ T["meta"]["unknown count stays nil; elapsed still recorded (json shape)"] = func
   expect_truthy(encoded:find('"count"', 1, true) == nil)
 end
 
-T["output seam"] = MiniTest.new_set()
+T["output_seam"] = MiniTest.new_set()
 
-T["output seam"]["clear on running, push on output event"] = function()
+T["output_seam"]["clear on running, push on output event"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
@@ -372,7 +372,7 @@ T["output seam"]["clear on running, push on output event"] = function()
   br:reply({ status = "ok" })
 end
 
-T["output seam"]["absent module never breaks the queue"] = function()
+T["output_seam"]["absent module never breaks the queue"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
@@ -517,7 +517,7 @@ T["signs"]["queued/running/ok swap in place, ok persists until rerun"] = functio
   br:reply({ status = "ok" })
 end
 
-T["output seam"]["late events cannot cross rerun or reload boundaries"] = function()
+T["output_seam"]["late events cannot cross rerun or reload boundaries"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)

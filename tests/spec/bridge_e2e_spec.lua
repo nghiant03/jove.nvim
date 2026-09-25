@@ -23,7 +23,7 @@ T["sidecar"] = MiniTest.new_set({
   },
 })
 
-T["sidecar"]["ready -> kernelspecs -> start_kernel -> execute -> stop"] = function()
+T["sidecar"]["complete kernel lifecycle"] = function()
   local b = bridge_mod.new()
 
   local ready_params

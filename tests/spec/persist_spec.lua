@@ -315,9 +315,9 @@ T["merge_into"]["empty store / malformed notebook -> 0, untouched"] = function()
   MiniTest.expect.equality(persist.merge_into(nil, nil), 0)
 end
 
-T["export (atomic write)"] = MiniTest.new_set()
+T["export"] = MiniTest.new_set()
 
-T["export (atomic write)"]["merges, temp+renames, refreshes json + checksum"] = function()
+T["export"]["merges, temp+renames, refreshes json + checksum"] = function()
   local path = tmp_copy_fixture()
   local bytes = read_disk(path)
   local nb = vim.json.decode(bytes)
@@ -371,7 +371,7 @@ T["export (atomic write)"]["merges, temp+renames, refreshes json + checksum"] = 
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["export (atomic write)"]["persists session exec counts from exec.meta"] = function()
+T["export"]["persists session exec counts from exec.meta"] = function()
   local path = tmp_copy_fixture()
   local bytes = read_disk(path)
   local nb = vim.json.decode(bytes)
@@ -398,7 +398,7 @@ T["export (atomic write)"]["persists session exec counts from exec.meta"] = func
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["export (atomic write)"]["persist_exec_counts=false: result output count is null on disk"] = function()
+T["export"]["persist_exec_counts=false: result output count is null on disk"] = function()
   local path = tmp_copy_fixture()
   local bytes = read_disk(path)
   local nb = vim.json.decode(bytes)
@@ -438,7 +438,7 @@ T["export (atomic write)"]["persist_exec_counts=false: result output count is nu
   end
 end
 
-T["export (atomic write)"]["meta-only cell count triggers save"] = function()
+T["export"]["meta-only cell count triggers save"] = function()
   local path = tmp_copy_fixture()
   local bytes = read_disk(path)
   local nb = vim.json.decode(bytes)
@@ -469,7 +469,7 @@ T["export (atomic write)"]["meta-only cell count triggers save"] = function()
   end
 end
 
-T["export (atomic write)"]["copy-before-merge: failed encode leaves st.json untouched"] = function()
+T["export"]["copy-before-merge: failed encode leaves st.json untouched"] = function()
   local path = tmp_copy_fixture()
   local original = read_disk(path)
   local buf = vim.api.nvim_create_buf(false, true)
@@ -493,7 +493,7 @@ T["export (atomic write)"]["copy-before-merge: failed encode leaves st.json unto
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["export (atomic write)"]["non-jove buffer: silent no-op"] = function()
+T["export"]["non-jove buffer: silent no-op"] = function()
   local scratch = vim.api.nvim_create_buf(false, true)
   MiniTest.expect.equality(persist.export(scratch, nil), false)
   vim.api.nvim_buf_delete(scratch, { force = true })
@@ -575,9 +575,9 @@ local function wait_disk_cond(buf, path, cond)
   expect_truthy(settled)
 end
 
-T["end-to-end"] = MiniTest.new_set()
+T["end_to_end"] = MiniTest.new_set()
 
-T["end-to-end"]["read -> edit -> write -> reload: outputs survive"] = function()
+T["end_to_end"]["read -> edit -> write -> reload: outputs survive"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local st = state.get(buf)
@@ -652,7 +652,7 @@ T["end-to-end"]["read -> edit -> write -> reload: outputs survive"] = function()
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end"]["deletion persists after clear then write"] = function()
+T["end_to_end"]["deletion persists after clear then write"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local st = state.get(buf)
@@ -682,7 +682,7 @@ T["end-to-end"]["deletion persists after clear then write"] = function()
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end"]["tombstoned later after session persists and cleared"] = function()
+T["end_to_end"]["tombstoned later after session persists and cleared"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local st = state.get(buf)
@@ -715,7 +715,7 @@ T["end-to-end"]["tombstoned later after session persists and cleared"] = functio
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end"]["second save after no content is noop"] = function()
+T["end_to_end"]["second save after no content is noop"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local hashes = code_hashes(state.get(buf).json)
@@ -750,7 +750,7 @@ T["end-to-end"]["second save after no content is noop"] = function()
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end"]["no merged rewrite when save with no modified"] = function()
+T["end_to_end"]["no merged rewrite when save with no modified"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
@@ -782,7 +782,7 @@ T["end-to-end"]["no merged rewrite when save with no modified"] = function()
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end"]["session re-run of an imported cell nulls only its count"] = function()
+T["end_to_end"]["session re-run of an imported cell nulls only its count"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local hashes = code_hashes(state.get(buf).json)

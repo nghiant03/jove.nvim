@@ -69,9 +69,9 @@ local function close_notebook(buf)
   pcall(vim.api.nvim_buf_delete, buf, { force = true })
 end
 
-T["read via BufReadCmd"] = MiniTest.new_set()
+T["read"] = MiniTest.new_set()
 
-T["read via BufReadCmd"]["opens with acwrite buftype and py:percent lines"] = function()
+T["read"]["opens with acwrite buftype and py:percent lines"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
@@ -96,7 +96,7 @@ T["read via BufReadCmd"]["opens with acwrite buftype and py:percent lines"] = fu
   close_notebook(buf)
 end
 
-T["read via BufReadCmd"]["undo right after open keeps the content"] = function()
+T["read"]["undo right after open keeps the content"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
@@ -110,7 +110,7 @@ T["read via BufReadCmd"]["undo right after open keeps the content"] = function()
   close_notebook(buf)
 end
 
-T["read via BufReadCmd"]["edits after open remain undoable"] = function()
+T["read"]["edits after open remain undoable"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
@@ -127,7 +127,7 @@ T["read via BufReadCmd"]["edits after open remain undoable"] = function()
   close_notebook(buf)
 end
 
-T["read via BufReadCmd"]["new file: empty py:percent buffer, JSON deferred to write"] = function()
+T["read"]["new file: empty py:percent buffer, JSON deferred to write"] = function()
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
   local path = vim.fs.joinpath(dir, "new.ipynb")
@@ -151,7 +151,7 @@ T["read via BufReadCmd"]["new file: empty py:percent buffer, JSON deferred to wr
   close_notebook(buf)
 end
 
-T["read via BufReadCmd"]["strips jupytext front matter from the buffer"] = function()
+T["read"]["strips jupytext front matter from the buffer"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -163,7 +163,7 @@ T["read via BufReadCmd"]["strips jupytext front matter from the buffer"] = funct
   close_notebook(buf)
 end
 
-T["read via BufReadCmd"]["trailing empty cell gets a body line"] = function()
+T["read"]["trailing empty cell gets a body line"] = function()
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
   local path = vim.fs.joinpath(dir, "trailing.ipynb")
@@ -201,9 +201,9 @@ T["read via BufReadCmd"]["trailing empty cell gets a body line"] = function()
   close_notebook(buf)
 end
 
-T["write via BufWriteCmd"] = MiniTest.new_set()
+T["write"] = MiniTest.new_set()
 
-T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] = function()
+T["write"]["saves edits as valid ipynb and records last_write"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local ncells = #state.get(buf).json.cells
@@ -253,7 +253,7 @@ T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] 
   close_notebook(buf)
 end
 
-T["write via BufWriteCmd"]["coalesces two rapid writes (single-flight)"] = function()
+T["write"]["coalesces two rapid writes (single-flight)"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
@@ -291,9 +291,9 @@ T["write via BufWriteCmd"]["coalesces two rapid writes (single-flight)"] = funct
   close_notebook(buf)
 end
 
-T["write round-trips"] = MiniTest.new_set()
+T["roundtrip"] = MiniTest.new_set()
 
-T["write round-trips"]["preserves kernelspec even with stripped front matter on write"] = function()
+T["roundtrip"]["preserves kernelspec even with stripped front matter on write"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local orig_ks = state.get(buf).json.metadata.kernelspec
@@ -309,7 +309,7 @@ T["write round-trips"]["preserves kernelspec even with stripped front matter on 
   close_notebook(buf)
 end
 
-T["javascript notebooks"] = MiniTest.new_set()
+T["javascript"] = MiniTest.new_set()
 
 local JS_FIXTURE = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "smoke_js.ipynb")
 
@@ -323,7 +323,7 @@ local function tmp_copy_js_fixture()
   return path
 end
 
-T["javascript notebooks"]["read: js:percent lines, javascript filetype, // front matter stripped"] = function()
+T["javascript"]["read: js:percent lines, javascript filetype, // front matter stripped"] = function()
   local path = tmp_copy_js_fixture()
   vim.cmd("edit " .. vim.fn.fnameescape(path))
   local buf = vim.api.nvim_get_current_buf()
@@ -356,7 +356,7 @@ T["javascript notebooks"]["read: js:percent lines, javascript filetype, // front
   close_notebook(buf)
 end
 
-T["javascript notebooks"]["write: edits land in the ipynb via js:percent, kernelspec preserved"] = function()
+T["javascript"]["write: edits land in the ipynb via js:percent, kernelspec preserved"] = function()
   local path = tmp_copy_js_fixture()
   vim.cmd("edit " .. vim.fn.fnameescape(path))
   local buf = vim.api.nvim_get_current_buf()

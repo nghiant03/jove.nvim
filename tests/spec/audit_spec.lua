@@ -38,7 +38,9 @@ local T = MiniTest.new_set({
   },
 })
 
-T["outputs dirty the notebook, import does not"] = function()
+T["output"] = MiniTest.new_set()
+
+T["output"]["push and clear dirty the notebook, import does not"] = function()
   local hash = cell.all(buf)[1].hash
   local event = { kind = "stream", mime = { ["text/plain"] = "result" } }
   output.import(buf, { [hash] = { event } })
@@ -50,7 +52,9 @@ T["outputs dirty the notebook, import does not"] = function()
   eq(vim.bo[buf].modified, true)
 end
 
-T["empty disk outputs replace results and stale execution counts"] = function()
+T["persist"] = MiniTest.new_set()
+
+T["persist"]["empty disk outputs replace results and stale execution counts"] = function()
   local st = state.get(buf)
   local hash = cell.all(buf)[1].hash
   output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "stale" } })
@@ -64,7 +68,7 @@ T["empty disk outputs replace results and stale execution counts"] = function()
   eq(st.json.cells[1].execution_count, 2)
 end
 
-T["duplicate code cells keep distinct persisted results"] = function()
+T["persist"]["duplicate code cells keep distinct persisted results"] = function()
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "# %%", "print(1)", "# %%", "print(1)" })
   local cells = cell.all(buf)
   eq(cells[1].hash == cells[2].hash, false)
@@ -82,7 +86,7 @@ T["duplicate code cells keep distinct persisted results"] = function()
   eq(nb.cells[2].outputs[1].text, "2")
 end
 
-T["output export failure leaves a clean-text buffer dirty"] = function()
+T["persist"]["output export failure leaves a clean-text buffer dirty"] = function()
   local done
   convert.write = function(_, _, cb)
     done = cb
@@ -100,7 +104,9 @@ T["output export failure leaves a clean-text buffer dirty"] = function()
   )
 end
 
-T["reload rejects edits and output events arriving during conversion"] = function()
+T["reload"] = MiniTest.new_set()
+
+T["reload"]["rejects edits and output events arriving during conversion"] = function()
   for _, mutate in ipairs({
     function()
       vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "local edit" })
@@ -128,7 +134,7 @@ T["reload rejects edits and output events arriving during conversion"] = functio
   end
 end
 
-T["auto reload refuses unsaved notebook state"] = function()
+T["reload"]["auto reload refuses unsaved notebook state"] = function()
   jove.config.auto_reload = true
   local called = false
   convert.read = function()
@@ -142,7 +148,9 @@ T["auto reload refuses unsaved notebook state"] = function()
   eq(called, false)
 end
 
-T["write and close failures never replace the original file"] = function()
+T["atomic_write"] = MiniTest.new_set()
+
+T["atomic_write"]["write and close failures never replace the original file"] = function()
   for _, fail in ipairs({ "write", "close" }) do
     local path = vim.fn.tempname()
     vim.fn.writefile({ "original" }, path)
@@ -173,7 +181,7 @@ T["write and close failures never replace the original file"] = function()
   end
 end
 
-T["payload cap accounts for unsupported MIME and empty events"] = function()
+T["output"]["payload cap accounts for unsupported MIME and empty events"] = function()
   jove.config.output.max_bytes = 1024
   local hash = cell.all(buf)[1].hash
   output.push(
@@ -191,7 +199,9 @@ T["payload cap accounts for unsupported MIME and empty events"] = function()
   eq(entry.raw[1].name, "stderr")
 end
 
-T["shutdown disposes a handle without a running kernel"] = function()
+T["kernel"] = MiniTest.new_set()
+
+T["kernel"]["shutdown disposes a handle without a running kernel"] = function()
   local stopped = false
   state.get(buf).kernel = { bridge = {
     stop = function()
@@ -203,7 +213,7 @@ T["shutdown disposes a handle without a running kernel"] = function()
   eq(stopped, true)
 end
 
-T["failed kernel start releases the slot for another init"] = function()
+T["kernel"]["failed start releases the slot for another init"] = function()
   local stopped = 0
   bridge.new = function()
     return {
@@ -232,7 +242,7 @@ T["failed kernel start releases the slot for another init"] = function()
   eq(stopped, 2)
 end
 
-T["atomic replacement preserves symlinks and permissions"] = function()
+T["atomic_write"]["replacement preserves symlinks and permissions"] = function()
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
   local path, link = dir .. "/target", dir .. "/link"
@@ -248,7 +258,9 @@ T["atomic replacement preserves symlinks and permissions"] = function()
   vim.fn.delete(dir, "rf")
 end
 
-T["nbformat source arrays match multiline buffers without stripping literal spaces"] = function()
+T["hash"] = MiniTest.new_set()
+
+T["hash"]["nbformat source arrays match multiline buffers without stripping literal spaces"] = function()
   local source = { 'text = """hello  \n', 'world"""\n', "print(text)" }
   vim.api.nvim_buf_set_lines(
     buf,

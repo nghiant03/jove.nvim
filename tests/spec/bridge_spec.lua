@@ -60,9 +60,9 @@ T = MiniTest.new_set({
   },
 })
 
-T["line buffering"] = MiniTest.new_set()
+T["line_buffering"] = MiniTest.new_set()
 
-T["line buffering"]["assembles JSON split across chunks"] = function()
+T["line_buffering"]["assembles JSON split across chunks"] = function()
   local job = fake_job()
   job.install()
   local b = bridge_mod.new()
@@ -85,7 +85,7 @@ T["line buffering"]["assembles JSON split across chunks"] = function()
   job.restore()
 end
 
-T["line buffering"]["ignores trailing partial data until a newline arrives"] = function()
+T["line_buffering"]["ignores trailing partial data until a newline arrives"] = function()
   local job = fake_job()
   job.install()
   local b = bridge_mod.new()
@@ -189,7 +189,7 @@ T["requests"]["time out when no response arrives"] = function()
   job.restore()
 end
 
-T["requests"]["timeout_ms = false disables the timer"] = function()
+T["requests"]["timeout_ms is false disables the timer"] = function()
   local job = fake_job()
   job.install()
   local b = bridge_mod.new()
