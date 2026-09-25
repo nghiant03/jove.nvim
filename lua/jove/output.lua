@@ -125,8 +125,6 @@ local function append_output(entry, params, new_chunks)
   end
 end
 
----Split parsed text into one virt_line per "\n"-separated row, with spans
----carved into { text, hl_group } segments (spans override the base hl).
 ---@param text string
 ---@param spans jove.AnsiSpan[]
 ---@param base_hl string?
