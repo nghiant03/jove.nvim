@@ -146,6 +146,7 @@ T["write and close failures never replace the original file"] = function()
   for _, fail in ipairs({ "write", "close" }) do
     local path = vim.fn.tempname()
     vim.fn.writefile({ "original" }, path)
+    -- selene: allow(incorrect_standard_library_use)
     io.open = function()
       return {
         write = function()
@@ -163,6 +164,7 @@ T["write and close failures never replace the original file"] = function()
       }
     end
     local ok, err = convert.atomic_write(path, "replacement")
+    -- selene: allow(incorrect_standard_library_use)
     io.open = saved.open
     eq(ok, false)
     eq(type(err), "string")
