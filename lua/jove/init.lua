@@ -40,7 +40,6 @@ local M = {}
 ---  | window_mode: how to open the sidebar (variables, kernel info, TOC),
 ---  | the variable detail view, and the output viewer: "float", "vsplit"
 ---  | (default), or "hsplit".
----@field keymap table<string, string|false>
 ---@field lsp table                      LSP integration: { auto_attach, servers }.
 ---  | auto_attach: start the servers listed in `servers` for the notebook's
 ---  | language on open (boolean, default false); servers enabled via
@@ -88,15 +87,6 @@ M.config = {
     borders = true,
     window_mode = "vsplit",
   },
-  keymap = {
-    run_cell = false,
-    run_and_advance = false,
-    run_selection = false,
-    next_cell = false,
-    prev_cell = false,
-    goto_running_cell = false,
-    toggle_follow_running = false,
-  },
   lsp = {
     auto_attach = false,
     servers = {},
@@ -105,7 +95,7 @@ M.config = {
 
 ---@param v any
 ---@return boolean
-local function is_keymap_lhs(v)
+local function is_string_or_false(v)
   return type(v) == "string" or v == false
 end
 
@@ -123,17 +113,7 @@ local KNOWN_KEYS = {
   output = true,
   variables = true,
   ui = true,
-  keymap = true,
   lsp = true,
-}
-local KNOWN_KEYMAP_KEYS = {
-  run_cell = true,
-  run_and_advance = true,
-  run_selection = true,
-  next_cell = true,
-  prev_cell = true,
-  goto_running_cell = true,
-  toggle_follow_running = true,
 }
 
 local warned = {}
@@ -144,22 +124,10 @@ end
 
 ---@param opts table?
 local function warn_unknown_opts(opts)
-  for k, v in pairs(opts or {}) do
-    local keys_to_check = {}
-    if not KNOWN_KEYS[k] then
-      keys_to_check[1] = tostring(k)
-    elseif k == "keymap" and type(v) == "table" then
-      for kk in pairs(v) do
-        if not KNOWN_KEYMAP_KEYS[kk] then
-          keys_to_check[#keys_to_check + 1] = ("keymap.%s"):format(tostring(kk))
-        end
-      end
-    end
-    for _, key in ipairs(keys_to_check) do
-      if not warned[key] then
-        warned[key] = true
-        vim.notify(("[jove] unknown option '%s'"):format(key), vim.log.levels.WARN)
-      end
+  for k in pairs(opts or {}) do
+    if not KNOWN_KEYS[k] and not warned[k] then
+      warned[k] = true
+      vim.notify(("[jove] unknown option '%s'"):format(tostring(k)), vim.log.levels.WARN)
     end
   end
 end
@@ -185,7 +153,7 @@ local function validate_config(cfg)
   vim.validate("output.image_max_width", cfg.output.image_max_width, "number", true)
   vim.validate("output.image_max_height", cfg.output.image_max_height, "number", true)
   vim.validate("output.header", cfg.output.header, "boolean")
-  vim.validate("output.guide", cfg.output.guide, is_keymap_lhs) -- string-or-false
+  vim.validate("output.guide", cfg.output.guide, is_string_or_false)
   vim.validate("output.inside_border", cfg.output.inside_border, "boolean")
   vim.validate("output.hl", cfg.output.hl, { "string", "table" }, true)
   vim.validate("variables", cfg.variables, "table")
@@ -203,10 +171,6 @@ local function validate_config(cfg)
   vim.validate("ui.window_mode", cfg.ui.window_mode, function(v)
     return v == "float" or v == "vsplit" or v == "hsplit"
   end, '"float", "vsplit", or "hsplit"')
-  vim.validate("keymap", cfg.keymap, "table")
-  for k, v in pairs(cfg.keymap) do
-    vim.validate(("keymap.%s"):format(k), v, is_keymap_lhs)
-  end
   vim.validate("lsp", cfg.lsp, "table")
   vim.validate("lsp.auto_attach", cfg.lsp.auto_attach, "boolean")
   vim.validate("lsp.servers", cfg.lsp.servers, "table")
@@ -221,14 +185,25 @@ end
 ---@param opts jove.Config?
 function M.setup(opts)
   vim.validate("opts", opts, "table", true)
+  opts = vim.deepcopy(opts or {})
+
+  if opts.keymap ~= nil then
+    vim.deprecate(
+      "the jove setup() `keymap` option",
+      '<Plug> mappings, e.g. vim.keymap.set("n", "<leader>x", "<Plug>(JoveRunCell)")',
+      "0.5.0",
+      "jove.nvim"
+    )
+    opts.keymap = nil
+  end
 
   warn_unknown_opts(opts)
 
-  local merged = vim.tbl_deep_extend("force", M.config, opts or {})
+  local merged = vim.tbl_deep_extend("force", M.config, opts)
   validate_config(merged)
 
   M.config = merged
-  require("jove.keymaps").apply(M.config.keymap)
+  require("jove.keymaps").apply()
 end
 
 return M

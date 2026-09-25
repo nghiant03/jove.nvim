@@ -53,11 +53,6 @@ Run `:checkhealth jove` to verify the requirements
   lazy = false,
   opts = {
     auto_kernel = true,
-    keymap = {
-      run_cell  = "<leader>x",
-      next_cell = "]h",
-      prev_cell = "[h",
-    },
   },
 }
 ```
@@ -130,15 +125,6 @@ require("jove").setup({
     borders = true,             -- draw a closing line below each cell
     border_hl = nil,            -- cell border highlight: an hl group name (string, linked) or attrs table (e.g. { fg = "#ff9e64" }); nil keeps the default Comment link
     window_mode = "vsplit",     -- how to open the sidebar and output viewer: "float", "vsplit", or "hsplit"
-  },
-  keymap = {
-    run_cell = false,
-    run_and_advance = false,
-    run_selection = false,
-    next_cell = false,
-    prev_cell = false,
-    goto_running_cell = false,
-    toggle_follow_running = false,
   },
   lsp = {
     auto_attach = false,        -- start the servers in `servers` on notebook open
@@ -219,19 +205,30 @@ an `.ipynb`):
 - `ic` / `ac` cell text-objects (operator-pending and visual modes) — always
   on, no extra plugin needed.
 - `[c` / `]c` cell motions (normal mode) — on by default; disable with
-  `cell_motions = false`.
-- Everything under `keymap = {}` is opt-in; all bindings default to disabled.
+  `cell_motions = false`. Jove never clobbers your own bindings: the defaults
+  are skipped if you already mapped `[c`/`]c` or bound something to the
+  corresponding `<Plug>` mapping.
+- Jove defines no other keymaps by itself. Bind the buffer-local `<Plug>`
+  mappings to your own keys instead:
 
 ```lua
-opts = {
-  keymap = {
-    run_cell              = "<leader>x",  -- normal: run cell under cursor
-    run_and_advance       = "<leader>X",  -- normal: run cell, jump to next
-    run_selection         = "<leader>xx", -- visual: run selection as one unit
-    next_cell             = "]h",
-    prev_cell             = "[h",
-    goto_running_cell     = "<leader>j",  -- normal: jump to the running cell
-    toggle_follow_running = "<leader>J",  -- normal: cursor follows the running cell
-  },
-}
+vim.keymap.set("n", "<leader>x", "<Plug>(JoveRunCell)", { desc = "Run cell" })
+vim.keymap.set("n", "<leader>X", "<Plug>(JoveRunCellAndAdvance)", { desc = "Run cell, advance" })
+vim.keymap.set("x", "<leader>xx", "<Plug>(JoveRunSelection)", { desc = "Run selection" })
+vim.keymap.set("n", "<leader>j", "<Plug>(JoveGotoRunningCell)", { desc = "Go to running cell" })
+vim.keymap.set("n", "<leader>J", "<Plug>(JoveToggleFollowRunning)", { desc = "Follow running cell" })
 ```
+
+Available `<Plug>` mappings (active on notebook buffers only):
+
+| Mapping | Action |
+|---|---|
+| `<Plug>(JoveRunCell)` | Run current notebook cell |
+| `<Plug>(JoveRunAbove)` | Run all notebook cells above the cursor |
+| `<Plug>(JoveRunAll)` | Run all notebook cells |
+| `<Plug>(JoveRunSelection)` | Run the visual selection as one unit (visual mode) |
+| `<Plug>(JoveRunCellAndAdvance)` | Run the current cell and jump to the next |
+| `<Plug>(JoveNextCell)` | Jump to next notebook cell |
+| `<Plug>(JovePrevCell)` | Jump to previous notebook cell |
+| `<Plug>(JoveGotoRunningCell)` | Jump to the currently executing cell |
+| `<Plug>(JoveToggleFollowRunning)` | Toggle following the currently executing cell |

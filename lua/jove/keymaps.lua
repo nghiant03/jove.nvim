@@ -1,11 +1,11 @@
 -- Cell navigation and execution mappings.
+
 local cell = require("jove.cell")
 local execute = require("jove.execute")
 local state = require("jove.state")
 
 local M = {}
 
--- buf -> unsubscribe fn while "follow running cell" is enabled.
 local follow_unsubs = {}
 
 ---@param buf integer
@@ -137,99 +137,80 @@ function M.run_cell_and_advance()
   execute.run_cell_and_advance(vim.api.nvim_get_current_buf())
 end
 
----@param keymap table<string, string|false>
-function M.apply(keymap)
-  if not keymap then
-    return
-  end
-  local group = vim.api.nvim_create_augroup("jove_keymaps", { clear = true })
-  local opts = { silent = true }
-  local patterns = { "python", "julia", "r", "javascript" }
+---@param buf integer
+---@param mode string|string[]
+---@param lhs string
+---@param rhs string|function
+---@param desc string
+local function bmap(buf, mode, lhs, rhs, desc)
+  vim.keymap.set(mode, lhs, rhs, { buffer = buf, silent = true, desc = desc })
+end
 
-  local function map(lhs, rhs, desc, mode)
-    if not lhs then
-      return
+---@param buf integer
+local function attach(buf)
+  for _, obj in ipairs({ { "ic", "i" }, { "ac", "a" } }) do
+    local lhs, kind = obj[1], obj[2]
+    for _, mode in ipairs({ "x", "o" }) do
+      bmap(buf, mode, lhs, function()
+        cell.textobj(kind)
+      end, kind == "i" and "Jove: Select Cell Body" or "Jove: Select Whole Cell")
     end
-    vim.api.nvim_create_autocmd("FileType", {
-      group = group,
-      pattern = patterns,
-      desc = desc,
-      callback = function(ev)
-        local entry = state.peek(ev.buf)
-        if entry and entry.path then
-          vim.keymap.set(
-            mode or "n",
-            lhs,
-            rhs,
-            vim.tbl_extend("force", opts, { buffer = ev.buf, desc = desc })
-          )
-        end
-      end,
-    })
   end
 
+  bmap(buf, "n", "<Plug>(JoveRunCell)", M.run_cell, "Jove: Run Cell")
+  bmap(buf, "n", "<Plug>(JoveRunAbove)", M.run_above, "Jove: Run Cells Above")
+  bmap(buf, "n", "<Plug>(JoveRunAll)", M.run_all, "Jove: Run All Cells")
+  bmap(buf, "x", "<Plug>(JoveRunSelection)", M.run_selection, "Jove: Run Selection")
+  bmap(
+    buf,
+    "n",
+    "<Plug>(JoveRunCellAndAdvance)",
+    M.run_cell_and_advance,
+    "Jove: Run Cell and Advance"
+  )
+  bmap(buf, "n", "<Plug>(JoveNextCell)", M.next_cell, "Jove: Next Cell")
+  bmap(buf, "n", "<Plug>(JovePrevCell)", M.prev_cell, "Jove: Previous Cell")
+  bmap(buf, "n", "<Plug>(JoveGotoRunningCell)", M.goto_running_cell, "Jove: Go to Running Cell")
+  bmap(
+    buf,
+    "n",
+    "<Plug>(JoveToggleFollowRunning)",
+    M.toggle_follow_running,
+    "Jove: Toggle Follow Running Cell"
+  )
+
+  local cfg = require("jove").config
+  if cfg.cell_motions then
+    for _, motion in ipairs({
+      { "]c", M.next_cell, "<Plug>(JoveNextCell)", "Jove: Next Cell" },
+      { "[c", M.prev_cell, "<Plug>(JovePrevCell)", "Jove: Previous Cell" },
+    }) do
+      local lhs, rhs, plug, desc = motion[1], motion[2], motion[3], motion[4]
+      local taken = vim.api.nvim_buf_call(buf, function()
+        return vim.fn.maparg(lhs, "n") ~= "" or vim.fn.hasmapto(plug, "n") == 1
+      end)
+      if not taken then
+        bmap(buf, "n", lhs, rhs, desc)
+      end
+    end
+  end
+
+  require("jove.ui").attach(buf)
+end
+
+function M.apply()
+  local group = vim.api.nvim_create_augroup("jove_keymaps", { clear = true })
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
-    pattern = patterns,
-    desc = "jove: built-in cell text-objects, motions, run extras",
+    pattern = { "python", "julia", "r", "javascript", "typescript" },
+    desc = "jove: built-in cell text-objects, motions, <Plug> mappings",
     callback = function(ev)
       local entry = state.peek(ev.buf)
       if entry and entry.path then
-        for _, obj in ipairs({ { "ic", "i" }, { "ac", "a" } }) do
-          local lhs, kind = obj[1], obj[2]
-          for _, mode in ipairs({ "x", "o" }) do
-            vim.keymap.set(
-              mode,
-              lhs,
-              function()
-                cell.textobj(kind)
-              end,
-              vim.tbl_extend("force", opts, {
-                buffer = ev.buf,
-                desc = kind == "i" and "Jove: Select Cell Body" or "Jove: Select Whole Cell",
-              })
-            )
-          end
-        end
-
-        local cfg = require("jove").config
-        if cfg.cell_motions then
-          vim.keymap.set("n", "]c", M.next_cell, {
-            buffer = ev.buf,
-            silent = true,
-            desc = "Jove: Next Cell",
-          })
-          vim.keymap.set("n", "[c", M.prev_cell, {
-            buffer = ev.buf,
-            silent = true,
-            desc = "Jove: Previous Cell",
-          })
-        end
-        if cfg.keymap.run_and_advance then
-          vim.keymap.set("n", cfg.keymap.run_and_advance, M.run_cell_and_advance, {
-            buffer = ev.buf,
-            silent = true,
-            desc = "Jove: Run Cell and Advance",
-          })
-        end
-        if cfg.keymap.run_selection then
-          vim.keymap.set("x", cfg.keymap.run_selection, M.run_selection, {
-            buffer = ev.buf,
-            silent = true,
-            desc = "Jove: Run Selection",
-          })
-        end
-
-        require("jove.ui").attach(ev.buf)
+        attach(ev.buf)
       end
     end,
   })
-
-  map(keymap.run_cell, M.run_cell, "Jove: Run Cell")
-  map(keymap.next_cell, M.next_cell, "Jove: Next Cell")
-  map(keymap.prev_cell, M.prev_cell, "Jove: Previous Cell")
-  map(keymap.goto_running_cell, M.goto_running_cell, "Jove: Go to Running Cell")
-  map(keymap.toggle_follow_running, M.toggle_follow_running, "Jove: Toggle Follow Running Cell")
 end
 
 return M
