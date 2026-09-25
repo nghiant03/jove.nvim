@@ -42,14 +42,11 @@ T["ordering"]["text/plain first, images last, unsupported noted"] = function()
     "text/plain",
     "text/html",
     "application/json",
-    "image/gif", -- unsupported → note chunk carrying its mime
+    "image/gif",
   })
 end
 
 T["ordering"]["text/plain bundled with an image becomes the image's fallback"] = function()
-  -- matplotlib bundles the figure repr ("<Figure size ...>") with the png;
-  -- it is demoted so the placed image can replace the line entirely, while
-  -- a failed placement still has something informative to show.
   local chunks = mime.render({
     kind = "display_data",
     mime = { ["image/png"] = "iVBORw0KGgo=", ["text/plain"] = "<Figure size 100x100>" },
@@ -159,7 +156,7 @@ T["error"]["ename: evalue chunk first, stripped traceback after, ErrorMsg hl"] =
       .. "ValueError                                 Traceback (most recent call last)\n"
       .. "somewhere in the cell"
   )
-  expect_truthy(chunks[2].text:find("\27", 1, true) == nil) -- fully stripped
+  expect_truthy(chunks[2].text:find("\27", 1, true) == nil)
 end
 
 T["error"]["falls back to mime text/plain when no traceback"] = function()
@@ -231,7 +228,6 @@ T["html_table"]["returns nil when there is no table"] = function()
 end
 
 T["html_table"]["returns full rows so the float can show every row"] = function()
-  -- The float needs every row; only the inline renderer may truncate output.
   local rows = {}
   for i = 1, 30 do
     rows[#rows + 1] = ("<tr><td>%d</td><td>x</td></tr>"):format(i)

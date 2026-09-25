@@ -1,4 +1,3 @@
--- lsp_spec.lua: opt-in auto-attach of user-configured language servers.
 local MiniTest = require("mini.test")
 local lsp = require("jove.lsp")
 local state = require("jove.state")

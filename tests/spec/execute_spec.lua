@@ -1,4 +1,3 @@
--- Inject a bridge through state.get(buf).kernel.bridge to control replies and events.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local cell = require("jove.cell")
@@ -35,8 +34,6 @@ local function fake_bridge()
     return true
   end
   function br:stop() end
-  ---Dispatch an event to subscribed handlers (synchronously, like the real
-  ---bridge's scheduled dispatch would from the test's perspective).
   function br:emit(event, params)
     for _, fn in ipairs(self.handlers[event] or {}) do
       fn(params)
@@ -74,7 +71,7 @@ T = MiniTest.new_set({
         table.insert(notes, { msg = msg, level = level })
       end
       execute._output = function()
-        return nil -- default: output module absent
+        return nil
       end
     end,
     post_case = function()
@@ -87,7 +84,6 @@ T = MiniTest.new_set({
   },
 })
 
----First code cell hashes for LINES (a/b/c), via the real cell model.
 ---@param buf integer
 ---@return string, string, string
 local function hashes(buf)
@@ -132,19 +128,18 @@ T["queue"]["sends the cell BODY (header excluded), keyed by content hash"] = fun
   MiniTest.expect.equality(#br.requests, 1)
   local req = br.requests[1]
   MiniTest.expect.equality(req.method, "execute")
-  MiniTest.expect.equality(req.params.code, "x = 1") -- direct send, no header
+  MiniTest.expect.equality(req.params.code, "x = 1")
   expect_truthy(vim.startswith(req.params.cell, h1 .. ":run:"))
   MiniTest.expect.equality(req.opts.timeout_ms, false)
 end
 
 T["queue"]["no kernel: notifies and drops the queue"] = function()
   local buf = make_buffer(LINES)
-  execute.run_all(buf) -- nothing queued: no kernel at all
+  execute.run_all(buf)
   MiniTest.expect.equality(execute.queue_len(buf), 0)
   MiniTest.expect.equality(#notes, 1)
   expect_truthy(notes[1].msg:find("No kernel", 1, true) ~= nil)
 
-  -- Kernel attached but its bridge is dead: same treatment.
   local br = fake_bridge()
   br.alive = false
   inject_kernel(br, buf)
@@ -160,7 +155,6 @@ T["queue"]["kernel gone mid-queue: remaining items dropped as error"] = function
   local _, h2, h3 = hashes(buf)
   execute.run_all(buf)
 
-  -- Kernel handle disappears (shutdown/replaced and not yet re-attached).
   state.get(buf).kernel = nil
   br:reply({ status = "ok" }) -- first finishes; pump sees no kernel
   MiniTest.expect.equality(execute.queue_len(buf), 0)
@@ -177,7 +171,6 @@ T["queue"]["no-kernel enqueue: already-queued items dropped as error"] = functio
   execute.run_all(buf)
   MiniTest.expect.equality(execute.status(buf, h2), "queued")
 
-  -- Kernel becomes unavailable; another run attempt drops the queue...
   br.alive = false
   execute.run_all(buf)
   MiniTest.expect.equality(execute.queue_len(buf), 0)
@@ -191,11 +184,9 @@ T["queue"]["reply after wipe leaves no phantom state entry"] = function()
   inject_kernel(br, buf)
   execute.run_cell(buf, 1)
 
-  -- Wipe the buffer mid-run (state registry cleared by BufWipeout)...
   vim.api.nvim_buf_delete(buf, { force = true })
   MiniTest.expect.equality(state.peek(buf) == nil, true)
 
-  -- ...then deliver the reply: must not resurrect the registry entry.
   br:reply({ status = "ok" })
   MiniTest.expect.equality(state.peek(buf) == nil, true)
 end
@@ -323,7 +314,6 @@ T["meta"]["execute_result output event carries the count before the reply"] = fu
   })
   MiniTest.expect.equality(execute.meta(buf, h1).count, 3)
 
-  -- A later reply without a count must not clobber the recorded one.
   br:reply({ status = "ok" })
   MiniTest.expect.equality(execute.meta(buf, h1).count, 3)
 end
@@ -406,8 +396,7 @@ T["batch"]["run_above enqueues code cells up to and including the cursor"] = fun
   inject_kernel(br, buf)
   local h1, h2, h3 = hashes(buf)
 
-  execute.run_above(buf, 5) -- Cursor on cell c's header.
-  -- run_above includes a code cell whose header is at the cursor.
+  execute.run_above(buf, 5)
   MiniTest.expect.equality(execute.status(buf, h1), "running")
   MiniTest.expect.equality(execute.status(buf, h2), "queued")
   MiniTest.expect.equality(execute.status(buf, h3), "queued")
@@ -429,11 +418,10 @@ T["batch"]["one cell.all pass per batch (cached parse)"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
-  cell.all(buf) -- warm cache
+  cell.all(buf)
   local tick = vim.b[buf].changedtick
 
   execute.run_all(buf)
-  -- No re-parse: the cache tick is unchanged by enqueueing.
   MiniTest.expect.equality(vim.b[buf].changedtick, tick)
   br:reply({ status = "ok" })
   br:reply({ status = "ok" })
@@ -461,11 +449,11 @@ T["advance"]["run_cell_and_advance moves to the next header"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()
   inject_kernel(br, buf)
-  vim.api.nvim_set_current_buf(buf) -- cursor APIs need the buffer displayed
+  vim.api.nvim_set_current_buf(buf)
 
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
   execute.run_cell_and_advance(buf)
-  MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 3) -- "# %% b"
+  MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 3)
   br:reply({ status = "ok" })
 
   vim.api.nvim_win_set_cursor(0, { 5, 0 })
@@ -485,7 +473,6 @@ T["attach"]["resubscribes when the kernel handle is replaced"] = function()
   MiniTest.expect.equality(#brA.requests, 1)
   brA:reply({ status = "ok" })
 
-  -- kernel.select/shutdown replaces the handle: next run must go to B.
   inject_kernel(brB, buf)
   execute.run_cell(buf, 3)
   MiniTest.expect.equality(#brB.requests, 1)
@@ -497,7 +484,6 @@ end
 
 T["signs"] = MiniTest.new_set()
 
----All extmark sign texts currently placed on `buf`.
 ---@param buf integer
 ---@return string[]
 local function sign_texts(buf)
@@ -524,7 +510,6 @@ T["signs"]["queued/running/ok swap in place, ok persists until rerun"] = functio
   expect_truthy(vim.tbl_contains(sign_texts(buf), "✓ "))
   expect_truthy(not vim.tbl_contains(sign_texts(buf), "▶ "))
 
-  -- Re-run: the ok sign is replaced by queued/running again (same extmark).
   execute.run_cell(buf, 1)
   expect_truthy(
     vim.tbl_contains(sign_texts(buf), "… ") or vim.tbl_contains(sign_texts(buf), "▶ ")

@@ -1,4 +1,3 @@
--- Sidebar interaction with a stubbed bridge; Python tests cover variable inspection.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local vars = require("jove.ui.vars")

@@ -1,4 +1,3 @@
--- Tabbed sidebar: tab bar, switching, width cap, and context actions.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local vars = require("jove.ui.vars")
@@ -203,7 +202,7 @@ T["actions"]["<CR> on the TOC tab jumps to the heading in the notebook window"] 
   })
   vim.api.nvim_set_current_buf(buf)
   local win = sidebar.open(buf, "toc")
-  vim.api.nvim_win_set_cursor(win, { 4, 0 }) -- second heading: Sub B at lnum 5
+  vim.api.nvim_win_set_cursor(win, { 4, 0 })
   sidebar.activate(buf)
   MiniTest.expect.equality(vim.api.nvim_get_current_buf(), buf)
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 5)
@@ -218,7 +217,7 @@ T["actions"]["<CR> on the variables tab inspects the variable"] = function()
     inspected = name
   end
   local win = sidebar.open(buf, "vars")
-  vim.api.nvim_win_set_cursor(win, { 4, 0 }) -- first variable row (after header)
+  vim.api.nvim_win_set_cursor(win, { 4, 0 })
   sidebar.activate(buf)
   vars.inspect_var = real_inspect
   MiniTest.expect.equality(inspected, "alpha")

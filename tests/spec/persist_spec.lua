@@ -1,5 +1,3 @@
--- Unit tests cover output conversion and hash-matched merges. Integration
--- tests exercise persistence and reload through the real jupytext read/write flow.
 local MiniTest = require("mini.test")
 local persist = require("jove.persist")
 local cell = require("jove.cell")
@@ -36,7 +34,6 @@ local function tmp_copy_fixture()
   return path
 end
 
----Open `path` through BufReadCmd and wait for the async read to settle.
 ---@return integer buf
 local function open_notebook(path)
   vim.cmd("edit " .. vim.fn.fnameescape(path))
@@ -49,7 +46,6 @@ local function open_notebook(path)
   return buf
 end
 
----Map a notebook's code cells to {index = hash}.
 ---@param nb table
 ---@return table
 local function code_hashes(nb)
@@ -125,9 +121,6 @@ T["to_nbformat"]["unknown kind -> nil"] = function()
   MiniTest.expect.equality(persist.to_nbformat({}) == nil, true)
 end
 
--- Encode-level assertions: table equality can't catch empty Lua tables
--- encoding as `[]` where nbformat requires `{}` (object) — only the encoded
--- JSON can.
 T["to_nbformat"]["encodes object-typed fields as JSON objects, not arrays"] = function()
   local result = vim.json.encode(
     persist.to_nbformat({ kind = "execute_result", mime = { ["text/plain"] = "1" } })
@@ -143,7 +136,6 @@ T["to_nbformat"]["encodes object-typed fields as JSON objects, not arrays"] = fu
   expect_truthy(dd:find('"data":{}', 1, true) ~= nil)
   expect_truthy(dd:find('"metadata":{}', 1, true) ~= nil)
 
-  -- traceback/outputs are arrays: `[]` is valid there.
   local err = vim.json.encode(persist.to_nbformat({ kind = "error", ename = "E" }))
   expect_truthy(err:find('"traceback":[]', 1, true) ~= nil)
 end
@@ -222,8 +214,6 @@ T["merge_into"]["session outputs replace matched cells; unmatched keep preserved
   local merged = persist.merge_into(nb, store)
   MiniTest.expect.equality(merged, 2)
 
-  -- Replaced with session content, converted to nbformat; the count is
-  -- nulled alongside (session results carry no execution count).
   MiniTest.expect.equality(nb.cells[1].outputs[1].output_type, "execute_result")
   MiniTest.expect.equality(nb.cells[1].outputs[1].data["text/plain"], "session-1")
   MiniTest.expect.equality(nb.cells[1].execution_count, vim.NIL)
@@ -232,7 +222,6 @@ T["merge_into"]["session outputs replace matched cells; unmatched keep preserved
   MiniTest.expect.equality(nb.cells[2].outputs[2].output_type, "error")
   MiniTest.expect.equality(nb.cells[2].execution_count, vim.NIL)
 
-  -- Cell 3 has no session outputs: whatever jupytext --update preserved stays.
   MiniTest.expect.equality(nb.cells[3].outputs[1].text, "keep me")
   MiniTest.expect.equality(merged == 4, false)
 end
@@ -240,8 +229,8 @@ end
 T["merge_into"]["tombstone: seen-but-cleared hash writes empty outputs"] = function()
   local nb = vim.deepcopy(NB)
   local seen_hashes = {
-    [cell.hash_source(NB.cells[1].source)] = true, -- had outputs, cleared
-    [cell.hash_source(NB.cells[2].source)] = true, -- had none, cleared anyway
+    [cell.hash_source(NB.cells[1].source)] = true,
+    [cell.hash_source(NB.cells[2].source)] = true,
   }
   local merged = persist.merge_into(nb, {}, seen_hashes)
   MiniTest.expect.equality(merged, 2)
@@ -363,8 +352,6 @@ T["export (atomic write)"]["merges, temp+renames, refreshes json + checksum"] = 
   local leftovers = vim.fn.glob(path .. ".jove-*.tmp", false, true)
   MiniTest.expect.equality(#leftovers, 0)
 
-  -- On-disk JSON has the session outputs on matched cells; the error cell
-  -- (absent from the session) keeps its preserved outputs.
   local nb2 = vim.json.decode(merged_bytes)
   MiniTest.expect.equality(nb2.cells[2].outputs[1].text, "session\n")
   MiniTest.expect.equality(nb2.cells[3].outputs[1].data["text/plain"], "session-2")
@@ -372,8 +359,6 @@ T["export (atomic write)"]["merges, temp+renames, refreshes json + checksum"] = 
   MiniTest.expect.equality(nb2.cells[4].outputs[1].ename, "ZeroDivisionError")
   MiniTest.expect.equality(state.peek(buf).json.cells[2].outputs[1].text, "session\n")
 
-  -- Hashes recorded by the first export remain tracked after clearing the store,
-  -- so the second export persists their deletion.
   state.get(buf).outputs = nil
   expect_truthy(persist.export(buf, nil))
   local nb3 = vim.json.decode(read_disk(path))
@@ -463,8 +448,6 @@ T["export (atomic write)"]["meta-only cell count triggers save"] = function()
   local st = state.get(buf)
   st.path = path
   st.json = nb
-  -- No session outputs and no seen hashes: only run metadata for the
-  -- output-less cell (cell 5, execution_count null on disk).
   st.exec = { meta = { [hashes[5]] = { count = 4 } } }
 
   local merged
@@ -493,7 +476,7 @@ T["export (atomic write)"]["copy-before-merge: failed encode leaves st.json unto
   local st = state.get(buf)
   st.path = path
   local nb = vim.json.decode(original)
-  nb.metadata.boom = function() end -- vim.json.encode cannot serialize this
+  nb.metadata.boom = function() end
   st.json = nb
   local h = cell.hash_source(nb.cells[2].source)
   st.outputs = {
@@ -511,8 +494,6 @@ T["export (atomic write)"]["copy-before-merge: failed encode leaves st.json unto
 end
 
 T["export (atomic write)"]["non-jove buffer: silent no-op"] = function()
-  -- Fresh scratch buffer with no jove state (never the possibly-reused
-  -- current buffer: the suite shares one nvim instance across specs).
   local scratch = vim.api.nvim_create_buf(false, true)
   MiniTest.expect.equality(persist.export(scratch, nil), false)
   vim.api.nvim_buf_delete(scratch, { force = true })
@@ -551,7 +532,6 @@ T["import"]["maps json outputs to raw params keyed by content hash"] = function(
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
----Wait until the buffer's write flow settled (last_write matches disk).
 ---@param buf integer
 ---@param path string
 local function wait_write_settled(buf, path)
@@ -566,7 +546,6 @@ local function wait_write_settled(buf, path)
   expect_truthy(settled)
 end
 
----Wait until a reload replaced the buffer's st.json (fresh parsed table).
 ---@param buf integer
 ---@param old_json table
 local function wait_reload(buf, old_json)
@@ -577,9 +556,6 @@ local function wait_reload(buf, old_json)
   expect_truthy(settled)
 end
 
----Wait until the disk JSON satisfies `cond` AND matches st.last_write (a
----plain checksum wait is ambiguous: it also passes on the previous write's
----consistent state while a new write flow is still in flight).
 ---@param buf integer
 ---@param path string
 ---@param cond fun(nb: table): boolean
@@ -610,10 +586,8 @@ T["end-to-end (real jupytext)"]["read -> edit -> write -> reload: outputs surviv
   MiniTest.expect.equality(st.outputs ~= nil and st.outputs[hashes[2]] ~= nil, true)
   MiniTest.expect.equality(st.outputs[hashes[3]] ~= nil, true)
   MiniTest.expect.equality(st.outputs[hashes[4]] ~= nil, true)
-  MiniTest.expect.equality(st.outputs[hashes[5]], nil) -- output-less cell
+  MiniTest.expect.equality(st.outputs[hashes[5]], nil)
 
-  -- Edit a cell with session outputs to exercise hash rematching. Leave cell 4's
-  -- error outputs unchanged to check that jupytext --update preserves them.
   local edited_lines = { "y = 21\n", "y * 7" }
   local edited = vim.deepcopy(st.json.cells[3])
   edited.source = edited_lines
@@ -656,14 +630,13 @@ T["end-to-end (real jupytext)"]["read -> edit -> write -> reload: outputs surviv
 
   local nb = vim.json.decode(read_disk(path))
   local after = code_hashes(nb)
-  MiniTest.expect.equality(after[3], new_hash) -- hash rematched on disk
+  MiniTest.expect.equality(after[3], new_hash)
   MiniTest.expect.equality(nb.cells[3].outputs[1].output_type, "stream")
   MiniTest.expect.equality(nb.cells[3].outputs[1].text, "fresh out\n")
   MiniTest.expect.equality(nb.cells[2].outputs[1].data["text/plain"], "session-2")
   MiniTest.expect.equality(nb.cells[4].outputs[1].output_type, "error")
   MiniTest.expect.equality(nb.cells[4].outputs[1].ename, "ZeroDivisionError")
 
-  -- Checksum discipline: our merged write must look self-triggered.
   MiniTest.expect.equality(buffer.changed_shell(buf, path), true)
 
   buffer.reload(buf)
@@ -679,14 +652,12 @@ T["end-to-end (real jupytext)"]["read -> edit -> write -> reload: outputs surviv
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end (real jupytext)"]["clear -> write: deletion persists (disk-imported outputs)"] = function()
+T["end-to-end"]["deletion persists after clear then write"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local st = state.get(buf)
   local hashes = code_hashes(st.json)
 
-  -- Session-clear the stream cell (imported from disk at read time, so it
-  -- is in the tombstone seen-set).
   require("jove.output").clear(buf, hashes[2])
   MiniTest.expect.equality(st.outputs[hashes[2]] == nil, true)
 
@@ -702,7 +673,6 @@ T["end-to-end (real jupytext)"]["clear -> write: deletion persists (disk-importe
   MiniTest.expect.equality(nb.cells[4].outputs[1].output_type, "error")
   MiniTest.expect.equality(buffer.changed_shell(buf, path), true)
 
-  -- Reload: no resurrection (disk has no outputs for that cell anymore).
   local old_json = st.json
   buffer.reload(buf)
   wait_reload(buf, old_json)
@@ -712,14 +682,12 @@ T["end-to-end (real jupytext)"]["clear -> write: deletion persists (disk-importe
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end (real jupytext)"]["session-persisted then cleared -> tombstoned later"] = function()
+T["end-to-end"]["tombstoned later after session persists and cleared"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local st = state.get(buf)
   local hashes = code_hashes(st.json)
 
-  -- Session outputs on the output-less cell 5; first write persists them
-  -- (and marks the hash seen at export).
   st.outputs[hashes[5]] = {
     raw = {
       { cell = hashes[5], kind = "stream", name = "stdout", mime = { ["text/plain"] = "temp\n" } },
@@ -730,8 +698,6 @@ T["end-to-end (real jupytext)"]["session-persisted then cleared -> tombstoned la
   local nb1 = vim.json.decode(read_disk(path))
   MiniTest.expect.equality(nb1.cells[5].outputs[1].text, "temp\n")
 
-  -- Clear + write again: the seen-set (updated at the first export) makes
-  -- this a tombstone, not a "keep whatever jupytext preserved".
   require("jove.output").clear(buf, hashes[5])
   vim.cmd("write")
   wait_disk_cond(buf, path, function(nb)
@@ -749,7 +715,7 @@ T["end-to-end (real jupytext)"]["session-persisted then cleared -> tombstoned la
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end (real jupytext)"]["clear -> save -> save again: second save is a no-op"] = function()
+T["end-to-end"]["second save after no content is noop"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local hashes = code_hashes(state.get(buf).json)
@@ -760,11 +726,6 @@ T["end-to-end (real jupytext)"]["clear -> save -> save again: second save is a n
     return #nb.cells[2].outputs == 0
   end)
 
-  -- Second save: the tombstoned hash was pruned from the seen-set (and
-  -- from_disk entries are skipped) — nothing to merge, no rewrite.
-  -- Touch the buffer first (same-content set_lines bumps changedtick) so
-  -- the buffer is modified and the settle below can only pass once this
-  -- write flow's callback has actually run.
   local first_line = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
   vim.api.nvim_buf_set_lines(buf, 0, 1, false, { first_line })
   expect_truthy(vim.bo[buf].modified)
@@ -773,7 +734,7 @@ T["end-to-end (real jupytext)"]["clear -> save -> save again: second save is a n
   local orig_export = persist.export
   persist.export = function(b, bytes)
     if b ~= buf then
-      return orig_export(b, bytes) -- another buffer's flow: passthrough
+      return orig_export(b, bytes)
     end
     export_results[#export_results + 1] = orig_export(b, bytes)
   end
@@ -789,37 +750,28 @@ T["end-to-end (real jupytext)"]["clear -> save -> save again: second save is a n
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end (real jupytext)"]["pure open->save: no merged rewrite, counts intact"] = function()
+T["end-to-end"]["no merged rewrite when save with no modified"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
-  -- Spy on the export path (buffer.lua resolves persist.export per call).
-  -- Installed AFTER open: earlier specs' async write flows may still be
-  -- settling and must not count here.
   local export_results = {}
   local orig_export = persist.export
   persist.export = function(b, bytes)
     if b ~= buf then
-      return orig_export(b, bytes) -- another buffer's flow: passthrough
+      return orig_export(b, bytes)
     end
     export_results[#export_results + 1] = orig_export(b, bytes)
   end
 
-  -- Touch the buffer (same-content set_lines bumps changedtick) so the
-  -- settle below can only pass once this write's callback has run.
   local first_line = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
   vim.api.nvim_buf_set_lines(buf, 0, 1, false, { first_line })
   vim.cmd("write")
   wait_write_settled(buf, path)
   persist.export = orig_export
 
-  -- Open imported the disk outputs (from_disk entries) but nothing ran or
-  -- was cleared: the export path must have found nothing to merge.
   MiniTest.expect.equality(#export_results, 1)
   MiniTest.expect.equality(export_results[1], false)
 
-  -- On-disk execution counts are untouched (regression: they used to null
-  -- out on every save via imported-from-disk store entries).
   local nb = vim.json.decode(read_disk(path))
   MiniTest.expect.equality(nb.cells[2].execution_count, 1)
   MiniTest.expect.equality(nb.cells[3].execution_count, 2)
@@ -830,13 +782,11 @@ T["end-to-end (real jupytext)"]["pure open->save: no merged rewrite, counts inta
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
-T["end-to-end (real jupytext)"]["session re-run of an imported cell nulls only its count"] = function()
+T["end-to-end"]["session re-run of an imported cell nulls only its count"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local hashes = code_hashes(state.get(buf).json)
 
-  -- The cell actually runs in-session: output.push clears the from_disk
-  -- provenance flag, so this cell (and only it) is rewritten on save.
   require("jove.output").push(buf, hashes[2], {
     cell = hashes[2],
     kind = "stream",
@@ -847,9 +797,9 @@ T["end-to-end (real jupytext)"]["session re-run of an imported cell nulls only i
   wait_write_settled(buf, path)
 
   local nb = vim.json.decode(read_disk(path))
-  MiniTest.expect.equality(nb.cells[2].execution_count, vim.NIL) -- ran
-  MiniTest.expect.equality(nb.cells[3].execution_count, 2) -- untouched
-  MiniTest.expect.equality(nb.cells[4].execution_count, 3) -- untouched
+  MiniTest.expect.equality(nb.cells[2].execution_count, vim.NIL)
+  MiniTest.expect.equality(nb.cells[3].execution_count, 2)
+  MiniTest.expect.equality(nb.cells[4].execution_count, 3)
   MiniTest.expect.equality(nb.cells[3].outputs[1].execution_count, 2)
   local texts = {}
   for _, o in ipairs(nb.cells[2].outputs) do

@@ -1,6 +1,3 @@
--- buffer_spec.lua: BufReadCmd / BufWriteCmd integration through the real
--- jupytext binary. Async handlers are driven to completion with vim.wait
--- polling; everything runs in temp dirs (never writes into the repo).
 local MiniTest = require("mini.test")
 local buffer = require("jove.buffer")
 local convert = require("jove.convert")
@@ -9,7 +6,6 @@ local state = require("jove.state")
 local orig_convert_write = convert.write
 
 local T = MiniTest.new_set({
-  -- Defensive restore in case a case aborts with the convert stub installed.
   hooks = {
     post_case = function()
       convert.write = orig_convert_write
@@ -22,9 +18,6 @@ local function expect_truthy(cond)
   MiniTest.expect.equality(cond == true, true)
 end
 
----Assert two paths name the same file, tolerating symlink resolution
----(macOS temp dirs live under /var, which Neovim resolves to /private/var
----in BufReadCmd's match, so st.path can differ textually from the test's path).
 ---@param a string
 ---@param b string
 local function expect_same_path(a, b)
@@ -55,7 +48,6 @@ local function read_disk(path)
   return data
 end
 
----Open `path` through BufReadCmd and wait for the async read to settle.
 ---@param path string
 ---@return integer buf
 local function open_notebook(path)
@@ -172,8 +164,6 @@ T["read via BufReadCmd"]["strips jupytext front matter from the buffer"] = funct
 end
 
 T["read via BufReadCmd"]["trailing empty cell gets a body line"] = function()
-  -- jupytext emits a trailing empty cell as a bare header. It needs a body
-  -- line to remain accessible when chrome conceals the header.
   local dir = vim.fn.tempname()
   vim.fn.mkdir(dir, "p")
   local path = vim.fs.joinpath(dir, "trailing.ipynb")
@@ -232,8 +222,6 @@ T["write via BufWriteCmd"]["saves edits as valid ipynb and records last_write"] 
 
   vim.cmd("write")
 
-  -- Async write: settle when last_write matches the on-disk bytes and the
-  -- modified flag is cleared.
   local settled = vim.wait(30000, function()
     local st = state.peek(buf)
     if not (st and st.last_write) then
@@ -279,8 +267,6 @@ T["write via BufWriteCmd"]["coalesces two rapid writes (single-flight)"] = funct
     end)
   end
 
-  -- Two back-to-back :writes in the same event-loop slice: the second must
-  -- land while the first is still in flight and be coalesced.
   vim.cmd("write")
   vim.cmd("write")
 
@@ -421,7 +407,6 @@ T["changed_shell"]["suppresses our own last write silently"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
 
-  -- Simulate the post-write situation: last_write matches the on-disk bytes.
   local bytes = read_disk(path)
   state.get(buf).last_write = vim.fn.sha256(bytes)
   MiniTest.expect.equality(buffer.changed_shell(buf, path), true)
@@ -443,8 +428,6 @@ T["changed_shell"]["auto-reloads a foreign change, preserving the cursor"] = fun
   vim.api.nvim_win_set_cursor(0, { 3, 0 })
   local cursor_before = vim.api.nvim_win_get_cursor(0)
 
-  -- Foreign change on disk: replace a plain substring that appears in the
-  -- code cell source (and in a stream output, harmlessly).
   local bytes = read_disk(path)
   local foreign = bytes:gsub("hello", "goodbye")
   expect_truthy(foreign ~= bytes)

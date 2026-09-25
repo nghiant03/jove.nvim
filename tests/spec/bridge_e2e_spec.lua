@@ -1,12 +1,8 @@
--- Integration tests using the Python sidecar. Skipped when its dependencies
--- or package are unavailable; Python tests cover protocol conformance.
 local MiniTest = require("mini.test")
 local bridge_mod = require("jove.bridge")
 
 local T = MiniTest.new_set()
 
----True when the real bridge can run: python deps importable and the
----jove_bridge package present under <repo>/python.
 ---@return boolean
 local function deps_present()
   vim.fn.system({ "python3", "-c", "import jupyter_client, ipykernel" })
@@ -59,7 +55,6 @@ T["sidecar"]["ready -> kernelspecs -> start_kernel -> execute -> stop"] = functi
   MiniTest.expect.equality(type(ks.kernelspecs), "table")
   MiniTest.expect.equality(ks.kernelspecs["python3"] ~= nil, true)
 
-  -- start_kernel (generous timeout: kernel spawn + sidecar readiness probe).
   local sk_res, sk_err
   b:request("start_kernel", { kernelspec = "python3" }, function(r, e)
     sk_res, sk_err = r, e
@@ -70,7 +65,6 @@ T["sidecar"]["ready -> kernelspecs -> start_kernel -> execute -> stop"] = functi
   MiniTest.expect.equality(sk_err, nil)
   MiniTest.expect.equality(type(sk_res), "table")
 
-  -- execute: reply deferred until execute_reply; iopub streams in between.
   local ex_res, ex_err
   b:request("execute", { code = "print(21*2)", cell = "e2e-cell" }, function(r, e)
     ex_res, ex_err = r, e

@@ -15,7 +15,6 @@ end
 local function make_buffer(lines)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  -- state.peek-compatible state: the FileType autocmds only map on jove buffers.
   state.get(buf).path = "fake.ipynb"
   return buf
 end
@@ -25,20 +24,16 @@ local function release_buffer(buf)
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
----Make `buf` current and fire FileType so M.apply registers its keymaps.
----Spec files run alphabetically (cell_spec before config_spec), so apply() is
----called explicitly here; it is idempotent (augroup created with clear=true).
 ---@param lines string[]
 ---@return integer buf
 local function attach_buffer(lines)
   local buf = make_buffer(lines)
-  keymaps.apply({}) -- registers the built-in ic/ac text-objects
+  keymaps.apply()
   vim.api.nvim_set_current_buf(buf)
   vim.bo[buf].filetype = "python"
   return buf
 end
 
----Feed keys with mappings applied, draining typeahead before returning.
 ---@param keys string
 local function feed(keys)
   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "mx", false)
@@ -270,17 +265,14 @@ T["navigation"]["next_cell/prev_cell move the cursor to headers"] = function()
   keymaps.prev_cell()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 1)
 
-  -- prev from mid-cell returns to that cell's own header.
   vim.api.nvim_win_set_cursor(0, { 4, 0 })
   keymaps.prev_cell()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 3)
 
-  -- next at the last cell: cursor stays put.
   vim.api.nvim_win_set_cursor(0, { 5, 0 })
   keymaps.next_cell()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 5)
 
-  -- prev at the first header: cursor stays put.
   keymaps.prev_cell()
   keymaps.prev_cell()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 1)

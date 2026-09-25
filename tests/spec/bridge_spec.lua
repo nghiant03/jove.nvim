@@ -3,8 +3,6 @@ local bridge_mod = require("jove.bridge")
 
 local T = MiniTest.new_set()
 
--- Inject job callbacks so tests can control stdout delivery and process exits.
-
 ---@return table
 local function fake_job()
   local job = { id = 7, sent = {}, spawn_count = 0, stopped = false }
@@ -36,9 +34,6 @@ local function fake_job()
     bridge_mod._impl.jobstop = real.jobstop
   end
 
-  ---Feed one stdout chunk; the fake splits on "\n" exactly like real
-  ---jobstart does (complete lines + partial remainder, trailing "" after a
-  ---final newline), so bridge.lua sees the same shape as in production.
   function job.stdout(chunk)
     job.opts.on_stdout(job.id, vim.split(chunk, "\n", { plain = true }))
   end
@@ -57,7 +52,6 @@ end
 T = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      -- Defensive restore (a failed case may leave fakes installed).
       bridge_mod._impl.jobstart = vim.fn.jobstart
       bridge_mod._impl.jobsend = vim.fn.jobsend
       bridge_mod._impl.jobstop = vim.fn.jobstop
@@ -79,7 +73,6 @@ T["line buffering"]["assembles JSON split across chunks"] = function()
     table.insert(events, params)
   end)
 
-  -- One ready line, then a kernel_status event split across two chunks.
   job.stdout('{"event":"ready","params":{"protocol":1}}\n{"event":"kernel_status"')
   job.stdout(',"params":{"status":"busy"}}\n')
   vim.wait(200, function()
@@ -103,11 +96,10 @@ T["line buffering"]["ignores trailing partial data until a newline arrives"] = f
     table.insert(events, params)
   end)
 
-  -- Partial event without a newline: must NOT be dispatched yet.
   job.stdout('{"event":"kernel_status","params":{"status":"idle"}')
   vim.wait(50, function()
     return false
-  end) -- pump the loop; nothing should fire
+  end)
   MiniTest.expect.equality(#events, 0)
   job.stdout("}\n")
   vim.wait(200, function()
@@ -145,7 +137,6 @@ T["requests"]["queue before ready, flush in order, route by id"] = function()
   MiniTest.expect.equality(second.method, "execute")
   MiniTest.expect.equality(second.params.cell, "h1")
 
-  -- Responses arrive out of order; routing must still match by id.
   job.stdout('{"id":2,"result":{"status":"ok"}}\n')
   job.stdout('{"id":1,"result":{"kernelspecs":{"python3":{"display_name":"Python 3"}}}}\n')
   vim.wait(200, function()
@@ -211,7 +202,7 @@ T["requests"]["timeout_ms = false disables the timer"] = function()
   end, { timeout_ms = false })
   vim.wait(50, function()
     return false
-  end) -- longer than the default would allow if a timer existed
+  end)
   MiniTest.expect.equality(not called, true)
   MiniTest.expect.equality(result == nil and err == nil, true)
   job.restore()
@@ -227,7 +218,6 @@ T["lifecycle"]["respawns on unexpected exit with backoff"] = function()
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
 
-  -- Pending request at death time must be failed, then the bridge respawns.
   local called, result, err
   b:request("execute", { code = "1" }, function(r, e)
     called, result, err = true, r, e
@@ -278,7 +268,7 @@ T["lifecycle"]["sends shutdown request before killing the job"] = function()
   end)
   local req = vim.json.decode(job.sent[1])
   MiniTest.expect.equality(req.method, "shutdown")
-  MiniTest.expect.equality(not job.stopped, true) -- killed only after the grace period
+  MiniTest.expect.equality(not job.stopped, true)
   job.restore()
 end
 
@@ -308,7 +298,6 @@ end
 
 T["resolve_python"] = MiniTest.new_set()
 
----Run fn with conda/venv env vars and g:python3_host_prog cleared, restoring after.
 local function with_clean_env(fn)
   local saved = {
     conda = vim.env.CONDA_PREFIX,

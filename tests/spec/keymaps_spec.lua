@@ -1,4 +1,3 @@
--- Keymap actions; kernel bridge faked like in execute_spec.
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local execute = require("jove.execute")
@@ -70,7 +69,7 @@ T["goto_running_cell"]["jumps to the running cell's header"] = function()
   state.get(buf).kernel = { bridge = br, name = "python3", status = "idle" }
   vim.api.nvim_set_current_buf(buf)
 
-  execute.run_cell(buf, 3) -- cell b, header at line 3
+  execute.run_cell(buf, 3)
   vim.api.nvim_win_set_cursor(0, { 6, 0 })
   keymaps.goto_running_cell()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 3)
@@ -78,7 +77,7 @@ T["goto_running_cell"]["jumps to the running cell's header"] = function()
   br:reply({ status = "ok" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
   keymaps.goto_running_cell()
-  MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 1) -- idle: no jump
+  MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 1)
   MiniTest.expect.equality(#notes, 1)
 end
 
@@ -88,8 +87,8 @@ T["goto_running_cell"]["tracks the cell after buffer edits shift its lines"] = f
   state.get(buf).kernel = { bridge = br, name = "python3", status = "idle" }
   vim.api.nvim_set_current_buf(buf)
 
-  execute.run_cell(buf, 3) -- cell b
-  vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "", "" }) -- push everything down 2
+  execute.run_cell(buf, 3)
+  vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "", "" })
   keymaps.goto_running_cell()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 5)
 end
@@ -110,12 +109,12 @@ T["toggle_follow_running"]["cursor follows each cell as it starts running"] = fu
   execute.run_all(buf)
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 1)
 
-  br:reply({ status = "ok" }) -- cell a done, cell b starts
+  br:reply({ status = "ok" })
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 3)
 
   keymaps.toggle_follow_running()
   MiniTest.expect.equality(keymaps.is_following(buf), false)
-  br:reply({ status = "ok" }) -- cell c starts; no more following
+  br:reply({ status = "ok" })
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 3)
 end
 
@@ -125,10 +124,82 @@ T["toggle_follow_running"]["jumps immediately when a cell is already running"] =
   state.get(buf).kernel = { bridge = br, name = "python3", status = "idle" }
   vim.api.nvim_set_current_buf(buf)
 
-  execute.run_cell(buf, 5) -- cell c
+  execute.run_cell(buf, 5)
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
   keymaps.toggle_follow_running()
   MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 5)
+end
+
+T["plug_mappings"] = MiniTest.new_set()
+
+local function attach_notebook_buffer(lines)
+  local buf = make_buffer(lines)
+  keymaps.apply()
+  vim.api.nvim_set_current_buf(buf)
+  vim.bo[buf].filetype = "python"
+  return buf
+end
+
+local function buf_lhs(buf, mode, lhs)
+  for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, mode)) do
+    if m.lhs == lhs then
+      return m
+    end
+  end
+  return nil
+end
+
+T["plug_mappings"]["defines buffer-local <Plug> mappings and default motions"] = function()
+  require("jove").config.cell_motions = true
+  local buf = attach_notebook_buffer(LINES)
+
+  MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveRunCell)") ~= nil, true)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveNextCell)") ~= nil, true)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveGotoRunningCell)") ~= nil, true)
+  MiniTest.expect.equality(buf_lhs(buf, "x", "<Plug>(JoveRunSelection)") ~= nil, true)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "]c") ~= nil, true)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "[c") ~= nil, true)
+end
+
+T["plug_mappings"]["<Plug> mappings stay off non-notebook buffers"] = function()
+  keymaps.apply()
+  local buf = vim.api.nvim_create_buf(false, true)
+  created[#created + 1] = buf
+  vim.api.nvim_set_current_buf(buf)
+  vim.bo[buf].filetype = "python"
+
+  MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveRunCell)"), nil)
+end
+
+T["plug_mappings"]["does not clobber an existing ]c mapping"] = function()
+  require("jove").config.cell_motions = true
+  local buf = make_buffer(LINES)
+  vim.keymap.set("n", "]c", "<cmd>echo 'user'<cr>", { buffer = buf })
+  keymaps.apply()
+  vim.api.nvim_set_current_buf(buf)
+  vim.bo[buf].filetype = "python"
+
+  MiniTest.expect.equality(vim.fn.maparg("]c", "n"):match("user") ~= nil, true)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveNextCell)") ~= nil, true)
+end
+
+T["plug_mappings"]["skips motion defaults when the user bound the <Plug> mapping"] = function()
+  require("jove").config.cell_motions = true
+  vim.keymap.set("n", "<leader>jn", "<Plug>(JoveNextCell)")
+  local buf = attach_notebook_buffer(LINES)
+  vim.keymap.del("n", "<leader>jn")
+
+  MiniTest.expect.equality(buf_lhs(buf, "n", "]c"), nil)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "[c") ~= nil, true)
+end
+
+T["plug_mappings"]["cell_motions = false disables the default motions"] = function()
+  require("jove").config.cell_motions = false
+  local buf = attach_notebook_buffer(LINES)
+  require("jove").config.cell_motions = true
+
+  MiniTest.expect.equality(buf_lhs(buf, "n", "]c"), nil)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveNextCell)") ~= nil, true)
 end
 
 return T

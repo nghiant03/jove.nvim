@@ -114,7 +114,6 @@ T["parse"]["maps basic background colors"] = function()
 end
 
 T["parse"]["maps 256-color foregrounds"] = function()
-  -- 34 = cube (0, 3, 0) -> #00af00, 45 = cube (0, 4, 5) -> #00d7ff
   local _, spans = ansi.parse("\27[38;5;34mgreen\27[0m\27[38;5;45mcyan\27[0m")
   MiniTest.expect.equality(#spans, 2)
   MiniTest.expect.equality(hex(hl_attrs(spans[1][3]).fg), "#00af00")

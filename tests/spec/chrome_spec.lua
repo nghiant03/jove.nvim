@@ -163,9 +163,6 @@ end
 
 T["conceal"] = MiniTest.new_set()
 
--- With the read pipeline stripping front matter (buffer.lua), chrome no
--- longer replaces it: a buffer that still contains `# ---` lines directly
--- (as here) gets only header replacement marks.
 T["conceal"]["conceals every cell header (front matter is stripped upstream)"] = function()
   local buf = make_buffer({
     "# ---",

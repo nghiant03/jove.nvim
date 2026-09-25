@@ -1,4 +1,3 @@
--- lang_spec.lua: language registry resolution, fallback, and extension.
 local MiniTest = require("mini.test")
 local lang = require("jove.lang")
 local state = require("jove.state")
@@ -86,7 +85,6 @@ T["register"]["adds a custom language"] = function()
   MiniTest.expect.equality(spec.fmt, "scala")
   MiniTest.expect.equality(spec.comment, "//")
   MiniTest.expect.equality(spec.servers, { "metals" })
-  -- No fallback warning after registering.
   local notes = capture_notify(function()
     lang.get("scala")
   end)

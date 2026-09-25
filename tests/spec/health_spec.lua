@@ -3,7 +3,6 @@ local health = require("jove.health")
 
 local T = MiniTest.new_set()
 
----Stub fields on the shared vim.health table so health.lua sees the replacements.
 ---@param fn fun()
 ---@return table calls  -- {start = {...}, ok = {...}, ...} lists of messages
 local function capture_health(fn)
@@ -71,7 +70,6 @@ T["check_import_result"]["failure -> missing with stderr detail (or fallback)"] 
   MiniTest.expect.equality(status2, "missing")
   MiniTest.expect.equality(detail2, "import failed")
 
-  -- Timeout/kill: nil exit code counts as missing.
   local status3 = health.check_import_result(nil, "")
   MiniTest.expect.equality(status3, "missing")
 end

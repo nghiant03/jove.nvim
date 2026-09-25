@@ -1,12 +1,9 @@
--- Kernel panel: running-kernel enumeration and kernelspec listing.
 local MiniTest = require("mini.test")
 local bridge_mod = require("jove.bridge")
 local state = require("jove.state")
 local panel = require("jove.ui.panel")
 
 local T = MiniTest.new_set()
-
--- Inject job callbacks so tests can control stdout delivery and process exits.
 
 ---@return table
 local function fake_job()
@@ -54,7 +51,6 @@ local function fake_job()
   return job
 end
 
--- Buffers created by a case, wiped in post_case.
 local created
 
 ---@param name string
@@ -121,8 +117,6 @@ T["running_kernels"]["collects kernel buffers sorted by path"] = function()
   local running = panel.running_kernels()
   MiniTest.expect.equality(#running, 2)
   MiniTest.expect.equality(running[1].buf, buf_a)
-  -- Compare against the resolved buffer name: Neovim canonicalizes buffer
-  -- names through symlinks, so on macOS /tmp/x becomes /private/tmp/x.
   MiniTest.expect.equality(running[1].path, vim.api.nvim_buf_get_name(buf_a))
   MiniTest.expect.equality(running[1].kernel, "julia")
   MiniTest.expect.equality(running[1].status, "busy")

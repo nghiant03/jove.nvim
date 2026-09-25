@@ -1,5 +1,3 @@
--- Exercise the real jupytext binary. Synchronous test cases wait for async
--- callbacks with vim.wait; a timeout fails the case.
 local MiniTest = require("mini.test")
 local convert = require("jove.convert")
 
@@ -35,7 +33,6 @@ local function read_disk(path)
   return data
 end
 
----Drive an async convert call to completion via done-callback + vim.wait.
 ---@param fn fun(cb: fun(result: any, err: string?))
 ---@return any, string?
 local function async_call(fn)
@@ -57,8 +54,6 @@ T["read"]["returns py:percent lines from a real notebook"] = function()
   end)
   MiniTest.expect.equality(err, nil)
   expect_truthy(type(lines) == "table" and #lines > 0)
-  -- jupytext >= 1.x emits a `# ---` YAML metadata header as the very first
-  -- line of py:percent output; cell markers follow below it.
   MiniTest.expect.equality(lines[1], "# ---")
   local has_cell_marker = false
   for _, l in ipairs(lines) do
@@ -135,7 +130,6 @@ T["write"]["existing path: jupytext writes the file, Lua only reads it back"] = 
   end)
   MiniTest.expect.equality(werr, nil)
 
-  -- jupytext --update owns the write; convert returns the bytes it reads back.
   local disk = read_disk(path)
   expect_truthy(disk ~= nil)
   MiniTest.expect.equality(bytes, disk)
