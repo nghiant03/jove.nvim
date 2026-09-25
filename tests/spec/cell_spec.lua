@@ -28,7 +28,6 @@ end
 ---@return integer buf
 local function attach_buffer(lines)
   local buf = make_buffer(lines)
-  keymaps.apply()
   vim.api.nvim_set_current_buf(buf)
   vim.bo[buf].filetype = "python"
   return buf

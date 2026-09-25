@@ -134,7 +134,6 @@ T["plug_mappings"] = MiniTest.new_set()
 
 local function attach_notebook_buffer(lines)
   local buf = make_buffer(lines)
-  keymaps.apply()
   vim.api.nvim_set_current_buf(buf)
   vim.bo[buf].filetype = "python"
   return buf
@@ -162,7 +161,6 @@ T["plug_mappings"]["defines buffer-local <Plug> mappings and default motions"] =
 end
 
 T["plug_mappings"]["<Plug> mappings stay off non-notebook buffers"] = function()
-  keymaps.apply()
   local buf = vim.api.nvim_create_buf(false, true)
   created[#created + 1] = buf
   vim.api.nvim_set_current_buf(buf)
@@ -175,7 +173,6 @@ T["plug_mappings"]["does not clobber an existing ]c mapping"] = function()
   require("jove").config.cell_motions = true
   local buf = make_buffer(LINES)
   vim.keymap.set("n", "]c", "<cmd>echo 'user'<cr>", { buffer = buf })
-  keymaps.apply()
   vim.api.nvim_set_current_buf(buf)
   vim.bo[buf].filetype = "python"
 

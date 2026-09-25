@@ -203,7 +203,6 @@ function M.setup(opts)
   validate_config(merged)
 
   M.config = merged
-  require("jove.keymaps").apply()
 end
 
 return M

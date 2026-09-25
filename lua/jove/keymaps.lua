@@ -198,19 +198,12 @@ local function attach(buf)
   require("jove.ui").attach(buf)
 end
 
-function M.apply()
-  local group = vim.api.nvim_create_augroup("jove_keymaps", { clear = true })
-  vim.api.nvim_create_autocmd("FileType", {
-    group = group,
-    pattern = { "python", "julia", "r", "javascript", "typescript" },
-    desc = "jove: built-in cell text-objects, motions, <Plug> mappings",
-    callback = function(ev)
-      local entry = state.peek(ev.buf)
-      if entry and entry.path then
-        attach(ev.buf)
-      end
-    end,
-  })
+---@param buf integer
+function M.on_filetype(buf)
+  local entry = state.peek(buf)
+  if entry and entry.path then
+    attach(buf)
+  end
 end
 
 return M

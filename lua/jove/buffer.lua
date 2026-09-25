@@ -89,12 +89,12 @@ function M.read(buf, path, opts)
 
   if not vim.uv.fs_stat(path) then
     vim.bo[buf].buftype = "acwrite"
-    vim.bo[buf].filetype = "python"
     replace_lines(buf, { lang.default.comment .. " %%", "" })
     vim.bo[buf].modified = false
     local st = state.get(buf)
     st.path = path
     st.lang = lang.default.id
+    vim.bo[buf].filetype = "python"
     require("jove.lsp").attach(buf)
     return
   end

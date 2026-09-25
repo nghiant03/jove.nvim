@@ -49,6 +49,17 @@ vim.api.nvim_create_autocmd({ "FileChangedShell" }, {
   end,
 })
 
+local keymaps_group = vim.api.nvim_create_augroup("jove_keymaps", { clear = true })
+
+vim.api.nvim_create_autocmd("FileType", {
+  group = keymaps_group,
+  pattern = { "python", "julia", "r", "javascript", "typescript" },
+  desc = "jove: built-in cell text-objects, motions, <Plug> mappings",
+  callback = function(ev)
+    require("jove.keymaps").on_filetype(ev.buf)
+  end,
+})
+
 vim.api.nvim_create_user_command("Jove", function(opts)
   require("jove.commands").dispatch(opts)
 end, {
