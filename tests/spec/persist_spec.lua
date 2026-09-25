@@ -575,9 +575,9 @@ local function wait_disk_cond(buf, path, cond)
   expect_truthy(settled)
 end
 
-T["end-to-end (real jupytext)"] = MiniTest.new_set()
+T["end-to-end"] = MiniTest.new_set()
 
-T["end-to-end (real jupytext)"]["read -> edit -> write -> reload: outputs survive"] = function()
+T["end-to-end"]["read -> edit -> write -> reload: outputs survive"] = function()
   local path = tmp_copy_fixture()
   local buf = open_notebook(path)
   local st = state.get(buf)
