@@ -721,7 +721,6 @@ end
 
 T["buf = 0 (current buffer)"] = MiniTest.new_set()
 
-
 T["buf = 0 (current buffer)"]["toggle(0, lnum) toggles the current buffer's cell"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   local hash = cell_hash(buf)
