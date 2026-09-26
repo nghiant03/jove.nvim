@@ -119,6 +119,15 @@ local function cell_meta(buf, hash)
   return meta and meta[hash] or nil
 end
 
+---@param buf integer
+---@param hash string
+---@return number?  hrtime() start of the current run
+local function cell_start_hr(buf, hash)
+  local st = state.peek(buf)
+  local start_hr = st and st.exec and st.exec.start_hr
+  return start_hr and start_hr[hash] or nil
+end
+
 ---@param status string?
 ---@return string
 local function status_glyph(status)
@@ -179,9 +188,15 @@ local function build_rule(buf, c, cfg, cell_index)
     if cfg.exec_counts and meta and type(meta.count) == "number" then
       chunks[#chunks + 1] = { ("In [%d] "):format(meta.count), "JoveCellRuleCount" }
     end
-    if cfg.elapsed and meta and type(meta.elapsed_ms) == "number" then
-      chunks[#chunks + 1] =
-        { ("┄┄ %.1fs "):format(meta.elapsed_ms / 1000), "JoveCellRuleElapsed" }
+    if cfg.elapsed then
+      local start = status == "running" and cell_start_hr(buf, c.hash) or nil
+      if start then
+        chunks[#chunks + 1] =
+          { ("┄┄ %.1fs "):format((vim.uv.hrtime() - start) / 1e9), "JoveCellRuleElapsed" }
+      elseif meta and type(meta.elapsed_ms) == "number" then
+        chunks[#chunks + 1] =
+          { ("┄┄ %.1fs "):format(meta.elapsed_ms / 1000), "JoveCellRuleElapsed" }
+      end
     end
   end
 

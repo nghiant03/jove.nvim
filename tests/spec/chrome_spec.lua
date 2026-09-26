@@ -243,6 +243,33 @@ T["rules"]["renders count/elapsed/status from exec.meta and status"] = function(
   release_buffer(buf)
 end
 
+T["rules"]["running cell shows a live counting timer instead of the stale elapsed"] = function()
+  local buf = make_buffer({ "# %% a", "x1" })
+  local hash = require("jove.cell").all(buf)[1].hash
+  state.get(buf).exec = {
+    status = { [hash] = "running" },
+    meta = { [hash] = { count = 3, elapsed_ms = 99000 } },
+    start_hr = { [hash] = vim.uv.hrtime() - math.floor(2.5e9) },
+  }
+  chrome.refresh(buf)
+  local texts = rule_texts(buf)
+  MiniTest.expect.equality(any_contains(texts, "99.0s"), false)
+  MiniTest.expect.equality(any_contains(texts, "2.5s"), true)
+  release_buffer(buf)
+end
+
+T["rules"]["running cell without start time falls back to the last elapsed"] = function()
+  local buf = make_buffer({ "# %% a", "x1" })
+  local hash = require("jove.cell").all(buf)[1].hash
+  state.get(buf).exec = {
+    status = { [hash] = "running" },
+    meta = { [hash] = { elapsed_ms = 1200 } },
+  }
+  chrome.refresh(buf)
+  MiniTest.expect.equality(any_contains(rule_texts(buf), "1.2s"), true)
+  release_buffer(buf)
+end
+
 T["rules"]["exec_counts/elapsed equals false omit those chunks"] = function()
   local cfg = require("jove").config
   local saved = cfg.ui
