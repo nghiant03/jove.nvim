@@ -46,9 +46,11 @@ Notes:
 
 ## Layout and architecture
 
-- CI (`.github/workflows/ci.yml`) runs stylua, selene, the mini.test suite on
-  Neovim v0.11.4 + stable (Linux/macOS), ruff check/format, and bridge pytest
-  on Python 3.10 + 3.13. Lowest supported targets: Neovim 0.11, Python 3.10.
+- CI (`.github/workflows/ci.yml`) runs stylua, selene, `lua-language-server
+  --check` (warnings fail the build; pinned binary, see the `luals` job), the
+  mini.test suite on Neovim v0.11.4 + stable (Linux/macOS), ruff check/format,
+  and bridge pytest on Python 3.10 + 3.13. Lowest supported targets: Neovim
+  0.11, Python 3.10.
 - Releases are cut by `.github/workflows/release.yml` (Actions > Release >
   Run workflow): it computes the next tag from the latest `v*` tag (bare
   semver tags like `0.2.7` also count), pushes it, creates the GitHub
@@ -68,7 +70,9 @@ Notes:
   `vim.lsp.config` entry, never invents cmd/root_dir.
 - `lua/jove/state.lua` - per-buffer state registry (`state.get(buf)`), cleaned
   up on BufWipeout. Other modules attach their slots (`cells`, `kernel`,
-  `exec`, `outputs`, `front_matter`) to this table.
+  `exec`, `outputs`, `front_matter`) to this table; the slot types
+  (`jove.CellCache`, `jove.KernelEntry`, `jove.ExecState`, `jove.OutputEntry`)
+  are declared as fields on `jove.BufferState` so LuaLS can follow them.
 - `lua/jove/bridge.lua` - JSON-lines client to `python -m jove_bridge`;
   `kernel.lua` creates one bridge handle (one process, one kernel) per buffer.
 - `lua/jove/persist.lua` - merges session outputs into the `.ipynb` JSON on
