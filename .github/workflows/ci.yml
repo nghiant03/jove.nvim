@@ -59,13 +59,13 @@ jobs:
           persist-credentials: false
       - name: Install lua-language-server
         run: |
-          curl -sL -o luals.tar.gz \
+          curl -sL -o "$RUNNER_TEMP/luals.tar.gz" \
             https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-linux-x64.tar.gz
-          echo "$LUALS_SHA256  luals.tar.gz" | sha256sum --check -
-          mkdir -p luals
-          tar -xzf luals.tar.gz -C luals
+          echo "$LUALS_SHA256  $RUNNER_TEMP/luals.tar.gz" | sha256sum --check -
+          mkdir -p "$RUNNER_TEMP/luals"
+          tar -xzf "$RUNNER_TEMP/luals.tar.gz" -C "$RUNNER_TEMP/luals"
       - name: Type-check
-        run: ./luals/bin/lua-language-server --check . --checklevel=Warning --logpath "$RUNNER_TEMP/luals-log"
+        run: $RUNNER_TEMP/luals/bin/lua-language-server --check . --checklevel=Warning --logpath "$RUNNER_TEMP/luals-log"
 
   test:
     name: test (nvim ${{ matrix.nvim }} on ${{ matrix.os }})
