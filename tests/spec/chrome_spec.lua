@@ -1,3 +1,4 @@
+---@diagnostic disable: missing-fields, need-check-nil
 local MiniTest = require("mini.test")
 local chrome = require("jove.ui.chrome")
 local state = require("jove.state")

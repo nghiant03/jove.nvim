@@ -1,3 +1,4 @@
+---@diagnostic disable: duplicate-set-field, param-type-mismatch
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local vars = require("jove.ui.vars")

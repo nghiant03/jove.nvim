@@ -1,3 +1,4 @@
+---@diagnostic disable: need-check-nil, param-type-mismatch
 local MiniTest = require("mini.test")
 local mime = require("jove.mime")
 

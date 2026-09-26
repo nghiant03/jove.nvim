@@ -1,3 +1,4 @@
+---@diagnostic disable: duplicate-set-field, need-check-nil
 local MiniTest = require("mini.test")
 local state = require("jove.state")
 local cell = require("jove.cell")

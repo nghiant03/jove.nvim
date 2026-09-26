@@ -1,3 +1,4 @@
+---@diagnostic disable: duplicate-set-field, need-check-nil
 local MiniTest = require("mini.test")
 local buffer = require("jove.buffer")
 local convert = require("jove.convert")

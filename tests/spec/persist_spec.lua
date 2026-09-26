@@ -1,3 +1,4 @@
+---@diagnostic disable: duplicate-set-field, missing-fields, need-check-nil, param-type-mismatch
 local MiniTest = require("mini.test")
 local persist = require("jove.persist")
 local cell = require("jove.cell")
