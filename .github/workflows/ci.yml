@@ -17,6 +17,7 @@ env:
   UV_VERSION: "0.12.14"
   MINI_TEST_SHA: "3cc4c29be99531b3fc4fb99f3fa964b492166728"
   SELENE_SHA256: "dac452422747999ec4919bbb8bb52992b66aae533b60022bf005669de8616671"
+  LUALS_SHA256: "e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8"
 
 jobs:
   stylua:
@@ -48,6 +49,23 @@ jobs:
           chmod +x selene
       - name: Lint
         run: ./selene .
+
+  luals:
+    name: lua-language-server --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install lua-language-server
+        run: |
+          curl -sL -o luals.tar.gz \
+            https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-linux-x64.tar.gz
+          echo "$LUALS_SHA256  luals.tar.gz" | sha256sum --check -
+          mkdir -p luals
+          tar -xzf luals.tar.gz -C luals
+      - name: Type-check
+        run: ./luals/bin/lua-language-server --check . --checklevel=Warning --logpath "$RUNNER_TEMP/luals-log"
 
   test:
     name: test (nvim ${{ matrix.nvim }} on ${{ matrix.os }})
