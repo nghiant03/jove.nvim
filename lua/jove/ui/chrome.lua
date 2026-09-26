@@ -186,16 +186,16 @@ local function build_rule(buf, c, cfg, cell_index)
       { ("── %s%s "):format(name:sub(1, 1):upper(), name:sub(2)), "JoveCellRule" }
     local meta = cell_meta(buf, c.hash)
     if cfg.exec_counts and meta and type(meta.count) == "number" then
-      chunks[#chunks + 1] = { ("In [%d] "):format(meta.count), "JoveCellRuleCount" }
+      chunks[#chunks + 1] = { ("── In [%d] "):format(meta.count), "JoveCellRuleCount" }
     end
     if cfg.elapsed then
       local start = status == "running" and cell_start_hr(buf, c.hash) or nil
       if start then
         chunks[#chunks + 1] =
-          { ("┄┄ %.1fs "):format((vim.uv.hrtime() - start) / 1e9), "JoveCellRuleElapsed" }
+          { ("── %.1fs "):format((vim.uv.hrtime() - start) / 1e9), "JoveCellRuleElapsed" }
       elseif meta and type(meta.elapsed_ms) == "number" then
         chunks[#chunks + 1] =
-          { ("┄┄ %.1fs "):format(meta.elapsed_ms / 1000), "JoveCellRuleElapsed" }
+          { ("── %.1fs "):format(meta.elapsed_ms / 1000), "JoveCellRuleElapsed" }
       end
     end
   end
