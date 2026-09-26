@@ -1,5 +1,5 @@
 *jove.txt*                       Native .ipynb editing for Neovim via jupytext
-                             For NVIM v0.8.0    Last change: 2026 September 25
+                             For NVIM v0.8.0    Last change: 2026 September 26
 
 ==============================================================================
 Table of Contents                                     *jove-table-of-contents*
