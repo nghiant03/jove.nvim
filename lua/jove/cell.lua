@@ -11,6 +11,16 @@ local M = {}
 ---@field hash string         identity key: sha256 hex of the normalized body, with a `#n` suffix for the n-th duplicate (see module comment)
 ---@field header integer?     lnum of the `# %%` header; nil for the synthetic pre-header cell
 
+---@class jove.CellCache
+---@field list jove.Cell[]
+---@field tick integer        changedtick the list was parsed from
+---@field lang string         language id the list was parsed with
+
+---@class jove.CellBuilder    cell currently being built by parse_cells
+---@field start_lnum integer
+---@field kind "code"|"markdown"
+---@field header integer?
+
 ---@param line string
 ---@param comment string  comment leader of the buffer language ("#", "//", ...)
 ---@return boolean
@@ -49,12 +59,14 @@ end
 ---@return jove.Cell[]
 local function parse_cells(lines, comment)
   local cells = {}
-  local cur = nil -- cell currently being built
+  ---@type jove.CellBuilder?  cell currently being built
+  local cur = nil
   local counts = {} -- sha -> occurrences so far (duplicate suffixing)
 
+  ---@param c jove.CellBuilder
   ---@param end_lnum integer
-  local function finish(end_lnum)
-    local body_start = cur.header and cur.header + 1 or cur.start_lnum
+  local function finish(c, end_lnum)
+    local body_start = c.header and c.header + 1 or c.start_lnum
     local body = {}
     for i = body_start, end_lnum do
       body[#body + 1] = lines[i]
@@ -62,18 +74,18 @@ local function parse_cells(lines, comment)
     local sha = vim.fn.sha256(normalize_body(body))
     counts[sha] = (counts[sha] or 0) + 1
     cells[#cells + 1] = {
-      start_lnum = cur.start_lnum,
+      start_lnum = c.start_lnum,
       end_lnum = end_lnum,
-      kind = cur.kind,
+      kind = c.kind,
       hash = M.dup_key(sha, counts[sha]),
-      header = cur.header,
+      header = c.header,
     }
   end
 
   for i, line in ipairs(lines) do
     if is_header(line, comment) then
       if cur then
-        finish(i - 1)
+        finish(cur, i - 1)
       end
       cur = { start_lnum = i, kind = header_kind(line), header = i }
     elseif not cur then
@@ -81,7 +93,7 @@ local function parse_cells(lines, comment)
     end
   end
   if cur then
-    finish(#lines)
+    finish(cur, #lines)
   end
   return cells
 end

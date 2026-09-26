@@ -13,6 +13,23 @@ end
 
 local NO_KERNEL_MSG = "No kernel detected! Run :Jove init-kernel"
 
+---@class jove.ExecItem
+---@field hash string  cell hash (or "selection")
+---@field code string
+---@field lnum integer
+
+---@class jove.ExecState
+---@field queue jove.ExecItem[]
+---@field running jove.ExecItem?
+---@field status table<string, string>  cell hash -> queued|running|ok|error
+---@field status_cbs (fun(hash: string, status: string))[]
+---@field attached jove.KernelEntry?    kernel the output/status handlers are subscribed to
+---@field unsubs (fun())[]?             unsubscribe functions for `attached`
+---@field start_hr table<string, integer>  cell hash -> hrtime() of the current run
+---@field meta table<string, { count: integer?, elapsed_ms: number? }>
+---@field routes table<string, string>  wire key -> cell hash
+---@field latest table<string, string>  cell hash -> wire key of the latest run
+
 ---@param buf integer
 ---@return integer
 local function norm_buf(buf)
@@ -22,7 +39,7 @@ end
 local pump
 
 ---@param st jove.BufferState
----@return table exec
+---@return jove.ExecState exec
 local function ensure_exec(st)
   local exec = st.exec
   if not exec then
@@ -35,6 +52,8 @@ local function ensure_exec(st)
       unsubs = nil,
       start_hr = {},
       meta = {},
+      routes = {},
+      latest = {},
     }
     st.exec = exec
   end
@@ -45,7 +64,10 @@ end
 
 function M.reset(buf)
   local st = state.peek(buf)
-  local old = st and st.exec
+  if not st then
+    return
+  end
+  local old = st.exec
   if not old then
     return
   end
@@ -57,7 +79,7 @@ function M.reset(buf)
   fresh.status_cbs = old.status_cbs or {}
 end
 
----@param exec table?
+---@param exec jove.ExecState?
 ---@param hash string
 ---@param count integer?
 ---@param elapsed_ms number?
@@ -91,7 +113,7 @@ local function set_status(buf, hash, status)
 end
 
 ---@param buf integer
----@return table? kernel_entry
+---@return jove.KernelEntry? kernel_entry
 local function ensure_attached(buf)
   local st = state.get(buf)
   local exec = ensure_exec(st)
@@ -136,11 +158,13 @@ local function ensure_attached(buf)
     if type(params) == "table" and params.status == "dead" then
       local st2 = state.peek(buf)
       local exec2 = st2 and st2.exec
-      if exec2 == exec and st2.kernel == k and exec2.running then
+      if st2 and exec2 and exec2 == exec and st2.kernel == k then
         local item = exec2.running
-        exec2.running = nil
-        set_status(buf, item.hash, "error")
-        pump(buf)
+        if item then
+          exec2.running = nil
+          set_status(buf, item.hash, "error")
+          pump(buf)
+        end
       end
     end
   end
@@ -156,7 +180,10 @@ end
 ---@param buf integer
 function pump(buf)
   local st = state.peek(buf)
-  local exec = st and st.exec
+  if not st then
+    return
+  end
+  local exec = st.exec
   if not exec or exec.running then
     return
   end
@@ -193,8 +220,11 @@ function pump(buf)
   exec.routes[wire] = item.hash
   k.bridge:request("execute", { code = item.code, cell = wire }, function(result, err)
     local st2 = state.peek(buf)
-    local exec2 = st2 and st2.exec
-    if exec2 ~= exec then
+    if not st2 then
+      return
+    end
+    local exec2 = st2.exec
+    if not exec2 or exec2 ~= exec then
       return
     end
     if st2.kernel ~= k then
@@ -216,26 +246,24 @@ function pump(buf)
         exec.latest[item.hash] = nil
       end
     end, 10000)
-    if exec2 then
-      local start = exec2.start_hr and exec2.start_hr[item.hash]
-      local elapsed = start and (vim.uv.hrtime() - start) / 1e6 or nil
-      if exec2.start_hr then
-        exec2.start_hr[item.hash] = nil
-      end
-      local count = (not err and type(result) == "table") and result.execution_count or nil
-      set_meta(exec2, item.hash, count, elapsed)
-      if count ~= nil and out and out.mark_dirty then
-        pcall(out.mark_dirty, buf)
-      end
-      if exec2.running == item then
-        exec2.running = nil
-        local status = (not err and type(result) == "table" and result.status == "ok") and "ok"
-          or "error"
-        set_status(buf, item.hash, status)
-      end
-      if out and out.refresh_cell then
-        pcall(out.refresh_cell, buf, item.hash)
-      end
+    local start = exec2.start_hr and exec2.start_hr[item.hash]
+    local elapsed = start and (vim.uv.hrtime() - start) / 1e6 or nil
+    if exec2.start_hr then
+      exec2.start_hr[item.hash] = nil
+    end
+    local count = (not err and type(result) == "table") and result.execution_count or nil
+    set_meta(exec2, item.hash, count, elapsed)
+    if count ~= nil and out and out.mark_dirty then
+      pcall(out.mark_dirty, buf)
+    end
+    if exec2.running == item then
+      exec2.running = nil
+      local status = (not err and type(result) == "table" and result.status == "ok") and "ok"
+        or "error"
+      set_status(buf, item.hash, status)
+    end
+    if out and out.refresh_cell then
+      pcall(out.refresh_cell, buf, item.hash)
     end
     pump(buf)
   end, { timeout_ms = false })

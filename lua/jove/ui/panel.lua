@@ -61,7 +61,7 @@ function M.running_kernels()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     local st = state.peek(buf)
     local k = st and st.kernel
-    if k then
+    if st and k then
       local path = st.path
       if path == nil or path == "" then
         path = vim.api.nvim_buf_get_name(buf)

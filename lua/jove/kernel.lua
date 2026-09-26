@@ -113,8 +113,15 @@ local function resolve_kernelspec(specs, metadata_name, force, cb)
   end)
 end
 
+---@class jove.KernelEntry
+---@field bridge jove.bridge
+---@field name string?
+---@field language string?
+---@field status string
+---@field _last_name string?
+
 ---@param buf integer
----@param entry {bridge: jove.bridge, name: string?, language: string?, status: string}
+---@param entry jove.KernelEntry
 ---@param name string
 ---@param spec table?  -- kernelspec (carries `language`)
 local function start_kernel(buf, entry, name, spec)
@@ -141,7 +148,7 @@ local function start_kernel(buf, entry, name, spec)
 end
 
 ---@param buf integer
----@param entry {bridge: jove.bridge, name: string?, language: string?, status: string}
+---@param entry jove.KernelEntry
 local function attach_wipeout(buf, entry)
   vim.api.nvim_clear_autocmds({ group = wipe_group, buffer = buf })
   vim.api.nvim_create_autocmd("BufWipeout", {
@@ -168,6 +175,7 @@ function M.init(buf, opts)
   end
 
   local b = bridge_mod.new({ bridge_python = require("jove").config.bridge_python })
+  ---@type jove.KernelEntry
   local entry = { bridge = b, name = nil, language = nil, status = "starting", _last_name = nil }
   st.kernel = entry
   attach_wipeout(buf, entry)
@@ -194,10 +202,13 @@ function M.init(buf, opts)
   end)
 
   b:on("ready", function()
-    if st.kernel ~= entry or entry.name or not entry._last_name then
+    if st.kernel ~= entry or entry.name then
       return
     end
     local last = entry._last_name
+    if not last then
+      return
+    end
     entry._last_name = nil
     start_kernel(buf, entry, last)
   end)
@@ -238,8 +249,8 @@ end
 ---@param buf integer
 ---@return boolean
 function M.available(buf)
-  local k = state.peek(norm_buf(buf))
-  k = k and k.kernel
+  local st = state.peek(norm_buf(buf))
+  local k = st and st.kernel
   return k ~= nil and k.name ~= nil and k.bridge ~= nil and k.bridge:is_alive()
 end
 

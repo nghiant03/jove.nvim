@@ -19,6 +19,17 @@ vim.api.nvim_set_hl(0, "JoveOutput", { default = true })
 
 local OPEN_CMD = ":Jove open-output"
 
+---@class jove.OutputEntry
+---@field chunks table[]              rendered mime chunks (see mime.render)
+---@field raw table[]                 raw output events (kept for persist)
+---@field hidden boolean
+---@field extmark_id integer?
+---@field extmark_id_below integer?
+---@field bytes integer               approximate payload size, for output.max_bytes
+---@field truncated boolean           payload cap reached; further output is dropped
+---@field render_pending boolean?     a deferred render_cell is scheduled
+---@field from_disk boolean?          imported from the .ipynb rather than produced this session
+
 ---@param fn fun()
 local function safe(fn)
   if vim.in_fast_event() then
@@ -53,7 +64,7 @@ end
 
 ---@param st jove.BufferState
 ---@param cell_hash string
----@return table entry, table store
+---@return jove.OutputEntry entry, table<string, jove.OutputEntry> store
 local function get_entry(st, cell_hash)
   local store = st.outputs or {}
   local entry = store[cell_hash]

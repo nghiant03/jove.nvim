@@ -6,6 +6,12 @@ local M = {}
 ---@field json table?         Parsed .ipynb JSON, refreshed on read and write.
 ---@field last_write string?  Checksum of the last written bytes, used to suppress self-triggered reloads.
 ---@field lang string?        Kernelspec language id (see jove.lang), set on read.
+---@field cells jove.CellCache?                    Parsed cell cache (owned by jove.cell).
+---@field kernel jove.KernelEntry?                 Kernel handle (owned by jove.kernel).
+---@field exec jove.ExecState?                     Execution queue/status (owned by jove.execute).
+---@field outputs table<string, jove.OutputEntry>? Rendered outputs by cell hash (owned by jove.output).
+---@field front_matter string[]?                   Stripped jupytext header lines (owned by jove.buffer).
+---@field content_rev integer?                     Output-driven content revision (owned by jove.output), used to detect read/write races.
 
 ---@type table<integer, jove.BufferState>
 local registry = {}

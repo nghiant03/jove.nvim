@@ -1,5 +1,33 @@
 local M = {}
 
+---@class jove.Config.Output  Output rendering options.
+---@field max_lines integer                 Max rendered lines per output block.
+---@field max_bytes integer                 Per-cell payload cap in bytes (default 1 MiB); streamed tails beyond it are dropped and a truncation marker is shown/persisted.
+---@field images boolean                    Render images (via snacks.image) when available.
+---@field image_max_width integer|nil       Cap rendered image width in terminal cells; nil disables. Aspect ratio is preserved and images smaller than the cap keep their natural size.
+---@field image_max_height integer|nil      Cap rendered image height in terminal cells; nil disables.
+---@field header boolean                    Draw the Output block's `┌─ Out[n] ─┐` top frame below each cell; false renders just content with the guide rail, no Output frame.
+---@field guide string|false                Per-line inner rail string placed before the text, or false to disable.
+---@field inside_border boolean             Render output inside the cell border instead of in its own dedicated bordered block.
+---@field hl string|table|nil               Output background tint: an existing hl group name (linked to `JoveOutput`) or attrs passed to `nvim_set_hl`; nil disables.
+
+---@class jove.Config.Variables  Variables inspector options.
+---@field auto_refresh boolean
+---@field size number  Sidebar size as a fraction of the screen (0 < size < 1, default 0.25): share of columns in vsplit/float mode, share of lines in hsplit mode.
+
+---@class jove.Config.UI
+---@field conceal_headers boolean
+---@field active_cell boolean
+---@field exec_counts boolean
+---@field elapsed boolean
+---@field borders boolean
+---@field border_hl string|table|nil  An existing hl group to link `JoveCellBorder` to, or attrs passed to `nvim_set_hl` for `JoveCellBorder` (e.g. `{ fg = "#ff9e64" }`); nil leaves the default link in place.
+---@field window_mode "float"|"vsplit"|"hsplit"  How to open the sidebar (variables, kernel info, TOC), the variable detail view, and the output viewer (default "vsplit").
+
+---@class jove.Config.LSP  LSP integration.
+---@field auto_attach boolean         Start the servers listed in `servers` for the notebook's language on open (default false); servers enabled via vim.lsp.enable()/nvim-lspconfig attach on their own regardless.
+---@field servers table<string, string[]>  Map of kernelspec language id to vim.lsp.config server names, e.g. { python = { "pyright" } }.
+
 ---@class jove.Config
 ---@field jupytext string                Path to the jupytext binary.
 ---@field bridge_python string           Python interpreter for the kernel bridge. An active $CONDA_PREFIX or $VIRTUAL_ENV interpreter, then g:python3_host_prog, takes precedence at use time; this is the fallback.
@@ -11,41 +39,10 @@ local M = {}
 ---@field auto_reload boolean            Auto-reload buffer when the .ipynb changes on disk (our own writes are suppressed).
 ---@field cell_motions boolean           Map [c / ]c cell motions on jove buffers.
 ---@field signs table<string, string>    Gutter sign chars per cell status: queued/running/ok/error.
----@field output table                   Output rendering options:
----  | { max_lines, max_bytes, images, image_max_width, image_max_height,
----  | header, guide, inside_border, hl }.
----  | image_max_width/image_max_height: cap rendered image size in terminal
----  | cells (number|nil, nil disables); aspect ratio is preserved and images
----  | smaller than the cap keep their natural size.
----  | max_bytes: per-cell payload cap in bytes (default 1 MiB); streamed
----  | tails beyond it are dropped and a truncation marker is shown/persisted.
----  | header: draw the Output block's `┌─ Out[n] ─┐` top frame below each
----  | cell (boolean); setting false renders just content with the guide rail,
----  | no Output frame.
----  | guide: per-line inner rail string (placed before the text), or
----  | `false` to disable (`string|false`).
----  | inside_border: render output inside the cell border instead of in its
----  | own dedicated bordered block (boolean).
----  | hl: output background tint — an existing hl group name (`string`, linked
----  | to `JoveOutput`) or attrs passed to `nvim_set_hl` (`table`); nil disables.
----@field variables table                Variables inspector options: { auto_refresh, size }.
----  | size: sidebar size as a fraction of the screen (0 < size < 1,
----  | default 0.25): share of columns in vsplit/float mode, share of
----  | lines in hsplit mode.
----@field ui table
----  | UI options: { conceal_headers, active_cell, exec_counts, elapsed, borders, border_hl, window_mode }.
----  | border_hl: `string|nil` (an existing hl group to link `JoveCellBorder` to)
----  | or `table|nil` (attrs passed to `nvim_set_hl` for `JoveCellBorder`, e.g.
----  | `{ fg = "#ff9e64" }`). nil leaves the default link in place.
----  | window_mode: how to open the sidebar (variables, kernel info, TOC),
----  | the variable detail view, and the output viewer: "float", "vsplit"
----  | (default), or "hsplit".
----@field lsp table                      LSP integration: { auto_attach, servers }.
----  | auto_attach: start the servers listed in `servers` for the notebook's
----  | language on open (boolean, default false); servers enabled via
----  | vim.lsp.enable()/nvim-lspconfig attach on their own regardless.
----  | servers: map of kernelspec language id to vim.lsp.config server names
----  | (`table<string, string[]>`), e.g. { python = { "pyright" } }.
+---@field output jove.Config.Output
+---@field variables jove.Config.Variables
+---@field ui jove.Config.UI
+---@field lsp jove.Config.LSP
 
 ---@type jove.Config
 M.config = {

@@ -67,6 +67,22 @@ end
 
 ---@class jove.bridge
 ---@field _opts jove.bridge.Opts
+---@field _handlers table<string, (fun(params: table?))[]>  event -> handlers
+---@field _pending table<integer, { cb: function?, timer: any? }>  request id -> reply waiter
+---@field _queue table[]               requests buffered until the bridge is ready
+---@field _next_id integer
+---@field _ready boolean
+---@field _job integer?
+---@field _rbuf string                 unterminated stdout fragment
+---@field _stderr string               rolling stderr tail (for error messages)
+---@field _stopping boolean
+---@field _shutdown_sent boolean
+---@field _respawn_attempts integer
+---@field _started boolean
+---@field _start_cb (fun(ok: boolean, err: string?))?
+---@field _stop_cbs (fun())[]?
+---@field _ready_timer any?
+---@field _respawn_timer any?
 local Bridge = {}
 Bridge.__index = Bridge
 M.Bridge = Bridge
@@ -392,7 +408,7 @@ function M.variables(buf, cb)
   end, { timeout_ms = VARIABLES_TIMEOUT_MS })
 end
 
----@private
+---@package
 function Bridge:_on_stdout(_, data)
   self._rbuf = self._rbuf .. table.concat(data, "\n")
   while true do
@@ -517,7 +533,7 @@ function Bridge:_fail_pending(reason)
   end
 end
 
----@private
+---@package
 function Bridge:_on_stderr(_, data)
   self._stderr = self._stderr .. table.concat(data, "\n")
   if #self._stderr > 65536 then
@@ -542,7 +558,7 @@ function Bridge:_stderr_tail()
   return " stderr: " .. tail
 end
 
----@private
+---@package
 ---@param code integer
 function Bridge:_on_exit(_, code)
   self._job = nil

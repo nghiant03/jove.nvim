@@ -35,7 +35,10 @@ local bufs = {}
 ---@return { conceal_headers: boolean, active_cell: boolean, exec_counts: boolean, elapsed: boolean, borders: boolean, border_hl: string|table? }
 local function ui_conf()
   local ok, jove = pcall(require, "jove")
-  local ui = ok and type(jove) == "table" and jove.config and jove.config.ui
+  local ui
+  if ok and type(jove) == "table" and type(jove.config) == "table" then
+    ui = jove.config.ui
+  end
   if type(ui) ~= "table" then
     ui = {}
   end

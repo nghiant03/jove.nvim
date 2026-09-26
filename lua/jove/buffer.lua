@@ -235,7 +235,11 @@ local function start_write(buf, path, tick, lines, fmt)
         local plines = flight.pending_lines
         flight.pending_tick = nil
         flight.pending_lines = nil
-        start_write(buf, path, ptick, plines, fmt)
+        if ptick and plines then
+          start_write(buf, path, ptick, plines, fmt)
+        else
+          flights[buf] = nil
+        end
       else
         flights[buf] = nil
       end
