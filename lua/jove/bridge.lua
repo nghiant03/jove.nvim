@@ -65,11 +65,17 @@ end
 ---@field trace boolean?  Log wire traffic at TRACE level.
 ---@field respawn boolean?  Auto-respawn on unexpected exit with backoff (default true).
 
+---@class jove.bridge.Request
+---@field method string
+---@field params table
+---@field cb function?
+---@field timeout_ms integer|boolean
+
 ---@class jove.bridge
 ---@field _opts jove.bridge.Opts
 ---@field _handlers table<string, (fun(params: table?))[]>  event -> handlers
 ---@field _pending table<integer, { cb: function?, timer: any? }>  request id -> reply waiter
----@field _queue table[]               requests buffered until the bridge is ready
+---@field _queue jove.bridge.Request[]  requests buffered until the bridge is ready
 ---@field _next_id integer
 ---@field _ready boolean
 ---@field _job integer?
@@ -230,7 +236,7 @@ function Bridge:request(method, params, cb, opts)
 end
 
 ---@private
----@param req {method: string, params: table, cb: function?, timeout_ms: integer|boolean}
+---@param req jove.bridge.Request
 function Bridge:_send(req)
   local id = self._next_id
   self._next_id = id + 1
