@@ -3,6 +3,7 @@
 local cell = require("jove.cell")
 local state = require("jove.state")
 local execute = require("jove.execute")
+local lang = require("jove.lang")
 
 local M = {}
 
@@ -169,9 +170,11 @@ local function build_rule(buf, c, cfg, cell_index)
     { ("Cell %d "):format(cell_index), "JoveCellBorder" },
   }
   if c.kind == "markdown" then
-    chunks[#chunks + 1] = { "── markdown ", "JoveCellRule" }
+    chunks[#chunks + 1] = { "── Markdown ", "JoveCellRule" }
   else
-    chunks[#chunks + 1] = { "── ", "JoveCellRule" }
+    local name = lang.for_buffer(buf).id
+    chunks[#chunks + 1] =
+      { ("── %s%s "):format(name:sub(1, 1):upper(), name:sub(2)), "JoveCellRule" }
     local meta = cell_meta(buf, c.hash)
     if cfg.exec_counts and meta and type(meta.count) == "number" then
       chunks[#chunks + 1] = { ("In [%d] "):format(meta.count), "JoveCellRuleCount" }

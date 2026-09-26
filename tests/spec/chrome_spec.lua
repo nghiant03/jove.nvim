@@ -208,8 +208,24 @@ T["rules"]["renders one rule per non-empty cell body above it"] = function()
   chrome.refresh(buf)
   local texts = rule_texts(buf)
   MiniTest.expect.equality(#texts, 2)
-  MiniTest.expect.equality(any_contains(texts, "── markdown "), true)
+  MiniTest.expect.equality(any_contains(texts, "── Markdown "), true)
   MiniTest.expect.equality(any_contains(texts, "○"), true) -- unread glyph
+  release_buffer(buf)
+end
+
+T["rules"]["code cell rule shows the detected language"] = function()
+  local buf = make_buffer({ "# %% a", "x1", "# %% [markdown]", "# md" })
+  chrome.refresh(buf)
+  local texts = rule_texts(buf)
+  MiniTest.expect.equality(any_contains(texts, "── Python "), true)
+  release_buffer(buf)
+
+  buf = make_buffer({ "# %% a", "x1" })
+  state.get(buf).lang = "julia"
+  chrome.refresh(buf)
+  texts = rule_texts(buf)
+  MiniTest.expect.equality(any_contains(texts, "── Julia "), true)
+  MiniTest.expect.equality(any_contains(texts, "── Python "), false)
   release_buffer(buf)
 end
 
