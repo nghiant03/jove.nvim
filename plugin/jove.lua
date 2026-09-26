@@ -4,13 +4,13 @@ end
 vim.g.loaded_jove = 1
 
 if vim.fn.has("nvim-0.11") ~= 1 then
-  vim.notify("[jove] requires Neovim >= 0.11", vim.log.levels.ERROR)
+  vim.notify("[Jove] requires Neovim >= 0.11", vim.log.levels.ERROR)
   return
 end
 
 if vim.g.loaded_jupytext == 1 or package.loaded["jupytext"] then
   vim.notify(
-    "[jove] jupytext.nvim detected; jove.nvim will not register handlers. "
+    "[Jove] jupytext.nvim detected, jove.nvim will not register handlers. "
       .. "Disable one of them.",
     vim.log.levels.WARN
   )
@@ -43,7 +43,7 @@ vim.api.nvim_create_autocmd({ "FileChangedShell" }, {
       return
     end
     vim.notify(
-      ("[jove] %s changed on disk; reload with :Jove reload to pick up changes."):format(ev.match),
+      ("[Jove] %s changed on disk; reload with :Jove reload to pick up changes."):format(ev.match),
       vim.log.levels.WARN
     )
   end,
@@ -54,7 +54,7 @@ local keymaps_group = vim.api.nvim_create_augroup("jove_keymaps", { clear = true
 vim.api.nvim_create_autocmd("FileType", {
   group = keymaps_group,
   pattern = { "python", "julia", "r", "javascript", "typescript" },
-  desc = "jove: built-in cell text-objects, motions, <Plug> mappings",
+  desc = "Jove: built-in cell text-objects, motions, <Plug> mappings",
   callback = function(ev)
     require("jove.keymaps").on_filetype(ev.buf)
   end,

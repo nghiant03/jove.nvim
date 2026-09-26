@@ -96,7 +96,7 @@ function M.pick(buf)
   buf = norm_buf(buf)
   local headings = M.headings(buf)
   if #headings == 0 then
-    vim.notify("[jove] no markdown headings in this notebook", vim.log.levels.INFO)
+    vim.notify("[Jove] no markdown headings in this notebook", vim.log.levels.INFO)
     return
   end
 

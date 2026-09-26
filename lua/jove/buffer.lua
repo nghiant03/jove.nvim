@@ -101,8 +101,6 @@ function M.read(buf, path, opts)
 
   vim.bo[buf].buftype = "acwrite"
 
-  -- Resolve the language up front: jupytext needs the matching percent
-  -- format (`js:percent`, ...) to emit comment markers the buffer can parse.
   local json = read_json(path)
   local spec = lang.for_notebook(json)
 
@@ -118,7 +116,7 @@ function M.read(buf, path, opts)
       end
 
       if not lines then
-        vim.notify("[jove] read failed: " .. (err or "?"), vim.log.levels.ERROR)
+        vim.notify("[Jove] read failed: " .. (err or "?"), vim.log.levels.ERROR)
         return
       end
 
@@ -128,7 +126,7 @@ function M.read(buf, path, opts)
         or ((state.peek(buf) or {}).content_rev or 0) ~= initial_rev
       then
         vim.notify(
-          "[jove] reload skipped: the buffer was edited while reading",
+          "[Jove] reload skipped: the buffer was edited while reading",
           vim.log.levels.WARN
         )
         return
@@ -206,7 +204,7 @@ local function start_write(buf, path, tick, lines, fmt)
         flight.dirty = false
         flight.pending_tick = nil
         flight.pending_lines = nil
-        vim.notify("[jove] write failed: " .. (err or "?"), vim.log.levels.ERROR)
+        vim.notify("[Jove] write failed: " .. (err or "?"), vim.log.levels.ERROR)
         return
       end
 
@@ -315,7 +313,7 @@ function M.changed_shell(buf, path)
   if cfg.auto_reload then
     if vim.bo[buf].modified then
       vim.notify(
-        ("[jove] %s changed on disk; buffer has unsaved changes — :Jove reload to discard them"):format(
+        ("[Jove] %s changed on disk; buffer has unsaved changes — :Jove reload to discard them"):format(
           path
         ),
         vim.log.levels.WARN
@@ -340,7 +338,7 @@ function M.reload(buf)
   local st = state.peek(buf)
   local path = (st and st.path) or vim.api.nvim_buf_get_name(buf)
   if path == "" then
-    vim.notify("[jove] buffer has no notebook file to reload", vim.log.levels.WARN)
+    vim.notify("[Jove] buffer has no notebook file to reload", vim.log.levels.WARN)
     return
   end
   M.read(buf, path, { preserve_cursor = true, guard_tick = vim.b[buf].changedtick })

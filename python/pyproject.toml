@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jove-bridge"
 version = "0.0.0"
-description = "stdio JSON-lines Jupyter kernel bridge sidecar for jove.nvim"
+description = "Jupyter kernel bridge sidecar for jove.nvim"
 requires-python = ">=3.10"
 dependencies = [
     "jupyter_client>=8.0",

@@ -38,8 +38,8 @@ function M._attach_one(buf, name)
       warned_missing[name] = true
       vim.notify(
         (
-          "[jove] lsp.servers lists %q but no vim.lsp.config entry exists; "
-          .. "install nvim-lspconfig or define vim.lsp.config[%q] yourself"
+          "[Jove] lsp.servers lists %q but no vim.lsp.config entry exists; "
+          .. "install nvim-lspconfig or define vim.lsp.config[%q]"
         ):format(name, name),
         vim.log.levels.WARN
       )
@@ -49,7 +49,7 @@ function M._attach_one(buf, name)
   local ok, err = pcall(impl.start, conf, { bufnr = buf })
   if not ok then
     vim.notify(
-      ("[jove] failed to start LSP server %q: %s"):format(name, tostring(err)),
+      ("[Jove] failed to start LSP server %q: %s"):format(name, tostring(err)),
       vim.log.levels.WARN
     )
   end

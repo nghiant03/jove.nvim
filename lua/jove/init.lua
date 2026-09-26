@@ -127,7 +127,7 @@ local function warn_unknown_opts(opts)
   for k in pairs(opts or {}) do
     if not KNOWN_KEYS[k] and not warned[k] then
       warned[k] = true
-      vim.notify(("[jove] unknown option '%s'"):format(tostring(k)), vim.log.levels.WARN)
+      vim.notify(("[Jove] unknown option '%s'"):format(tostring(k)), vim.log.levels.WARN)
     end
   end
 end

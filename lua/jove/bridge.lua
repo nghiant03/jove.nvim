@@ -170,7 +170,7 @@ function Bridge:_spawn()
     local job = self._job
     self:_fail_pending("bridge readiness timeout")
     vim.notify(
-      ("[jove] bridge did not become ready within %dms; killing it%s"):format(
+      ("[Jove] bridge did not become ready within %dms, killing it%s"):format(
         M.ready_timeout_ms,
         self:_stderr_tail()
       ),
@@ -382,7 +382,7 @@ function M.variables(buf, cb)
   k.bridge:request("variables", {}, function(result, err)
     if err or type(result) ~= "table" or type(result.variables) ~= "table" then
       vim.notify(
-        ("[jove] variable inspector: request failed (%s)"):format(tostring(err or "bad reply")),
+        ("[Jove] variable inspector: request failed (%s)"):format(tostring(err or "bad reply")),
         vim.log.levels.WARN
       )
       respond({ variables = {} })
@@ -475,7 +475,7 @@ function Bridge:_dispatch(event, params)
     for _, handler in ipairs(handlers) do
       local ok, err = pcall(handler, params)
       if not ok then
-        vim.notify("[jove] bridge event handler error: " .. tostring(err), vim.log.levels.ERROR)
+        vim.notify("[Jove] bridge event handler error: " .. tostring(err), vim.log.levels.ERROR)
       end
     end
   end)
@@ -567,10 +567,10 @@ function Bridge:_on_exit(_, code)
     if self._opts.respawn == false or attempts >= MAX_RESPAWNS then
       self._respawn_attempts = 0
       vim.notify(
-        (
-          "[jove] bridge exited unexpectedly (code %d) and won't restart; "
-          .. "run :checkhealth jove%s"
-        ):format(code, self:_stderr_tail()),
+        ("[Jove] bridge exited unexpectedly (code %d) and won't restart"):format(
+          code,
+          self:_stderr_tail()
+        ),
         vim.log.levels.ERROR
       )
       return
@@ -594,7 +594,7 @@ function Bridge:_trace(msg)
   if not (self._opts.trace or M.trace) then
     return
   end
-  vim.notify("[jove][bridge] " .. msg, vim.log.levels.TRACE)
+  vim.notify("[Jove] bridge: " .. msg, vim.log.levels.TRACE)
 end
 
 return M

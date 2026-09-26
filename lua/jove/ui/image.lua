@@ -122,10 +122,6 @@ end
 ---@param buf integer        Target buffer (cell buffer or output float).
 ---@param cell_hash string   Identity used for placement bookkeeping.
 ---@param image_chunks table List of { chunk = <image chunk>, index = <int>, row = <int>?, col = <int>? };
----   `row` is an explicit 1-based anchor line: inline outputs anchor every
----   image at the cell's last real line because virt_lines have no buffer row
----   of their own. Without `row` the anchor is `opts.base_row + index` (the
----   output float, where the placeholder is a real line).
 ---@param opts table?        { base_row = <int, 1-based buffer row for index 0; default 1> }
 ---@return table<integer, boolean> placed  set of `index` values that got a live placement
 function M.render(buf, cell_hash, image_chunks, opts)
@@ -137,7 +133,7 @@ function M.render(buf, cell_hash, image_chunks, opts)
   end
   local cfg = require("jove").config
   if not (cfg.output and cfg.output.images) then
-    return placed_idx -- user opted out: output.lua keeps the text placeholder, stay silent
+    return placed_idx
   end
   if not M.available() then
     M.notify_missing()

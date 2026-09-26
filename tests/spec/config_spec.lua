@@ -47,7 +47,7 @@ T["setup"]["shim: warns on unknown top-level option"] = function()
 
   MiniTest.expect.equality(#notes, 1)
   MiniTest.expect.equality(notes[1].level, vim.log.levels.WARN)
-  MiniTest.expect.equality(notes[1].msg, "[jove] unknown option 'molten'")
+  MiniTest.expect.equality(notes[1].msg, "[Jove] unknown option 'molten'")
   MiniTest.expect.equality(jove.config.molten, {})
 end
 

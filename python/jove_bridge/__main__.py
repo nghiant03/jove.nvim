@@ -36,8 +36,7 @@ class Connection:
                 self._out.flush()
             except Exception as exc:
                 self._closed.set()
-                print(f"jove bridge writer failed: {exc}", file=sys.stderr)
-                # Release retained payloads; producers stop queueing below.
+                print(f"Jove bridge writer failed: {exc}", file=sys.stderr)
                 while True:
                     try:
                         self._queue.get_nowait()
@@ -51,7 +50,7 @@ class Connection:
                 self._queue.put(msg, timeout=0.1)
                 return
             except queue.Full:
-                continue  # bounded backpressure while the writer drains
+                continue
 
     def send_event(self, event: str, params: dict) -> None:
         self.send({"event": event, "params": params})
@@ -102,7 +101,7 @@ def _handle_line(conn: Connection, session: BridgeSession, line: str) -> bool:
     except KernelError as exc:
         conn.send_error(reply_id, exc.code, exc.message)
         return False
-    except Exception as exc:  # never let one request kill the bridge
+    except Exception as exc:
         conn.send_error(reply_id, "internal_error", f"{type(exc).__name__}: {exc}")
         return False
     if result is not DEFERRED:
@@ -123,7 +122,7 @@ def main(stdin: Optional[Any] = None, stdout: Optional[Any] = None) -> int:
 
     def _on_signal(signum: int, frame: Any) -> None:
         if stop.is_set():
-            return  # cleanup already started; do not unwind from here
+            return
         stop.set()
         raise _Shutdown()
 
@@ -131,7 +130,7 @@ def main(stdin: Optional[Any] = None, stdout: Optional[Any] = None) -> int:
         old_int = signal.signal(signal.SIGINT, _on_signal)
         old_term = signal.signal(signal.SIGTERM, _on_signal)
     except ValueError:
-        old_int = old_term = None  # not on the main thread (e.g. tests)
+        old_int = old_term = None
 
     stream = stdin if stdin is not None else sys.stdin
     try:

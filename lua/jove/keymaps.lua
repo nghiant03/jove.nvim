@@ -63,7 +63,7 @@ function M.goto_running_cell()
   local buf = vim.api.nvim_get_current_buf()
   local running = execute.running(buf)
   if not running then
-    vim.notify("[jove] no cell is currently executing", vim.log.levels.INFO)
+    vim.notify("[Jove] no cell is currently executing", vim.log.levels.INFO)
     return
   end
   local target = cell_start_by_hash(buf, running.hash)
@@ -89,7 +89,7 @@ function M.toggle_follow_running()
   if unsub then
     follow_unsubs[buf] = nil
     pcall(unsub)
-    vim.notify("[jove] follow running cell: off", vim.log.levels.INFO)
+    vim.notify("[Jove] follow running cell: off", vim.log.levels.INFO)
     return
   end
   follow_unsubs[buf] = execute.on_status(buf, function(hash, status)
@@ -110,7 +110,7 @@ function M.toggle_follow_running()
       pcall(vim.api.nvim_del_augroup_by_id, wipe_group)
     end,
   })
-  vim.notify("[jove] follow running cell: on", vim.log.levels.INFO)
+  vim.notify("[Jove] follow running cell: on", vim.log.levels.INFO)
   local running = execute.running(buf)
   if running then
     jump_to_hash(buf, running.hash)

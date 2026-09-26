@@ -143,7 +143,7 @@ function M.dispatch(opts)
   local sub = name and M.subcommands[name]
   if not sub then
     vim.notify(
-      ("[jove] unknown subcommand '%s' (expected one of: %s)"):format(
+      ("[Jove] unknown subcommand '%s' (expected one of: %s)"):format(
         tostring(name),
         table.concat(M.names(), ", ")
       ),

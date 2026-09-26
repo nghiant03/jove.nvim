@@ -1,4 +1,3 @@
--- Cell status rendering.
 local cell = require("jove.cell")
 
 local execute = require("jove.execute")

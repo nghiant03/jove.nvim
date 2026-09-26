@@ -11,10 +11,8 @@ M.ns = vim.api.nvim_create_namespace("jove_cell_chrome")
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧" }
 local SPINNER_INTERVAL_MS = 120
 
--- Advances while any buffer has a running cell.
 local spin_frame = 0
 
--- Highlight groups
 vim.api.nvim_set_hl(0, "JoveActiveCell", { link = "CursorLine", default = true })
 vim.api.nvim_set_hl(0, "JoveCellRule", { link = "Comment", default = true })
 vim.api.nvim_set_hl(0, "JoveCellRuleCount", { link = "Special", default = true })
@@ -225,7 +223,6 @@ local function stop_spinner(b)
   end
 end
 
--- Start or stop the spinner animation timer to match the running state.
 ---@param buf integer
 ---@param b jove.ChromeBook
 local function sync_spinner(buf, b)

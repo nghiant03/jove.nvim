@@ -241,12 +241,12 @@ function M.export(buf, bytes)
 
   local ok, encoded = pcall(vim.json.encode, nb)
   if not ok then
-    vim.notify("[jove] output export failed: cannot serialize notebook", vim.log.levels.WARN)
+    vim.notify("[Jove] output export failed: cannot serialize notebook", vim.log.levels.WARN)
     return false, "cannot serialize notebook"
   end
   local wok, werr = convert.atomic_write(st.path, encoded)
   if not wok then
-    vim.notify("[jove] output export failed: " .. tostring(werr), vim.log.levels.WARN)
+    vim.notify("[Jove] output export failed: " .. tostring(werr), vim.log.levels.WARN)
     return false, tostring(werr)
   end
 

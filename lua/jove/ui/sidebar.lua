@@ -1,5 +1,4 @@
--- Combined sidebar pane: variables, kernel info, and notebook outline share
--- one window with a tab bar; number keys switch tabs.
+-- Combined sidebar pane
 
 local state = require("jove.state")
 
@@ -28,7 +27,6 @@ M.tabs = {
   { id = "toc", key = "3", name = "TOC" },
 }
 
--- Tab bar + separator rule occupy the first two buffer lines.
 local HEADER_LINES = 2
 
 ---@class jove.sidebar.Session
@@ -48,11 +46,9 @@ local HEADER_LINES = 2
 local sessions = {}
 M._sessions = sessions
 
--- Last active tab per notebook buffer, so reopening restores it.
 ---@type table<integer, string>
 local last_tab = {}
 
--- Test seam for the installed-kernelspecs query.
 ---@param cb fun(specs: jove.ui.Kernelspec[]?, err: string?)
 M._kernelspecs = function(cb)
   require("jove.ui.panel").installed_kernelspecs(cb)
@@ -71,8 +67,6 @@ end
 local function pane_share()
   local ok, jove = pcall(require, "jove")
   local c = ok and jove.config and jove.config.variables
-  -- `variables.size` is a fraction of the screen (columns, or lines when
-  -- the pane opens as a horizontal split).
   local size = type(c) == "table" and type(c.size) == "number" and c.size or 0.25
   return math.min(math.max(size, 0.05), 0.9)
 end
@@ -122,9 +116,6 @@ local function build_tab_bar(s)
   return table.concat(parts), spans
 end
 
----Content for the active tab: lines plus highlight spans
----({line, col_start, col_end, hl_group}, 1-based content lines, byte cols)
----and the number of leading lines that are not activatable items.
 ---@param buf integer
 ---@param s jove.sidebar.Session
 ---@param width integer
@@ -322,8 +313,6 @@ function M.close(buf)
   end
 end
 
----Run the context action of the active tab: inspect the variable or jump to
----the heading under the cursor.
 ---@param buf integer?
 function M.activate(buf)
   buf = norm_buf(buf)
@@ -348,7 +337,6 @@ function M.activate(buf)
   end
 end
 
----Refresh the data backing the active tab and re-render.
 ---@param buf integer?
 function M.refresh(buf)
   buf = norm_buf(buf)
@@ -374,14 +362,13 @@ function M.open(buf, tab)
     M.close(buf)
   end
   if not state.peek(buf) or not vim.api.nvim_buf_is_loaded(buf) then
-    vim.notify("[jove] sidebar: not a notebook buffer", vim.log.levels.WARN)
+    vim.notify("[Jove] not a notebook buffer, could not open sidebar", vim.log.levels.WARN)
     return nil
   end
 
   local win_mod = require("jove.ui.win")
   local width = pane_width()
   local height = math.max(5, vim.o.lines - 2)
-  -- In hsplit mode the pane spans the full width and the share sets height.
   local size = win_mod.mode() == "hsplit" and math.max(5, math.floor(vim.o.lines * pane_share()))
     or width
   local fbuf = vim.api.nvim_create_buf(false, true)
@@ -403,7 +390,7 @@ function M.open(buf, tab)
   }, size)
   if not win then
     pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
-    vim.notify("[jove] could not open sidebar: " .. tostring(err), vim.log.levels.ERROR)
+    vim.notify("[Jove] could not open sidebar: " .. tostring(err), vim.log.levels.ERROR)
     return nil
   end
 

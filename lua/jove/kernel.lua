@@ -25,7 +25,7 @@ end
 local function notify_bridge_unavailable(err)
   vim.notify(
     (
-      "[jove] kernel bridge unavailable: %s\n"
+      "[Jove] kernel bridge unavailable: %s\n"
       .. "Install the Python deps: pip install jupyter_client ipykernel\n"
       .. "Then run :checkhealth jove. If your Python lives in a virtualenv or "
       .. "conda env, point `jove.bridge_python` at its interpreter."
@@ -35,7 +35,7 @@ local function notify_bridge_unavailable(err)
 end
 
 local function notify_no_kernel()
-  vim.notify("[jove] No kernel running", vim.log.levels.INFO)
+  vim.notify("[Jove] No kernel running", vim.log.levels.INFO)
 end
 
 ---@param buf integer
@@ -133,7 +133,7 @@ local function start_kernel(buf, entry, name, spec)
       end
       entry.bridge:stop()
       vim.notify(
-        ("[jove] failed to start kernel %q: %s"):format(name, describe_err(err)),
+        ("[Jove] failed to start kernel %q: %s"):format(name, describe_err(err)),
         vim.log.levels.ERROR
       )
     end
@@ -185,7 +185,7 @@ function M.init(buf, opts)
     entry.name = nil
     if was_running and st.kernel == entry then
       vim.notify(
-        ("[jove] kernel %q died with the bridge; restarting when the bridge recovers"):format(
+        ("[Jove] kernel %q died with the bridge, restarting when the bridge recovers"):format(
           was_running
         ),
         vim.log.levels.INFO
@@ -253,7 +253,7 @@ function M.interrupt(buf)
   end
   k.bridge:request("interrupt", {}, function(_, err)
     if err then
-      vim.notify("[jove] interrupt failed: " .. describe_err(err), vim.log.levels.ERROR)
+      vim.notify("[Jove] interrupt failed: " .. describe_err(err), vim.log.levels.ERROR)
     end
   end)
 end
@@ -269,7 +269,7 @@ function M.restart(buf)
   k.status = "restarting"
   k.bridge:request("restart", {}, function(_, err)
     if err then
-      vim.notify("[jove] restart failed: " .. describe_err(err), vim.log.levels.ERROR)
+      vim.notify("[Jove] restart failed: " .. describe_err(err), vim.log.levels.ERROR)
     end
   end, { timeout_ms = 30000 })
 end

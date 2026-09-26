@@ -86,10 +86,7 @@ function M.get(id)
   if not warned_unknown[key] then
     warned_unknown[key] = true
     vim.notify(
-      (
-        "[jove] unknown notebook language %q; falling back to python "
-        .. "(register it with require('jove.lang').register)"
-      ):format(key),
+      ("[Jove] unknown notebook language %q, falling back to python"):format(key),
       vim.log.levels.WARN
     )
   end

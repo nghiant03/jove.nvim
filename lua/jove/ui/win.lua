@@ -1,5 +1,5 @@
--- Open scratch UI windows (inspector, kernel panel, output viewer) as floats
--- or splits according to `ui.window_mode`.
+-- Open scratch
+
 local M = {}
 
 ---@return "float"|"vsplit"|"hsplit"
@@ -13,8 +13,6 @@ function M.mode()
   return "vsplit"
 end
 
----Open fbuf per `ui.window_mode`: float_opts apply in "float" mode, size is
----the split width ("vsplit") or height ("hsplit").
 ---@param fbuf integer
 ---@param enter boolean
 ---@param float_opts table  nvim_open_win config for "float" mode

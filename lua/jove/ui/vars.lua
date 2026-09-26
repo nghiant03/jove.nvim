@@ -1,5 +1,4 @@
 -- Variable-inspector data and formatting for the tabbed sidebar
--- (`jove.ui.sidebar` owns the window).
 
 local ansi = require("jove.ansi")
 local state = require("jove.state")
@@ -38,11 +37,6 @@ local function flatten(s)
   return out
 end
 
----Format the variable table for the sidebar: a muted column-header row
----followed by one row per variable. Also returns highlight spans
----({line, col_start, col_end, hl_group}, 1-based content lines, byte cols)
----and the number of leading non-item lines (the header), so the sidebar can
----map cursor rows back to variable entries.
 ---@param vars table[]  { {name, type, value, size}, ... }
 ---@param width integer  Target display width.
 ---@return string[] lines, table[] spans, integer items_offset
@@ -83,15 +77,12 @@ function M.format(vars, width)
   return lines, spans, 1
 end
 
----Fetch the variable list through the bridge seam.
 ---@param buf integer
 ---@param cb fun(result: table?)
 function M.fetch(buf, cb)
   M._variables(buf, cb)
 end
 
----Apply ANSI highlight spans (byte offsets over the whole plain text) to the
----float buffer, line by line.
 ---@param fbuf integer
 ---@param lines string[]
 ---@param spans jove.AnsiSpan[]
@@ -169,7 +160,6 @@ function M.show_float(text)
   return win
 end
 
----Show details for one variable in a float.
 ---@param buf integer
 ---@param name string
 ---@param cached table?  vars entry ({name, type, value, ...}) used as fallback text
@@ -194,7 +184,7 @@ function M.inspect_var(buf, name, cached)
         if text then
           M.show_float(text)
         else
-          vim.notify("[jove] no details for " .. name, vim.log.levels.INFO)
+          vim.notify("[Jove] no details for " .. name, vim.log.levels.INFO)
         end
       end,
       { timeout_ms = 5000 }

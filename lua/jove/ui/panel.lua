@@ -1,4 +1,5 @@
 -- Kernel and session status for the statusline and the sidebar kernel tab.
+
 local state = require("jove.state")
 
 local M = {}
@@ -159,10 +160,6 @@ function M.installed_kernelspecs(cb)
   end)
 end
 
----Build the kernel info content (session, running kernels, installed
----kernelspecs) for the sidebar kernel tab. Also returns highlight spans
----({line, col_start, col_end, hl_group}, 1-based lines, byte cols) so the
----sidebar can style section titles, labels, and the active-kernel markers.
 ---@param buf integer
 ---@param specs jove.ui.Kernelspec[]?
 ---@param err string?
