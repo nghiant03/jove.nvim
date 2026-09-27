@@ -195,7 +195,7 @@ function M.inspect_var(buf, name, cached)
 end
 
 M._variables = function(buf, cb)
-  require("jove.bridge").variables(buf, cb)
+  require("jove.kernel").variables(buf, cb)
 end
 
 return M
