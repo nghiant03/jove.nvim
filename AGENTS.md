@@ -15,7 +15,7 @@ Lua plugin tests (mini.test, headless Neovim, requires real `jupytext` on PATH):
 
 ```sh
 git clone --depth 1 https://github.com/nvim-mini/mini.test .testdeps/mini.test  # one-time
-uv run --project python --locked --extra dev bash scripts/run_tests.sh
+uv run --project python --locked --extra dev bash scripts/test.sh
 ```
 
 Run a single spec:
@@ -35,7 +35,7 @@ selene .        # std = neovim (see neovim.yml / selene.toml)
 ```
 
 Notes:
-- `.testdeps/mini.test` must exist at the repo root or `run_tests.sh` exits 2.
+- `.testdeps/mini.test` must exist at the repo root or `test.sh` exits 2.
 - Lua tests must run with the project's Python env active (that's why CI wraps
   them in `uv run --project python`): the specs exercise the real `jupytext`
   binary, and `bridge_e2e_spec.lua` launches the real sidecar (it self-skips

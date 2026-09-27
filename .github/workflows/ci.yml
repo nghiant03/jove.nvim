@@ -115,7 +115,7 @@ jobs:
           git -C .testdeps/mini.test checkout --detach FETCH_HEAD
 
       - name: Run tests
-        run: uv run --project python --locked --extra dev bash scripts/run_tests.sh
+        run: uv run --project python --locked --extra dev bash scripts/test.sh
 
   python-quality:
     name: ruff (check + format)
