@@ -5,12 +5,16 @@
 
 <!-- panvimdoc-ignore-start -->
 
+<p align="center">
+
 <img src="assets/jove.svg" alt="Jove logo: a green j with an orange orbital dot" width="128" height="128">
 
 [![CI](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml)
 [![Neovim](https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&logoColor=white)](https://neovim.io)
 [![Jupyter](https://img.shields.io/badge/Jupyter-.ipynb-F37626?logo=jupyter&logoColor=white)](https://jupyter.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+</p> 
 
 <!-- panvimdoc-ignore-end -->
 
