@@ -6,15 +6,15 @@
 <!-- panvimdoc-ignore-start -->
 
 <p align="center">
+  <img src="assets/jove.svg" alt="Jove logo: a green j with an orange orbital dot" width="256" height="256">
+</p>
 
-<img src="assets/jove.svg" alt="Jove logo: a green j with an orange orbital dot" width="128" height="128">
-
-[![CI](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml)
-[![Neovim](https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&logoColor=white)](https://neovim.io)
-[![Jupyter](https://img.shields.io/badge/Jupyter-.ipynb-F37626?logo=jupyter&logoColor=white)](https://jupyter.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-</p> 
+<p align="center">
+  <a href="https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml"><img src="https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://neovim.io"><img src="https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&amp;logoColor=white" alt="Neovim 0.11+"></a>
+  <a href="https://jupyter.org"><img src="https://img.shields.io/badge/Jupyter-.ipynb-F37626?logo=jupyter&amp;logoColor=white" alt="Jupyter .ipynb"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 <!-- panvimdoc-ignore-end -->
 
