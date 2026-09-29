@@ -6,7 +6,7 @@
 <!-- panvimdoc-ignore-start -->
 
 <p align="center">
-  <img src="assets/jove.svg" alt="Jove logo: a green j with an orange orbital dot" width="256" height="256">
+  <img src="assets/jove.svg" alt="Jove logo: a green j with an orange orbital dot on a purple background" width="256" height="256">
 </p>
 
 <p align="center">
