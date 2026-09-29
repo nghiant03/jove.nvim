@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="176" height="176" viewBox="0 0 176 176" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Jove</title>
+  <desc id="desc">A green lowercase j with an orange planet and a tilted orbit as its dot.</desc>
+  <ellipse cx="100" cy="46" rx="49" ry="19" transform="rotate(-24 100 46)" stroke="#F37626" stroke-width="5"/>
+  <circle cx="100" cy="46" r="13" fill="#F37626"/>
+  <path d="M88 80H112V114C112 142 95 158 70 158C52 158 37 150 28 136L46 120C52 129 59 134 69 134C81 134 88 126 88 113V80Z" fill="#57A143"/>
+</svg>
