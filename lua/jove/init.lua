@@ -24,6 +24,12 @@ local M = {}
 ---@field border_hl string|table|nil  An existing hl group to link `JoveCellBorder` to, or attrs passed to `nvim_set_hl` for `JoveCellBorder` (e.g. `{ fg = "#ff9e64" }`); nil leaves the default link in place.
 ---@field window_mode "float"|"vsplit"|"hsplit"  How to open the sidebar (variables, kernel info, TOC), the variable detail view, and the output viewer (default "vsplit").
 
+---@class jove.Config.Webview  Interactive HTML output viewer (terminal-browser).
+---@field enabled boolean                   Allow :Jove open-webview (default true).
+---@field cmd string                        terminal-browser binary (default "terminal-browser").
+---@field width number                      Webview float width as a fraction of the editor (0-1).
+---@field height number                     Webview float height as a fraction of the editor (0-1).
+
 ---@class jove.Config.LSP  LSP integration.
 ---@field auto_attach boolean         Start the servers listed in `servers` for the notebook's language on open (default false); servers enabled via vim.lsp.enable()/nvim-lspconfig attach on their own regardless.
 ---@field servers table<string, string[]>  Map of kernelspec language id to vim.lsp.config server names, e.g. { python = { "pyright" } }.
@@ -43,6 +49,7 @@ local M = {}
 ---@field variables jove.Config.Variables
 ---@field ui jove.Config.UI
 ---@field lsp jove.Config.LSP
+---@field webview jove.Config.Webview
 
 ---@type jove.Config
 M.config = {
@@ -88,6 +95,12 @@ M.config = {
     auto_attach = false,
     servers = {},
   },
+  webview = {
+    enabled = true,
+    cmd = "terminal-browser",
+    width = 0.8,
+    height = 0.8,
+  },
 }
 
 ---@param v any
@@ -111,6 +124,7 @@ local KNOWN_KEYS = {
   variables = true,
   ui = true,
   lsp = true,
+  webview = true,
 }
 
 local warned = {}
@@ -177,6 +191,15 @@ local function validate_config(cfg)
       vim.validate(("lsp.servers.%s[%d]"):format(lang_id, i), name, "string")
     end
   end
+  vim.validate("webview", cfg.webview, "table")
+  vim.validate("webview.enabled", cfg.webview.enabled, "boolean")
+  vim.validate("webview.cmd", cfg.webview.cmd, "string")
+  vim.validate("webview.width", cfg.webview.width, function(v)
+    return type(v) == "number" and v > 0 and v <= 1
+  end, "fraction between 0 and 1")
+  vim.validate("webview.height", cfg.webview.height, function(v)
+    return type(v) == "number" and v > 0 and v <= 1
+  end, "fraction between 0 and 1")
 end
 
 ---@param opts jove.Config?

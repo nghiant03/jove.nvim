@@ -133,6 +133,12 @@ require("jove").setup({
     auto_attach = false,        -- start the servers in `servers` on notebook open
     servers = {},               -- language id to lsp server names,
   },
+  webview = {
+    enabled = true,             -- allow :Jove open-webview
+    cmd = "terminal-browser",   -- terminal-browser binary
+    width = 0.8,                -- webview float width as a fraction of the editor
+    height = 0.8,               -- webview float height as a fraction of the editor
+  },
 })
 ```
 
@@ -191,6 +197,7 @@ opts = {
 | `:Jove shutdown-kernel` | Shut down the current notebook kernel and bridge |
 | `:Jove toggle-output` | Show/hide rendered outputs of the current cell |
 | `:Jove open-output` | Open the current cell's outputs in a float |
+| `:Jove open-webview` | Open the current cell's HTML output in an interactive terminal-browser webview |
 | `:Jove clear-output` | Clear outputs of the current cell |
 | `:Jove clear-outputs` | Clear all rendered outputs in this buffer |
 | `:Jove reload` | Reload the current notebook buffer from disk |

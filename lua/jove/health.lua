@@ -118,6 +118,16 @@ function M.check()
     )
   end
 
+  local webview_mod = require("jove.webview")
+  if webview_mod.available() then
+    h.ok("terminal-browser available (enables interactive HTML webview via :Jove open-webview)")
+  else
+    h.info(
+      "terminal-browser not available (optional; enables interactive HTML webview — "
+        .. "requires a kitty-graphics terminal and https://terminal-browser.sh)"
+    )
+  end
+
   if vim.g.loaded_jupytext == 1 or package.loaded["jupytext"] then
     h.error("jupytext.nvim is loaded; jove.nvim refuses to attach handlers. Disable one.")
   else
