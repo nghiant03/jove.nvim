@@ -104,6 +104,12 @@ M.subcommands = {
     end,
     desc = "Open the current cell's outputs in a float",
   },
+  ["open-webview"] = {
+    impl = function()
+      require("jove.output").open_webview(0)
+    end,
+    desc = "Open the current cell's HTML output in an interactive terminal-browser webview",
+  },
   ["clear-output"] = {
     impl = function()
       require("jove.output").clear_at_cursor(0)

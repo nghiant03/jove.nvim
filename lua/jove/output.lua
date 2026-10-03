@@ -754,6 +754,50 @@ function M.open_float(buf, lnum)
   return win
 end
 
+--- Latest text/html payload in an output entry, if any.
+---@param entry jove.OutputEntry
+---@return string?
+local function find_html(entry)
+  for i = #entry.raw, 1, -1 do
+    local bundle = entry.raw[i].mime
+    if type(bundle) == "table" and type(bundle["text/html"]) == "string" then
+      return bundle["text/html"]
+    end
+  end
+  return nil
+end
+
+--- Open the current cell's latest text/html output in an interactive
+--- terminal-browser webview float (requires terminal-browser + kitty graphics).
+---@param buf integer
+---@param lnum integer?
+function M.open_webview(buf, lnum)
+  buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
+  local st = state.peek(buf)
+  if not st or not st.outputs or not vim.api.nvim_buf_is_loaded(buf) then
+    return
+  end
+  lnum = lnum or vim.api.nvim_win_get_cursor(0)[1]
+  local c = cell.at(buf, lnum)
+  if not c then
+    return
+  end
+  local entry = st.outputs[c.hash]
+  if not entry then
+    vim.notify("[Jove] no output in this cell", vim.log.levels.INFO)
+    return
+  end
+  local html = find_html(entry)
+  if not html then
+    vim.notify("[Jove] no text/html output in this cell", vim.log.levels.INFO)
+    return
+  end
+  local session, err = require("jove.webview").open_html(html)
+  if not session then
+    vim.notify(err or "[Jove] webview failed to open", vim.log.levels.WARN)
+  end
+end
+
 ---@param buf integer
 ---@param outputs_by_hash table<string, table[]>  hash → list of output event params
 function M.import(buf, outputs_by_hash)
