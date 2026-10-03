@@ -1,5 +1,5 @@
 *jove.txt*                       Native .ipynb editing for Neovim via jupytext
-                             For NVIM v0.8.0    Last change: 2026 September 29
+                               For NVIM v0.8.0    Last change: 2026 October 03
 
 ==============================================================================
 Table of Contents                                     *jove-table-of-contents*
@@ -139,6 +139,12 @@ Full option list with defaults:
         auto_attach = false,        -- start the servers in `servers` on notebook open
         servers = {},               -- language id to lsp server names,
       },
+      webview = {
+        enabled = true,             -- allow :Jove open-webview
+        cmd = "terminal-browser",   -- terminal-browser binary
+        width = 0.8,                -- webview float width as a fraction of the editor
+        height = 0.8,               -- webview float height as a fraction of the editor
+      },
     })
 <
 
@@ -223,6 +229,10 @@ COMMANDS ~
 
   :Jove open-output                   Open the current cell’s outputs in
                                       a float
+
+  :Jove open-webview                  Open the current cell’s HTML output
+                                      in an interactive terminal-browser
+                                      webview
 
   :Jove clear-output                  Clear outputs of the current cell
 
