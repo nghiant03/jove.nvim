@@ -6,14 +6,14 @@
 <!-- panvimdoc-ignore-start -->
 
 <p align="center">
-  <img src="assets/jove.svg" alt="Jove logo: a green j with an orange orbital dot on a purple background" width="256" height="256">
+    <img src="assets/Jove.svg" alt="Jove logo: a green j with an orange orbital dot on a purple background" width="256" height="256">
 </p>
 
 <p align="center">
-  <a href="https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml"><img src="https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://neovim.io"><img src="https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&amp;logoColor=white" alt="Neovim 0.11+"></a>
-  <a href="https://jupyter.org"><img src="https://img.shields.io/badge/Jupyter-.ipynb-F37626?logo=jupyter&amp;logoColor=white" alt="Jupyter .ipynb"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+    <a href="https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml"><img src="https://github.com/nghiant03/jove.nvim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://neovim.io"><img src="https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&amp;logoColor=white" alt="Neovim 0.11+"></a>
+    <a href="https://jupyter.org"><img src="https://img.shields.io/badge/Jupyter-.ipynb-F37626?logo=jupyter&amp;logoColor=white" alt="Jupyter .ipynb"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
 <!-- panvimdoc-ignore-end -->
@@ -24,12 +24,22 @@
 
 ## Features
 
+<!-- panvimdoc-ignore-start-->
+
+<p align="center">
+    <img src="assets/Demo.GIF" alt="Jove demo: video showcasing jove feature set">
+</p>
+
+<!--panvimdoc-ignore-end-->
+
 - **Native buffers**: Jupyter Notebooks open as ordinary buffers with LSP, 
   Tree-sitter and git tooling attach like any other file.
 - **Built-in kernel client**: a first-party Python bridge starts and
   supervises kernel.
 - **Inline outputs**: text, tables, tracebacks and images render in each 
   cell, with displayed state of each cell.
+- **Interactive component**: output which contains interactive components 
+  can be render using `terminal-browser`
 - **Cell ergonomics**: `ic`/`ac` cell text-objects, `[c`/`]c` cell motions,
   cell borders, per-cell execution counts and elapsed time.
 - **Tooling**: a sidebar combining the variable inspector, notebook table 
@@ -163,35 +173,24 @@ require("jove").setup({
 ### Webview interaction
 
 `:Jove open-webview` runs `terminal-browser` in a terminal buffer and enters
-Terminal mode automatically. Type, paste, scroll, and click using Neovim's
-native terminal input. `<Esc>` is sent to the browser; use `<C-\><C-N>` to
-return to Normal mode, then `q` to close or `i` to resume interaction. Hover
-events require Neovim's `mousemoveevent` option to be enabled.
+Terminal mode automatically.
+The webview recognizes HTML, Plotly, Vega-Lite v4–v6, and Vega v5–v6 output. 
 
-The browser runs on its own PTY. Jove relays Kitty graphics to the outer
-terminal and anchors them to Unicode placeholders in the terminal buffer.
-A Kitty-graphics-capable terminal is still required.
+> [!note]
+> Hover events require Neovim's `mousemoveevent` option to be enabled.
 
-The webview recognizes HTML, Plotly (`application/vnd.plotly.v1+json`),
-Vega-Lite v4–v6 (Altair), and Vega v5–v6 output. Plotly and Vega renderers load
-JavaScript from CDNs, so they require network access. With Plotly, emit its
-rich MIME bundle explicitly if your kernel selects a different renderer:
+> [!warning]
+> Plotly and Vega renderers load JavaScript from CDNs, so they require network 
+> access. With Plotly, emit its rich MIME bundle explicitly if your kernel 
+> selects a different renderer:
 
 ```python
 fig.show(renderer="plotly_mimetype")
 ```
 
-Standalone HTML/JavaScript components also work. Notebook-specific HTML may
-depend on initialization from other cells or Jupyter frontend APIs; use the
-library's standalone HTML export in that case. Jove retains HTML initialization
-emitted in the same cell. Additional MIME types can be supported with
-`require("jove.webview").register_renderer(mime, function(value) ... end)`;
-the callback must return standalone HTML, including its required scripts.
-
-Live `ipywidgets`, `FigureWidget`, and Python callbacks require a widget manager
-and kernel comms, which are not yet supported. Ordinary Plotly figures support
-browser-side zoom, pan, tooltips, and controls. Widget outputs and unknown MIME
-types produce an explanatory message rather than a blank webview.
+> [!warning]
+> Live `ipywidgets`, `FigureWidget`, and Python callbacks require a widget manager
+> and kernel comms, which are not yet supported. 
 
 ## Languages and LSP
 
@@ -285,3 +284,4 @@ Available `<Plug>` mappings:
 | `<Plug>(JovePrevCell)` | Jump to previous notebook cell |
 | `<Plug>(JoveGotoRunningCell)` | Jump to the currently executing cell |
 | `<Plug>(JoveToggleFollowRunning)` | Toggle following the currently executing cell |
+
