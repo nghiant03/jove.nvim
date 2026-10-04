@@ -27,7 +27,7 @@
 <!-- panvimdoc-ignore-start-->
 
 <p align="center">
-    <img src="assets/Demo.gif" alt="Jove demo: video showcasing jove feature set">
+    <video src="assets/Demo.gif" alt="Jove demo: video showcasing jove feature set" controls muted loop></video>
 </p>
 
 <!--panvimdoc-ignore-end-->
@@ -47,11 +47,10 @@
 
 ## Requirements
 
-- Neovim ≥ 0.11
+- Neovim ≥ 0.11.
 - [`jupytext`](https://github.com/mwouts/jupytext)
-- A Python interpreter with `jupyter_client` and
-  `ipykernel` installed:
-- [`snacks.nvim`](https://github.com/folke/snacks.nvim) (optional): Image rendering 
+- A Python interpreter with `jupyter_client` and `ipykernel` installed.
+- [`snacks.nvim`](https://github.com/folke/snacks.nvim) (optional): Image rendering.
 
 Run `:checkhealth jove` to verify the requirements
 
