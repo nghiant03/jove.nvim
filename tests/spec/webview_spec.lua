@@ -219,4 +219,33 @@ T["open_webview"]["opens the cell's latest HTML payload"] = function()
   vim.api.nvim_buf_delete(buf, { force = true })
 end
 
+T["open_webview"]["opens a saved Plotly MIME bundle without HTML"] = function()
+  local state = require("jove.state")
+  local cell = require("jove.cell")
+  local output = require("jove.output")
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "# %%", "fig" })
+  state.get(buf).path = "fake.ipynb"
+  output.import(buf, {
+    [cell.all(buf)[1].hash] = {
+      require("jove.persist").to_raw({
+        output_type = "display_data",
+        data = { ["application/vnd.plotly.v1+json"] = { data = { { y = { 1, 2, 3 } } } } },
+      }),
+    },
+  })
+  local opened
+  local original = webview.open_html
+  webview.open_html = function(html)
+    opened = html
+    return true
+  end
+  local ok, err = pcall(output.open_webview, buf, 2)
+  webview.open_html = original
+  vim.api.nvim_buf_delete(buf, { force = true })
+  assert(ok, err)
+  MiniTest.expect.equality(type(opened), "string")
+  MiniTest.expect.equality(opened:find("Plotly.newPlot", 1, true) ~= nil, true)
+end
+
 return T

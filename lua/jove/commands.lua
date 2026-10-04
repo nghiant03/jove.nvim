@@ -108,7 +108,7 @@ M.subcommands = {
     impl = function()
       require("jove.output").open_webview(0)
     end,
-    desc = "Open the current cell's HTML output in an interactive terminal-browser webview",
+    desc = "Open the current cell's rich output in an interactive terminal-browser webview",
   },
   ["clear-output"] = {
     impl = function()

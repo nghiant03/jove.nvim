@@ -557,20 +557,7 @@ function M.open_float(buf, lnum)
   return win
 end
 
---- Latest text/html payload in an output entry, if any.
----@param entry jove.OutputEntry
----@return string?
-local function find_html(entry)
-  for i = #entry.raw, 1, -1 do
-    local bundle = entry.raw[i].mime
-    if type(bundle) == "table" and type(bundle["text/html"]) == "string" then
-      return bundle["text/html"]
-    end
-  end
-  return nil
-end
-
---- Open the current cell's latest text/html output in an interactive
+--- Open the current cell's latest supported rich output in an interactive
 --- terminal-browser webview (requires terminal-browser + kitty graphics).
 ---@param buf integer
 ---@param lnum integer?
@@ -590,9 +577,9 @@ function M.open_webview(buf, lnum)
     vim.notify("[Jove] no output in this cell", vim.log.levels.INFO)
     return
   end
-  local html = find_html(entry)
+  local html, render_err = require("jove.webview.document").from_outputs(entry.raw)
   if not html then
-    vim.notify("[Jove] no text/html output in this cell", vim.log.levels.INFO)
+    vim.notify("[Jove] " .. render_err, vim.log.levels.INFO)
     return
   end
   local session, err = require("jove.webview").open_html(html)

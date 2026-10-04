@@ -14,6 +14,13 @@ local M = {}
 M._impl = impl
 M._Session = session.Session -- test seam
 
+--- Add or replace a rich MIME renderer. It must return standalone HTML.
+---@param mime string
+---@param renderer fun(value: any): string
+function M.register_renderer(mime, renderer)
+  require("jove.webview.document").register(mime, renderer)
+end
+
 ---@return boolean
 function M.available()
   local cfg = require("jove").config
