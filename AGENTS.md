@@ -80,7 +80,12 @@ Notes:
   hash** because jupytext py:percent round-trips drop cell ids.
 - `lua/jove/output.lua`, `lua/jove/mime.lua`, `lua/jove/ansi.lua`,
   `lua/jove/ui/` - rendering (inline extmark blocks, optional images via
-  `snacks.image`). `ui/sidebar.lua` is the single tabbed pane hosting the
+  `snacks.image`). `output.lua` owns storage and extmark placement; the pure
+  chunks-to-virt_lines pipeline is `lua/jove/output/render.lua`. The
+  terminal-browser webview entry point `lua/jove/webview.lua` delegates to
+  `lua/jove/webview/` (`impl.lua` platform primitives = `_impl` test seam,
+  `kitty.lua` placeholder-cell mechanics, `session.lua` session lifecycle).
+  `ui/sidebar.lua` is the single tabbed pane hosting the
   variables, kernel info, and TOC views (content comes from `ui/vars.lua`,
   `ui/panel.lua`, and `jove/toc.lua`); number keys switch tabs. `ansi.lua`
   owns all terminal escape handling: `strip` (drop sequences), `cr_concat`
