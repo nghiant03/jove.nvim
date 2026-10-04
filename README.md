@@ -160,6 +160,18 @@ require("jove").setup({
 })
 ```
 
+### Webview interaction
+
+`:Jove open-webview` runs `terminal-browser` in a terminal buffer and enters
+Terminal mode automatically. Type, paste, scroll, and click using Neovim's
+native terminal input. `<Esc>` is sent to the browser; use `<C-\><C-N>` to
+return to Normal mode, then `q` to close or `i` to resume interaction. Hover
+events require Neovim's `mousemoveevent` option to be enabled.
+
+The browser runs on its own PTY. Jove relays Kitty graphics to the outer
+terminal and anchors them to Unicode placeholders in the terminal buffer.
+A Kitty-graphics-capable terminal is still required.
+
 ## Languages and LSP
 
 Built-in languages:
