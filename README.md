@@ -172,6 +172,27 @@ The browser runs on its own PTY. Jove relays Kitty graphics to the outer
 terminal and anchors them to Unicode placeholders in the terminal buffer.
 A Kitty-graphics-capable terminal is still required.
 
+The webview recognizes HTML, Plotly (`application/vnd.plotly.v1+json`),
+Vega-Lite v4–v6 (Altair), and Vega v5–v6 output. Plotly and Vega renderers load
+JavaScript from CDNs, so they require network access. With Plotly, emit its
+rich MIME bundle explicitly if your kernel selects a different renderer:
+
+```python
+fig.show(renderer="plotly_mimetype")
+```
+
+Standalone HTML/JavaScript components also work. Notebook-specific HTML may
+depend on initialization from other cells or Jupyter frontend APIs; use the
+library's standalone HTML export in that case. Jove retains HTML initialization
+emitted in the same cell. Additional MIME types can be supported with
+`require("jove.webview").register_renderer(mime, function(value) ... end)`;
+the callback must return standalone HTML, including its required scripts.
+
+Live `ipywidgets`, `FigureWidget`, and Python callbacks require a widget manager
+and kernel comms, which are not yet supported. Ordinary Plotly figures support
+browser-side zoom, pan, tooltips, and controls. Widget outputs and unknown MIME
+types produce an explanatory message rather than a blank webview.
+
 ## Languages and LSP
 
 Built-in languages:
@@ -227,7 +248,7 @@ opts = {
 | `:Jove shutdown-kernel` | Shut down the current notebook kernel and bridge |
 | `:Jove toggle-output` | Show/hide rendered outputs of the current cell |
 | `:Jove open-output` | Open the current cell's outputs in a viewer |
-| `:Jove open-webview` | Open the current cell's HTML output in an interactive terminal-browser webview |
+| `:Jove open-webview` | Open the current cell's rich output in an interactive terminal-browser webview |
 | `:Jove clear-output` | Clear outputs of the current cell |
 | `:Jove clear-outputs` | Clear all rendered outputs in this buffer |
 | `:Jove reload` | Reload the current notebook buffer from disk |
