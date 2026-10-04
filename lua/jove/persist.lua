@@ -46,11 +46,15 @@ local function text_of(v)
 end
 
 ---@param data any
----@return table<string, string>
+---@return table<string, any>
 local function bundle_of(data)
   local out = {}
   for mime, v in pairs(data or {}) do
-    out[mime] = text_of(v)
+    if mime == "application/json" or mime:match("%+json$") then
+      out[mime] = vim.deepcopy(v)
+    else
+      out[mime] = text_of(v)
+    end
   end
   return out
 end

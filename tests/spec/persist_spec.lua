@@ -143,6 +143,28 @@ end
 
 T["to_raw"] = MiniTest.new_set()
 
+T["to_raw"]["preserves rich JSON specifications through notebook output round trips"] = function()
+  local bundle = {
+    ["application/vnd.plotly.v1+json"] = {
+      data = { { x = { 1, 2 }, y = { 3, 4 } } },
+      layout = { title = "Saved figure" },
+    },
+    ["application/vnd.vegalite.v5+json"] = { mark = "point" },
+    ["application/vnd.jupyter.widget-view+json"] = { model_id = "abc" },
+    ["application/json"] = { "JSON", "array" },
+    ["text/html"] = { "<b>", "fallback</b>" },
+  }
+  for _, kind in ipairs({ "display_data", "execute_result" }) do
+    local raw = persist.to_raw({ output_type = kind, data = bundle })
+    local expected = vim.deepcopy(bundle)
+    expected["text/html"] = "<b>fallback</b>"
+    MiniTest.expect.equality(raw.mime, expected)
+    MiniTest.expect.equality(persist.to_nbformat(raw).data, expected)
+    raw.mime["application/vnd.plotly.v1+json"].layout.title = "Changed"
+    MiniTest.expect.equality(bundle["application/vnd.plotly.v1+json"].layout.title, "Saved figure")
+  end
+end
+
 T["to_raw"]["string text and line-list text both join to a string after execute"] = function()
   local a = persist.to_raw({ output_type = "stream", name = "stdout", text = "42\n" })
   MiniTest.expect.equality(a.kind, "stream")
