@@ -90,7 +90,8 @@ for _, view in ipairs({ "sidebar", "output", "inspect", "webview" }) do
   T[view] = MiniTest.new_set()
   for _, mode in ipairs({ "vsplit", "hsplit", "float" }) do
     for _, override in ipairs({ false, true }) do
-      local label = (override and "override " or "inherit ") .. mode
+      local label = (override and "uses the per-view override: " or "inherits the default mode: ")
+        .. mode
       T[view][label] = function()
         jove.config.ui.window_mode = override and (mode == "float" and "hsplit" or "float") or mode
         if override then

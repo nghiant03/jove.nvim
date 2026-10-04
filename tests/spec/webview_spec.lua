@@ -61,7 +61,14 @@ local function open()
   return session
 end
 
-T["available"] = function()
+T["available"] = MiniTest.new_set()
+T["open"] = MiniTest.new_set()
+T["output"] = MiniTest.new_set()
+T["resize"] = MiniTest.new_set()
+T["close"] = MiniTest.new_set()
+T["open_webview"] = MiniTest.new_set()
+
+T["available"]["requires enabled webview, executable browser, and Kitty graphics"] = function()
   MiniTest.expect.equality(webview.available(), true)
   jove.config.webview.enabled = false
   MiniTest.expect.equality(webview.available(), false)
@@ -79,7 +86,7 @@ T["available"] = function()
   MiniTest.expect.equality(webview.available(), false)
 end
 
-T["opens a real terminal backed by a native browser PTY"] = function()
+T["open"]["creates a terminal buffer and starts the browser on a PTY"] = function()
   local session = open()
   MiniTest.expect.equality(vim.bo[session.buf].buftype, "terminal")
   MiniTest.expect.equality(captured.cmd, { "terminal-browser", "open", "about:blank" })
@@ -106,7 +113,7 @@ T["opens a real terminal backed by a native browser PTY"] = function()
   MiniTest.expect.equality(vim.api.nvim_buf_get_keymap(session.buf, "t"), {})
 end
 
-T["forwards terminal replies and renders graphics placeholders"] = function()
+T["output"]["forwards terminal replies and renders graphics placeholders"] = function()
   local session = open()
   captured.opts.on_stdout(42, { "\27[16t" })
   MiniTest.expect.equality(inputs[#inputs], "\27[6;20;10t")
@@ -125,7 +132,7 @@ T["forwards terminal replies and renders graphics placeholders"] = function()
   end
 end
 
-T["resizes only when its own viewport changes"] = function()
+T["resize"]["updates the PTY only when the viewport changes"] = function()
   local session = open()
   session:resize()
   MiniTest.expect.equality(resized, {})
@@ -136,7 +143,7 @@ T["resizes only when its own viewport changes"] = function()
   MiniTest.expect.equality(session.transport.cols, 30)
 end
 
-T["failure to start cleans up the terminal and window"] = function()
+T["open"]["cleans up the terminal and window when jobstart fails"] = function()
   local before = #vim.api.nvim_list_wins()
   webview._impl.jobstart = function()
     return 0
@@ -147,7 +154,7 @@ T["failure to start cleans up the terminal and window"] = function()
   MiniTest.expect.equality(#vim.api.nvim_list_wins(), before)
 end
 
-T["failure to open the outer terminal is reported"] = function()
+T["open"]["reports failure to open the outer terminal"] = function()
   webview._impl.open_tty = function()
     return nil, "no tty"
   end
@@ -156,7 +163,7 @@ T["failure to open the outer terminal is reported"] = function()
   MiniTest.expect.equality(err:find("no tty", 1, true) ~= nil, true)
 end
 
-T["jobstart exceptions also clean up"] = function()
+T["open"]["cleans up the terminal and window when jobstart raises"] = function()
   local before = #vim.api.nvim_list_wins()
   webview._impl.jobstart = function()
     error("spawn failed")
@@ -167,7 +174,7 @@ T["jobstart exceptions also clean up"] = function()
   MiniTest.expect.equality(#vim.api.nvim_list_wins(), before)
 end
 
-T["close stops the PTY and deletes only this session's image"] = function()
+T["close"]["stops the PTY and deletes only the session image exactly once"] = function()
   local session = open()
   local win, buf, term = session.win, session.buf, session.term
   session:close()
@@ -182,14 +189,14 @@ T["close stops the PTY and deletes only this session's image"] = function()
   MiniTest.expect.equality(vim.api.nvim_get_chan_info(term).buffer, nil)
 end
 
-T["buffer wipe stops the PTY"] = function()
+T["close"]["stops the PTY when the buffer is wiped"] = function()
   local session = open()
   vim.api.nvim_buf_delete(session.buf, { force = true })
   MiniTest.expect.equality(session.closed, true)
   MiniTest.expect.equality(stopped, { 42 })
 end
 
-T["output.open_webview opens the latest HTML payload"] = function()
+T["open_webview"]["opens the cell's latest HTML payload"] = function()
   local state = require("jove.state")
   local cell = require("jove.cell")
   local output = require("jove.output")

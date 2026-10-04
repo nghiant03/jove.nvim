@@ -110,6 +110,11 @@ Notes:
   these outside tests.
 - Test specs use mini.test: `MiniTest.new_set` with hooks, nested sets by
   topic; specs that need a real job inject fakes at `bridge_mod._impl`.
+- Lua test files use `<module>_spec.lua` (e.g. `win_spec.lua` for `jove.ui.win`),
+  `<module>_<submodule>_spec.lua` for submodules, and `<module>_e2e_spec.lua`
+  for cross-process flows. Group cases as `T["subject"]["describes behavior"]`,
+  using bare API/topic names without `()` and present-tense behavior descriptions.
+  Name fixture helpers for their role (e.g. `webview_terminal.py` is the raw PTY peer).
 - Front matter (`# ---` fenced jupytext header, comment leader per language)
   is stripped from the buffer on read and restored on write (`buffer.lua`
   `split_front`); cell markers are `<comment> %%` (e.g. `# %%` for

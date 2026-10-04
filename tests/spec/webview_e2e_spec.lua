@@ -1,7 +1,9 @@
 local MiniTest = require("mini.test")
 local T = MiniTest.new_set()
 
-T["native terminal input reaches the PTY in every layout"] = function()
+T["terminal"] = MiniTest.new_set()
+
+T["terminal"]["forwards native input, resizes, and closes a real PTY in every layout"] = function()
   local child = MiniTest.new_child_neovim()
   local log = vim.fn.tempname()
   child.start({ "-u", "scripts/minimal_init.lua" })
