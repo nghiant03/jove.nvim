@@ -27,7 +27,7 @@
 <!-- panvimdoc-ignore-start-->
 
 <p align="center">
-    <img src="assets/Demo.GIF" alt="Jove demo: video showcasing jove feature set">
+    <img src="assets/Demo.gif" alt="Jove demo: video showcasing jove feature set">
 </p>
 
 <!--panvimdoc-ignore-end-->
