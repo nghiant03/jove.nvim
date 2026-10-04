@@ -15,6 +15,15 @@ local M = {}
 ---@field auto_refresh boolean
 ---@field size number  Sidebar size as a fraction of the screen (0 < size < 1, default 0.25): share of columns in vsplit/float mode, share of lines in hsplit mode.
 
+---@alias jove.WindowMode "float"|"vsplit"|"hsplit"
+---@alias jove.WindowView "sidebar"|"output"|"inspect"|"webview"
+
+---@class jove.Config.WindowOverrides
+---@field sidebar jove.WindowMode?  Variables, kernel info, and TOC share one window.
+---@field output jove.WindowMode?
+---@field inspect jove.WindowMode?  Variable detail viewer.
+---@field webview jove.WindowMode?
+
 ---@class jove.Config.UI
 ---@field conceal_headers boolean
 ---@field active_cell boolean
@@ -22,13 +31,14 @@ local M = {}
 ---@field elapsed boolean
 ---@field borders boolean
 ---@field border_hl string|table|nil  An existing hl group to link `JoveCellBorder` to, or attrs passed to `nvim_set_hl` for `JoveCellBorder` (e.g. `{ fg = "#ff9e64" }`); nil leaves the default link in place.
----@field window_mode "float"|"vsplit"|"hsplit"  How to open the sidebar (variables, kernel info, TOC), the variable detail view, and the output viewer (default "vsplit").
+---@field window_mode jove.WindowMode  Default for all Jove viewers, including the webview (default "vsplit").
+---@field window_overrides jove.Config.WindowOverrides  Per-view overrides; omitted entries inherit window_mode.
 
 ---@class jove.Config.Webview  Interactive HTML output viewer (terminal-browser).
 ---@field enabled boolean                   Allow :Jove open-webview (default true).
 ---@field cmd string                        terminal-browser binary (default "terminal-browser").
----@field width number                      Webview float width as a fraction of the editor (0-1).
----@field height number                     Webview float height as a fraction of the editor (0-1).
+---@field width number                      Webview width in float/vsplit mode as a fraction of the editor (0-1).
+---@field height number                     Webview height in float/hsplit mode as a fraction of the editor (0-1).
 
 ---@class jove.Config.LSP  LSP integration.
 ---@field auto_attach boolean         Start the servers listed in `servers` for the notebook's language on open (default false); servers enabled via vim.lsp.enable()/nvim-lspconfig attach on their own regardless.
@@ -90,6 +100,7 @@ M.config = {
     elapsed = true,
     borders = true,
     window_mode = "vsplit",
+    window_overrides = {},
   },
   lsp = {
     auto_attach = false,
@@ -107,6 +118,12 @@ M.config = {
 ---@return boolean
 local function is_string_or_false(v)
   return type(v) == "string" or v == false
+end
+
+---@param v any
+---@return boolean
+local function is_window_mode(v)
+  return v == "float" or v == "vsplit" or v == "hsplit"
 end
 
 local KNOWN_KEYS = {
@@ -179,9 +196,25 @@ local function validate_config(cfg)
   vim.validate("ui.elapsed", cfg.ui.elapsed, "boolean")
   vim.validate("ui.borders", cfg.ui.borders, "boolean")
   vim.validate("ui.border_hl", cfg.ui.border_hl, { "string", "table" }, true)
-  vim.validate("ui.window_mode", cfg.ui.window_mode, function(v)
-    return v == "float" or v == "vsplit" or v == "hsplit"
-  end, '"float", "vsplit", or "hsplit"')
+  vim.validate(
+    "ui.window_mode",
+    cfg.ui.window_mode,
+    is_window_mode,
+    '"float", "vsplit", or "hsplit"'
+  )
+  vim.validate("ui.window_overrides", cfg.ui.window_overrides, "table")
+  local views = { sidebar = true, output = true, inspect = true, webview = true }
+  for view, mode in pairs(cfg.ui.window_overrides) do
+    vim.validate("ui.window_overrides key", view, function(v)
+      return views[v] == true
+    end, '"sidebar", "output", "inspect", or "webview"')
+    vim.validate(
+      "ui.window_overrides." .. view,
+      mode,
+      is_window_mode,
+      '"float", "vsplit", or "hsplit"'
+    )
+  end
   vim.validate("lsp", cfg.lsp, "table")
   vim.validate("lsp.auto_attach", cfg.lsp.auto_attach, "boolean")
   vim.validate("lsp.servers", cfg.lsp.servers, "table")

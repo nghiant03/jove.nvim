@@ -369,7 +369,8 @@ function M.open(buf, tab)
   local win_mod = require("jove.ui.win")
   local width = pane_width()
   local height = math.max(5, vim.o.lines - 2)
-  local size = win_mod.mode() == "hsplit" and math.max(5, math.floor(vim.o.lines * pane_share()))
+  local size = win_mod.mode("sidebar") == "hsplit"
+      and math.max(5, math.floor(vim.o.lines * pane_share()))
     or width
   local fbuf = vim.api.nvim_create_buf(false, true)
   vim.bo[fbuf].buftype = "nofile"
@@ -387,7 +388,7 @@ function M.open(buf, tab)
     col = math.max(0, vim.o.columns - width),
     style = "minimal",
     border = "single",
-  }, size)
+  }, size, "sidebar")
   if not win then
     pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
     vim.notify("[Jove] could not open sidebar: " .. tostring(err), vim.log.levels.ERROR)

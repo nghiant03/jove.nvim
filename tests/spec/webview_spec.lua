@@ -10,12 +10,15 @@ local function default_webview()
   jove.config.webview.height = 0.8
 end
 
-local saved_impl
+local saved_impl, saved_ui
 
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
       default_webview()
+      saved_ui = vim.deepcopy(jove.config.ui)
+      jove.config.ui.window_mode = "vsplit"
+      jove.config.ui.window_overrides = {}
       saved_impl = {
         jobstart = webview._impl.jobstart,
         jobstop = webview._impl.jobstop,
@@ -43,6 +46,7 @@ local T = MiniTest.new_set({
         webview._impl[k] = v
       end
       saved_impl = nil
+      jove.config.ui = saved_ui
     end,
   },
 })
@@ -126,7 +130,7 @@ T["open()"]["errors without kitty terminal"] = function()
   expect_truthy(type(err) == "string" and err:find("kitty") ~= nil)
 end
 
-T["open()"]["spawns browser with PIXEL_EMBED env and opens a float"] = function()
+T["open()"]["spawns browser with PIXEL_EMBED env and opens a right split by default"] = function()
   local captured = fake_jobstart()
   local session, err = webview.open("https://example.com")
   MiniTest.expect.equality(err, nil)
@@ -138,7 +142,8 @@ T["open()"]["spawns browser with PIXEL_EMBED env and opens a float"] = function(
   MiniTest.expect.equality(captured.opts.env.PIXEL_EMBED, session.sock_path)
   MiniTest.expect.equality(captured.opts.env.PIXEL_TTY, "/dev/tty")
   expect_truthy(vim.api.nvim_win_is_valid(session.win))
-  expect_truthy(vim.api.nvim_win_get_config(session.win).relative == "editor")
+  MiniTest.expect.equality(vim.api.nvim_win_get_config(session.win).relative, "")
+  expect_truthy(vim.api.nvim_win_get_position(session.win)[2] > 0)
   local win = session.win
   session:close()
   expect_truthy(not vim.api.nvim_win_is_valid(win))

@@ -102,7 +102,7 @@ M.subcommands = {
     impl = function()
       require("jove.output").open_float(0)
     end,
-    desc = "Open the current cell's outputs in a float",
+    desc = "Open the current cell's outputs in a viewer",
   },
   ["open-webview"] = {
     impl = function()

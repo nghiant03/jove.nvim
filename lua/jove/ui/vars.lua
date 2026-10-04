@@ -126,7 +126,9 @@ function M.show_float(text)
   vim.bo[fbuf].buflisted = false
   local width = math.max(20, math.floor(vim.o.columns * 0.6))
   local height = math.max(3, math.min(#lines, math.floor(vim.o.lines * 0.6)))
-  local win = require("jove.ui.win").open(fbuf, true, {
+  local win_ui = require("jove.ui.win")
+  local size = win_ui.mode("inspect") == "hsplit" and height or width
+  local win = win_ui.open(fbuf, true, {
     relative = "editor",
     width = width,
     height = height,
@@ -134,7 +136,7 @@ function M.show_float(text)
     col = math.floor((vim.o.columns - width) / 2),
     border = "rounded",
     style = "minimal",
-  }, width)
+  }, size, "inspect")
   if not win then
     pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
     return nil
@@ -149,13 +151,13 @@ function M.show_float(text)
     "n",
     "q",
     close,
-    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Float" }
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Variable Details" }
   )
   vim.keymap.set(
     "n",
     "<Esc>",
     close,
-    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Float" }
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Variable Details" }
   )
   return win
 end

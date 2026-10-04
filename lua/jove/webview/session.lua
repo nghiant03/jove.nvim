@@ -1,4 +1,4 @@
--- Webview session: owns the placeholder float, the PIXEL_EMBED pipe server,
+-- Webview session: owns the placeholder window, the PIXEL_EMBED pipe server,
 -- and the terminal-browser child process.
 local impl = require("jove.webview.impl")
 local kitty = require("jove.webview.kitty")
@@ -47,7 +47,7 @@ function Session:size_message(kind)
   }
 end
 
---- Fill the float buffer with kitty placeholder cells for the current grid.
+--- Fill the buffer with kitty placeholder cells for the current grid.
 function Session:render_placeholders()
   local grid = self.grid
   if not grid or not self.buf or not vim.api.nvim_buf_is_valid(self.buf) then
@@ -285,7 +285,7 @@ local function on_win_resized(session)
   end)
 end
 
---- Create the float buffer and window hosting the placeholder grid.
+--- Create the buffer and window hosting the placeholder grid.
 ---@param self jove.Webview
 ---@param size { width: number, height: number }  fractions of the editor (0-1)
 ---@return integer? win, string? err
@@ -297,7 +297,9 @@ local function open_placeholder_win(self, size)
 
   local width = math.max(10, math.min(math.floor(vim.o.columns * size.width), kitty.MAX_CELLS))
   local height = math.max(3, math.min(math.floor(vim.o.lines * size.height), kitty.MAX_CELLS))
-  local ok, win = pcall(vim.api.nvim_open_win, buf, true, {
+  local win_ui = require("jove.ui.win")
+  local split_size = win_ui.mode("webview") == "hsplit" and height or width
+  local win, err = win_ui.open(buf, true, {
     relative = "editor",
     width = width,
     height = height,
@@ -305,12 +307,20 @@ local function open_placeholder_win(self, size)
     col = math.floor((vim.o.columns - width) / 2),
     border = "rounded",
     style = "minimal",
-  })
-  if not ok then
+  }, split_size, "webview")
+  if not win then
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
-    return nil, tostring(win)
+    return nil, err
   end
   self.win = win
+  vim.wo[win].number = false
+  vim.wo[win].relativenumber = false
+  vim.wo[win].signcolumn = "no"
+  vim.wo[win].foldcolumn = "0"
+  vim.wo[win].statuscolumn = ""
+  vim.wo[win].wrap = false
+  vim.wo[win].scrolloff = 0
+  vim.wo[win].sidescrolloff = 0
   self:update_winbar()
   return win
 end
@@ -462,7 +472,7 @@ local function start_browser(self, cmd, url)
   return job
 end
 
---- Start a webview session: placeholder float + pipe server + browser process.
+--- Start a webview session: placeholder window + pipe server + browser process.
 --- Callers must check availability first (see jove.webview.open).
 ---@param url string
 ---@param cmd string

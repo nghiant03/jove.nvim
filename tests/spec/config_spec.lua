@@ -223,6 +223,24 @@ T["setup"]["raises on invalid opt types"] = function()
   MiniTest.expect.equality(jove.config.jupytext, defaults.jupytext)
 end
 
+T["setup"]["window overrides validate view names and modes and preserve other entries"] = function()
+  MiniTest.expect.equality(jove.config.ui.window_overrides, {})
+  jove.setup({ ui = { window_overrides = { webview = "float", sidebar = "vsplit" } } })
+  jove.setup({ ui = { window_overrides = { output = "hsplit", inspect = "float" } } })
+  MiniTest.expect.equality(jove.config.ui.window_overrides, {
+    sidebar = "vsplit",
+    output = "hsplit",
+    inspect = "float",
+    webview = "float",
+  })
+  for _, overrides in ipairs({ "float", { webview = "popup" }, { webveiw = "float" } }) do
+    MiniTest.expect.error(function()
+      jove.setup({ ui = { window_overrides = overrides } })
+    end)
+  end
+  MiniTest.expect.equality(jove.config.ui.window_overrides.webview, "float")
+end
+
 T["setup"]["lsp: nested validation and merge"] = function()
   MiniTest.expect.equality(jove.config.lsp.auto_attach, false)
   MiniTest.expect.error(function()

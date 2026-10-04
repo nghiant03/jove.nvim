@@ -488,7 +488,7 @@ local function open_float_win(fbuf)
   local width = math.max(20, math.floor(vim.o.columns * 0.8))
   local height = math.max(5, math.floor(vim.o.lines * 0.8))
   local win_ui = require("jove.ui.win")
-  local size = win_ui.mode() == "hsplit" and math.floor(vim.o.lines * 0.4)
+  local size = win_ui.mode("output") == "hsplit" and math.floor(vim.o.lines * 0.4)
     or math.floor(vim.o.columns * 0.5)
   local win = win_ui.open(fbuf, true, {
     relative = "editor",
@@ -497,7 +497,7 @@ local function open_float_win(fbuf)
     row = math.floor((vim.o.lines - height) / 2),
     col = math.floor((vim.o.columns - width) / 2),
     border = "rounded",
-  }, size)
+  }, size, "output")
   if not win then
     return nil
   end
@@ -513,13 +513,13 @@ local function open_float_win(fbuf)
     "n",
     "q",
     close,
-    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Float" }
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Viewer" }
   )
   vim.keymap.set(
     "n",
     "<Esc>",
     close,
-    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Float" }
+    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Viewer" }
   )
   return win
 end
@@ -571,7 +571,7 @@ local function find_html(entry)
 end
 
 --- Open the current cell's latest text/html output in an interactive
---- terminal-browser webview float (requires terminal-browser + kitty graphics).
+--- terminal-browser webview (requires terminal-browser + kitty graphics).
 ---@param buf integer
 ---@param lnum integer?
 function M.open_webview(buf, lnum)
