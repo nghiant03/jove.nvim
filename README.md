@@ -27,7 +27,7 @@
 <!-- panvimdoc-ignore-start-->
 
 <p align="center">
-    <video src="https://raw.githubusercontent.com/nghiant03/jove. nvim/main/assets/Demo.mp4" controls muted loop></video> 
+    <video src="https://github.com/user-attachments/assets/491dc408-b50a-44ab-8490-66d1763efbab" controls muted loop></video> 
 </p>
 
 <!--panvimdoc-ignore-end-->
