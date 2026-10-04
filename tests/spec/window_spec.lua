@@ -31,6 +31,13 @@ local T = MiniTest.new_set({
         return 42
       end
       webview._impl.jobstop = function() end
+      webview._impl.open_tty = function()
+        return 999
+      end
+      webview._impl.close_tty = function() end
+      webview._impl.write_tty = function() end
+      webview._impl.jobsend = function() end
+      webview._impl.jobresize = function() end
       buf = vim.api.nvim_create_buf(false, true)
       vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "# %%", "x = 1" })
       vim.api.nvim_set_current_buf(buf)

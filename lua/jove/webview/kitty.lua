@@ -40,13 +40,30 @@ function M.cell(row, col)
   return PLACEHOLDER .. dia_cache[row] .. dia_cache[col]
 end
 
---- Define the hl group carrying the image id as its fg color.
+--- Paint placeholders through the terminal emulator, preserving its cursor.
 ---@param image_id integer
----@return string hl
-function M.image_hl(image_id)
-  local hl = ("JoveWebview%x"):format(image_id)
-  vim.api.nvim_set_hl(0, hl, { fg = ("#%06x"):format(image_id) })
-  return hl
+---@param cols integer
+---@param rows integer
+---@return string
+function M.grid(image_id, cols, rows)
+  local r = math.floor(image_id / 65536) % 256
+  local g = math.floor(image_id / 256) % 256
+  local b = image_id % 256
+  local parts = { ("\0277\27[?7l\27[0m\27[38;2;%d;%d;%dm"):format(r, g, b) }
+  for row = 1, math.min(rows, M.MAX_CELLS) do
+    parts[#parts + 1] = ("\27[%d;1H"):format(row)
+    for col = 1, math.min(cols, M.MAX_CELLS) do
+      parts[#parts + 1] = M.cell(row, col)
+    end
+  end
+  parts[#parts + 1] = "\27[0m\0278"
+  return table.concat(parts)
+end
+
+---@param image_id integer
+---@return string
+function M.delete(image_id)
+  return ("\27_Ga=d,d=I,i=%d,q=2\27\\"):format(image_id)
 end
 
 return M

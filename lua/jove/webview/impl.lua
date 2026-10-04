@@ -2,6 +2,8 @@
 local impl = {
   jobstart = vim.fn.jobstart,
   jobstop = vim.fn.jobstop,
+  jobsend = vim.fn.chansend,
+  jobresize = vim.fn.jobresize,
   executable = vim.fn.executable,
 }
 
@@ -56,6 +58,27 @@ function impl.tty_name()
     return link
   end
   return "/dev/tty"
+end
+
+---@return integer? fd, string? err
+function impl.open_tty()
+  return vim.uv.fs_open(impl.tty_name(), "w", 384)
+end
+
+---@param fd integer
+---@param data string
+function impl.write_tty(fd, data)
+  local offset = 1
+  while offset <= #data do
+    local written, err = vim.uv.fs_write(fd, data:sub(offset), -1)
+    assert(written and written > 0, err or "could not write webview graphics")
+    offset = offset + written
+  end
+end
+
+---@param fd integer
+function impl.close_tty(fd)
+  vim.uv.fs_close(fd)
 end
 
 return impl

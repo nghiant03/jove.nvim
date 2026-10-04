@@ -1,12 +1,10 @@
 -- Embedded interactive webview via terminal-browser (https://github.com/zenbu-labs/terminal-browser).
 --
 -- terminal-browser is a real Chromium (Electron offscreen rendering) that draws
--- pixels into the terminal through the kitty graphics protocol. It supports
--- embedding: the host (us) prints kitty unicode placeholder cells, the browser
--- streams frames into them, and input is forwarded as JSON-lines over a unix
--- socket (PIXEL_EMBED). This module is the public entry point; the pieces live
--- in jove.webview.impl (platform primitives), jove.webview.kitty (placeholder
--- mechanics), and jove.webview.session (session lifecycle).
+-- pixels into the terminal through the kitty graphics protocol. It runs on a
+-- PTY connected to a Neovim terminal buffer. A graphics relay translates its
+-- full-frame images into Kitty Unicode placements inside that buffer; keyboard,
+-- mouse, paste, and terminal replies use Neovim's native terminal input path.
 
 local impl = require("jove.webview.impl")
 local session = require("jove.webview.session")

@@ -84,7 +84,8 @@ Notes:
   chunks-to-virt_lines pipeline is `lua/jove/output/render.lua`. The
   terminal-browser webview entry point `lua/jove/webview.lua` delegates to
   `lua/jove/webview/` (`impl.lua` platform primitives = `_impl` test seam,
-  `kitty.lua` placeholder-cell mechanics, `session.lua` session lifecycle).
+  `kitty.lua` placeholder-cell mechanics, `transport.lua` native PTY output /
+  Kitty graphics relay, `session.lua` terminal-buffer and process lifecycle).
   `ui/sidebar.lua` is the single tabbed pane hosting the
   variables, kernel info, and TOC views (content comes from `ui/vars.lua`,
   `ui/panel.lua`, and `jove/toc.lua`); number keys switch tabs. `ansi.lua`
