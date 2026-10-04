@@ -53,8 +53,8 @@ function M.open(url, opts)
       "jove: webview requires a terminal with kitty graphics support (kitty, ghostty, wezterm)"
   end
 
-  local width = tonumber(opts.width or wv.width) or 0.8
-  local height = tonumber(opts.height or wv.height) or 0.8
+  local width = tonumber(opts.width or wv.width) or 0.5
+  local height = tonumber(opts.height or wv.height) or 0.5
   return session.start(url, cmd, { width = width, height = height })
 end
 

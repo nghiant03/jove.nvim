@@ -135,8 +135,8 @@ require("jove").setup({
   webview = {
     enabled = true, 
     cmd = "terminal-browser",   -- terminal-browser binary
-    width = 0.8,                -- webview width in float/vsplit mode, as a fraction of the editor
-    height = 0.8,               -- webview height in float/hsplit mode, as a fraction of the editor
+    width = 0.5,                -- webview width in float/vsplit mode, as a fraction of the editor
+    height = 0.5,               -- webview height in float/hsplit mode, as a fraction of the editor
   },
 })
 ```

@@ -37,8 +37,8 @@ local M = {}
 ---@class jove.Config.Webview  Interactive HTML output viewer (terminal-browser).
 ---@field enabled boolean                   Allow :Jove open-webview (default true).
 ---@field cmd string                        terminal-browser binary (default "terminal-browser").
----@field width number                      Webview width in float/vsplit mode as a fraction of the editor (0-1).
----@field height number                     Webview height in float/hsplit mode as a fraction of the editor (0-1).
+---@field width number                      Webview width in float/vsplit mode as a fraction of the editor (0-1, default 0.5).
+---@field height number                     Webview height in float/hsplit mode as a fraction of the editor (0-1, default 0.5).
 
 ---@class jove.Config.LSP  LSP integration.
 ---@field auto_attach boolean         Start the servers listed in `servers` for the notebook's language on open (default false); servers enabled via vim.lsp.enable()/nvim-lspconfig attach on their own regardless.
@@ -109,8 +109,8 @@ M.config = {
   webview = {
     enabled = true,
     cmd = "terminal-browser",
-    width = 0.8,
-    height = 0.8,
+    width = 0.5,
+    height = 0.5,
   },
 }
 
