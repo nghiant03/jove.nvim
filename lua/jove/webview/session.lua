@@ -124,15 +124,28 @@ end
 ---@param kind string  down|up|move|scrollup|scrolldown
 ---@param button string  left|middle|right|none
 function Session:send_mouse(kind, button)
-  if not self.win or not vim.api.nvim_win_is_valid(self.win) then
+  if not self.grid or not self.win or not vim.api.nvim_win_is_valid(self.win) then
     return
   end
   local pos = self:mouse_pos()
   if pos.winid ~= self.win then
     return
   end
-  local x = (pos.wincol - 1) * self.cell[1] + math.floor(self.cell[1] / 2)
-  local y = (pos.winrow - 1) * self.cell[2] + math.floor(self.cell[2] / 2)
+  -- winrow/wincol include window decorations. Measure from the actual image
+  -- origin so splits, float borders, and the winbar all use the same space.
+  local origin = vim.fn.screenpos(self.win, 1, 1)
+  if origin.row == 0 or origin.col == 0 then
+    return
+  end
+  local col = pos.screencol - origin.col
+  local row = pos.screenrow - origin.row
+  local cols = math.min(self.grid.cols, vim.api.nvim_win_get_width(self.win), kitty.MAX_CELLS)
+  local rows = math.min(self.grid.rows, vim.api.nvim_win_get_height(self.win), kitty.MAX_CELLS)
+  if col < 0 or col >= cols or row < 0 or row >= rows then
+    return
+  end
+  local x = col * self.cell[1] + math.floor(self.cell[1] / 2)
+  local y = row * self.cell[2] + math.floor(self.cell[2] / 2)
   self:send({
     type = "mouse",
     kind = kind,

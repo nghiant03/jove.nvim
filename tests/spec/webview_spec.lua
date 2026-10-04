@@ -228,8 +228,11 @@ end
 
 T["input"]["send_mouse converts cell coords to pixels"] = function()
   local session, sent = open_session()
+  session:handle({ type = "placed", imageId = session.image_id, cols = 4, rows = 3 })
+  vim.cmd("redraw")
+  local origin = vim.fn.screenpos(session.win, 1, 1)
   session.mouse_pos = function()
-    return { winid = session.win, wincol = 3, winrow = 2 }
+    return { winid = session.win, screencol = origin.col + 2, screenrow = origin.row + 1 }
   end
   session:send_mouse("down", "left")
   local ev = sent[1]
@@ -244,12 +247,75 @@ end
 
 T["input"]["send_mouse ignores clicks outside the webview window"] = function()
   local session, sent = open_session()
+  session:handle({ type = "placed", imageId = session.image_id, cols = 4, rows = 3 })
   session.mouse_pos = function()
     return { winid = -1, wincol = 1, winrow = 1 }
   end
   session:send_mouse("down", "left")
   MiniTest.expect.equality(#sent, 0)
   session:close()
+end
+
+T["input"]["real mouse clicks use image coordinates in every layout"] = function()
+  local child = MiniTest.new_child_neovim()
+  child.start({ "-u", "scripts/minimal_init.lua" })
+  local ok, err = pcall(function()
+    child.api.nvim_ui_attach(100, 40, { rgb = true })
+    child.lua([[
+      vim.o.mouse = "a"
+      local wv = require("jove.webview")
+      wv._impl.executable = function() return 1 end
+      wv._impl.terminal_supports_kitty = function() return true end
+      wv._impl.cell_pixels = function() return 10, 20 end
+      wv._impl.jobstart = function() return 42 end
+      wv._impl.jobstop = function() end
+    ]])
+    for _, mode in ipairs({ "vsplit", "hsplit", "float" }) do
+      child.lua(
+        [[
+        require("jove").config.ui.window_mode = ...
+        _G.session = assert(require("jove.webview").open("about:blank"))
+        _G.events = {}
+        session.send = function(_, msg)
+          if msg.type == "mouse" then table.insert(events, msg) end
+        end
+        vim.cmd("redraw")
+      ]],
+        { mode }
+      )
+      -- Opening a window can queue a resize; let it settle before placement.
+      child.lua([[vim.wait(20)
+        session:handle({ type = "placed", imageId = session.image_id, cols = 4, rows = 3 })
+        vim.cmd("redraw")
+      ]])
+      local origin = child.lua_get("vim.fn.screenpos(session.win, 1, 1)")
+      for _, action in ipairs({ "press", "release" }) do
+        child.api.nvim_input_mouse("left", action, "", 0, origin.row - 1, origin.col - 1)
+      end
+      child.lua([[assert(vim.wait(1000, function() return #events == 2 end))]])
+      local events = child.lua_get("events")
+      MiniTest.expect.equality({ events[1].kind, events[2].kind }, { "down", "up" })
+      for _, ev in ipairs(events) do
+        MiniTest.expect.equality({ ev.x, ev.y }, { 5, 10 })
+      end
+      -- Same window, but above/left of the image or beyond the placed grid.
+      child.lua([[
+        local origin = vim.fn.screenpos(session.win, 1, 1)
+        for _, offset in ipairs({ { 0, -1 }, { -1, 0 }, { 4, 0 }, { 0, 3 } }) do
+          session.mouse_pos = function()
+            return { winid = session.win, screencol = origin.col + offset[1], screenrow = origin.row + offset[2] }
+          end
+          session:send_mouse("down", "left")
+        end
+      ]])
+      MiniTest.expect.equality(child.lua_get("#events"), 2)
+      child.lua("session:close()")
+    end
+  end)
+  child.stop()
+  if not ok then
+    error(err)
+  end
 end
 
 T["input"]["interact mode maps printable keys and esc exits"] = function()
