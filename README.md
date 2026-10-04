@@ -27,7 +27,7 @@
 <!-- panvimdoc-ignore-start-->
 
 <p align="center">
-    <video src="assets/Demo.mp4" alt="Jove demo: video showcasing jove feature set" controls muted loop></video>
+    <video src="https://raw.githubusercontent.com/nghiant03/jove. nvim/main/assets/Demo.mp4" controls muted loop></video> 
 </p>
 
 <!--panvimdoc-ignore-end-->
