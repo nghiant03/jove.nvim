@@ -1,23 +1,17 @@
--- Output storage and extmark rendering.
+-- Output storage and extmark placement; the pure rendering pipeline
+-- (chunks -> decorated virt_lines) lives in jove.output.render.
 local state = require("jove.state")
 local cell = require("jove.cell")
 local mime = require("jove.mime")
 local ansi = require("jove.ansi")
 local image = require("jove.ui.image")
+local render = require("jove.output.render")
 
 local M = {}
 
 M.ns = vim.api.nvim_create_namespace("jove-output")
 
 local RENDER_PRIORITY = 200
-
-vim.api.nvim_set_hl(0, "JoveOutputBorder", { link = "DiagnosticInfo", default = true })
-vim.api.nvim_set_hl(0, "JoveOutputHeader", { link = "Comment", default = true })
-vim.api.nvim_set_hl(0, "JoveOutputGuide", { link = "Comment", default = true })
-vim.api.nvim_set_hl(0, "JoveOutputGuideError", { link = "DiagnosticError", default = true })
-vim.api.nvim_set_hl(0, "JoveOutput", { default = true })
-
-local OPEN_CMD = ":Jove open-output"
 
 ---@class jove.OutputEntry
 ---@field chunks table[]              rendered mime chunks (see mime.render)
@@ -136,246 +130,6 @@ local function append_output(entry, params, new_chunks)
   end
 end
 
----@param text string
----@param spans jove.AnsiSpan[]
----@param base_hl string?
----@return table[] lines  each line is a list of { text, hl_group? }
-local function split_segments(text, spans, base_hl)
-  local out = {}
-  local offset = 0
-  local span_idx = 1
-  for _, l in ipairs(vim.split(text, "\n", { plain = true, trimempty = false })) do
-    local line_end = offset + #l
-    while span_idx <= #spans and spans[span_idx][2] <= offset do
-      span_idx = span_idx + 1
-    end
-    local segs = {}
-    local pos = 0
-    local si = span_idx
-    while si <= #spans do
-      local s = spans[si]
-      if s[1] >= line_end then
-        break
-      end
-      local a = math.max(s[1] - offset, 0)
-      local b = math.min(s[2] - offset, #l)
-      if a > pos then
-        segs[#segs + 1] = { l:sub(pos + 1, a), base_hl }
-      end
-      segs[#segs + 1] = { l:sub(a + 1, b), s[3] }
-      pos = b
-      si = si + 1
-    end
-    if pos < #l or #segs == 0 then
-      segs[#segs + 1] = { l:sub(pos + 1), base_hl }
-    end
-    out[#out + 1] = segs
-    offset = line_end + 1
-  end
-  return out
-end
-
----@param chunks table[]
----@return table[] lines    virt_lines entries: { { text, hl_group? } }
----@return table[] images    { { chunk = <image chunk>, index = <int> } }
-local function build_lines(chunks)
-  local lines, images = {}, {}
-  local ansi_state
-  for _, chunk in ipairs(chunks) do
-    if chunk.kind == "image" then
-      local index = #lines + 1
-      images[#images + 1] = { chunk = chunk, index = index }
-      local text = ("[image: %s]"):format(chunk.mime)
-      if type(chunk.fallback) == "string" then
-        text = chunk.fallback:match("^[^\n]*") or text
-      end
-      lines[#lines + 1] = { { text, "Comment" } }
-    else
-      local text, spans
-      text, spans, ansi_state = ansi.parse(chunk.text or "", ansi_state)
-      for i, segs in ipairs(split_segments(text, spans, chunk.hl_group)) do
-        if i == 1 and chunk.continues and #lines > 0 then
-          local last_line = lines[#lines]
-          for _, seg in ipairs(segs) do
-            local tail = last_line[#last_line]
-            if tail and tail[2] == seg[2] then
-              tail[1] = tail[1] .. seg[1]
-            else
-              last_line[#last_line + 1] = seg
-            end
-          end
-        else
-          lines[#lines + 1] = segs
-        end
-      end
-    end
-  end
-  return lines, images
-end
-
----@param lines table[]
----@param max integer
----@return table[] shown
-local function truncate(lines, max)
-  if #lines <= max then
-    return lines
-  end
-  local extra = #lines - max
-  local shown = {}
-  for i = 1, max do
-    shown[i] = lines[i]
-  end
-  shown[#shown + 1] = { { ("… +%d lines · %s"):format(extra, OPEN_CMD), "Comment" } }
-  return shown
-end
-
----@param buf integer
----@return integer
-local function win_width(buf)
-  local wins = vim.fn.win_findbuf(buf)
-  if #wins > 0 then
-    local ok, w = pcall(vim.api.nvim_win_get_width, wins[1])
-    if ok and type(w) == "number" and w > 0 then
-      return w
-    end
-  end
-  return vim.o.columns
-end
-
----@param cfg string|table|nil
-local function apply_output_hl(cfg)
-  if cfg == nil then
-    return
-  end
-  if type(cfg) == "string" then
-    vim.api.nvim_set_hl(0, "JoveOutput", { link = cfg })
-  else
-    vim.api.nvim_set_hl(0, "JoveOutput", cfg)
-  end
-end
-
----@param buf integer
----@param shown table[]  truncated virt_lines from `truncate`
----@param ctx { count: integer?, has_error: boolean }
----@return table[] decorated
-local function decorate(buf, shown, ctx)
-  if #shown == 0 then
-    return shown
-  end
-  local cfg = require("jove").config
-  local out_cfg = (cfg and cfg.output) or {}
-  local width = win_width(buf)
-  local guide = out_cfg.guide == nil and "▎ " or out_cfg.guide
-  local guide_hl = ctx.has_error and "JoveOutputGuideError" or "JoveOutputGuide"
-  apply_output_hl(out_cfg.hl)
-
-  if out_cfg.inside_border then
-    local decorated = {}
-    if out_cfg.header ~= false then
-      local label = type(ctx.count) == "number" and ("Out[%d] "):format(ctx.count) or "Out "
-      local fill = width - vim.fn.strdisplaywidth("└─ ") - vim.fn.strdisplaywidth(label)
-      local header = {
-        { "└─ ", "JoveOutputHeader" },
-        { label, "JoveOutputHeader" },
-      }
-      if fill > 0 then
-        header[#header + 1] = { string.rep("─", fill), "JoveOutputHeader" }
-      end
-      decorated[#decorated + 1] = header
-    end
-    for _, line in ipairs(shown) do
-      local new_line = {}
-      if guide then
-        new_line[#new_line + 1] = { guide, guide_hl }
-      end
-      for _, chunk in ipairs(line) do
-        local text, hl = chunk[1], chunk[2]
-        if out_cfg.hl ~= nil and hl == nil then
-          hl = "JoveOutput"
-        end
-        new_line[#new_line + 1] = { text, hl }
-      end
-      if out_cfg.hl ~= nil then
-        local used = 0
-        for _, chunk in ipairs(new_line) do
-          used = used + vim.fn.strdisplaywidth(chunk[1])
-        end
-        if width - used > 0 then
-          new_line[#new_line + 1] = { string.rep(" ", width - used), "JoveOutput" }
-        end
-      end
-      decorated[#decorated + 1] = new_line
-    end
-    return decorated
-  end
-
-  if out_cfg.header == false then
-    local decorated = {}
-    for _, line in ipairs(shown) do
-      local new_line = {}
-      if guide and guide ~= "" then
-        new_line[#new_line + 1] = { guide, guide_hl }
-      end
-      for _, chunk in ipairs(line) do
-        local text, hl = chunk[1], chunk[2]
-        if out_cfg.hl ~= nil and hl == nil then
-          hl = "JoveOutput"
-        end
-        new_line[#new_line + 1] = { text, hl }
-      end
-      decorated[#decorated + 1] = new_line
-    end
-    return decorated
-  end
-
-  local decorated = {}
-
-  local prefix = "┌─ "
-  local label = type(ctx.count) == "number" and ("Out[%d] "):format(ctx.count) or "Out "
-  local header_used = vim.fn.strdisplaywidth(prefix) + vim.fn.strdisplaywidth(label)
-  local header_fill = math.max(0, width - header_used - 1)
-  local top = {
-    { prefix, "JoveOutputBorder" },
-    { label, "JoveOutputBorder" },
-  }
-  if header_fill > 0 then
-    top[#top + 1] = { string.rep("─", header_fill), "JoveOutputBorder" }
-  end
-  top[#top + 1] = { "┐", "JoveOutputBorder" }
-  decorated[#decorated + 1] = top
-
-  for _, line in ipairs(shown) do
-    local new_line = {}
-    if guide and guide ~= "" then
-      new_line[#new_line + 1] = { guide, guide_hl }
-    end
-    for _, chunk in ipairs(line) do
-      local text, hl = chunk[1], chunk[2]
-      if out_cfg.hl ~= nil and hl == nil then
-        hl = "JoveOutput"
-      end
-      new_line[#new_line + 1] = { text, hl }
-    end
-    local used = 0
-    for _, chunk in ipairs(new_line) do
-      used = used + vim.fn.strdisplaywidth(chunk[1])
-    end
-    if width - used > 0 then
-      new_line[#new_line + 1] = { string.rep(" ", width - used), "JoveOutput" }
-    end
-    decorated[#decorated + 1] = new_line
-  end
-
-  local bottom = { { "└", "JoveOutputBorder" } }
-  if width > 2 then
-    bottom[#bottom + 1] = { string.rep("─", width - 2), "JoveOutputBorder" }
-  end
-  bottom[#bottom + 1] = { "┘", "JoveOutputBorder" }
-  decorated[#decorated + 1] = bottom
-
-  return decorated
-end
-
 ---@param buf integer
 ---@param row integer  0-indexed
 ---@return integer
@@ -421,15 +175,11 @@ local function image_col(buf, c, out_cfg)
   return 0
 end
 
+--- Remove a cell's extmarks and inline images.
 ---@param buf integer
 ---@param cell_hash string
-local function render_cell(buf, cell_hash)
-  local st = state.peek(buf)
-  local entry = st and st.outputs and st.outputs[cell_hash]
-  if not entry then
-    return
-  end
-
+---@param entry jove.OutputEntry
+local function clear_render(buf, cell_hash, entry)
   image.clear(buf, cell_hash)
   if entry.extmark_id then
     pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id)
@@ -439,78 +189,94 @@ local function render_cell(buf, cell_hash)
     pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id_below)
     entry.extmark_id_below = nil
   end
+end
 
-  local c = find_cell(buf, cell_hash)
-  if not c or entry.hidden or not vim.api.nvim_buf_is_loaded(buf) then
-    return
-  end
-
-  local lines, images = build_lines(entry.chunks)
-  local cfg = require("jove").config
-  local out_cfg = (cfg and cfg.output) or {}
-  local max = math.max(1, out_cfg.max_lines or 50)
-  local shown = truncate(lines, max)
-
-  local has_error = false
+---@param lines table[]
+---@return boolean
+local function has_error_line(lines)
   for _, line in ipairs(lines) do
     for _, chunk in ipairs(line) do
       if chunk[2] == "ErrorMsg" then
-        has_error = true
-        break
+        return true
       end
     end
-    if has_error then
-      break
-    end
   end
-  local meta = require("jove.execute").meta(buf, cell_hash)
-  local decorated = decorate(buf, shown, {
-    count = meta and meta.count or nil,
-    has_error = has_error,
-  })
-  local header_offset = (#shown > 0 and out_cfg.header ~= false) and 1 or 0
+  return false
+end
 
-  local split_at
+--- Place image chunks inline; returns the first replaced line index (which
+--- splits the output into above/below extmarks) and the set of decorated-line
+--- indices the images replaced.
+---@param buf integer
+---@param c jove.Cell
+---@param cell_hash string
+---@param images table[]
+---@param max integer
+---@param header_offset integer
+---@param out_cfg table
+---@return integer? split_at
+---@return table<integer, boolean> drop
+local function place_images(buf, c, cell_hash, images, max, header_offset, out_cfg)
   local drop = {}
-  if #images > 0 then
-    local visible = {}
-    for _, e in ipairs(images) do
-      if e.index <= max then
-        visible[#visible + 1] = {
-          chunk = e.chunk,
-          index = e.index + header_offset,
-          row = c.end_lnum,
-          col = image_col(buf, c, out_cfg),
-        }
-      end
+  if #images == 0 then
+    return nil, drop
+  end
+  local visible = {}
+  for _, e in ipairs(images) do
+    if e.index <= max then
+      visible[#visible + 1] = {
+        chunk = e.chunk,
+        index = e.index + header_offset,
+        row = c.end_lnum,
+        col = image_col(buf, c, out_cfg),
+      }
     end
-    if #visible > 0 then
-      local ok, placed_idx = pcall(image.render, buf, cell_hash, visible)
-      if ok and placed_idx then
-        for _, e in ipairs(visible) do
-          if placed_idx[e.index] then
-            drop[e.index] = true
-            split_at = math.min(split_at or e.index, e.index)
-          end
+  end
+  local split_at
+  if #visible > 0 then
+    local ok, placed_idx = pcall(image.render, buf, cell_hash, visible)
+    if ok and placed_idx then
+      for _, e in ipairs(visible) do
+        if placed_idx[e.index] then
+          drop[e.index] = true
+          split_at = math.min(split_at or e.index, e.index)
         end
       end
     end
   end
+  return split_at, drop
+end
 
-  local top, bottom = decorated, nil
-  if split_at then
-    top, bottom = {}, {}
-    for i, line in ipairs(decorated) do
-      if not drop[i] then
-        if i < split_at then
-          top[#top + 1] = line
-        else
-          bottom[#bottom + 1] = line
-        end
+--- Split decorated lines around the first inline image.
+---@param decorated table[]
+---@param split_at integer?
+---@param drop table<integer, boolean>
+---@return table[] top
+---@return table[]? bottom
+local function split_around_images(decorated, split_at, drop)
+  if not split_at then
+    return decorated, nil
+  end
+  local top, bottom = {}, {}
+  for i, line in ipairs(decorated) do
+    if not drop[i] then
+      if i < split_at then
+        top[#top + 1] = line
+      else
+        bottom[#bottom + 1] = line
       end
     end
   end
+  return top, bottom
+end
 
+---@param buf integer
+---@param c jove.Cell
+---@param entry jove.OutputEntry
+---@param top table[]
+---@param bottom table[]?
+---@param out_cfg table
+local function place_extmarks(buf, c, entry, top, bottom, out_cfg)
   if #top > 0 then
     entry.extmark_id = vim.api.nvim_buf_set_extmark(buf, M.ns, c.end_lnum - 1, 0, {
       virt_lines = top,
@@ -528,6 +294,38 @@ local function render_cell(buf, cell_hash)
         priority = (not out_cfg.inside_border) and RENDER_PRIORITY or nil,
       })
   end
+end
+
+---@param buf integer
+---@param cell_hash string
+local function render_cell(buf, cell_hash)
+  local st = state.peek(buf)
+  local entry = st and st.outputs and st.outputs[cell_hash]
+  if not entry then
+    return
+  end
+
+  clear_render(buf, cell_hash, entry)
+  local c = find_cell(buf, cell_hash)
+  if not c or entry.hidden or not vim.api.nvim_buf_is_loaded(buf) then
+    return
+  end
+
+  local lines, images = render.build_lines(entry.chunks)
+  local cfg = require("jove").config
+  local out_cfg = (cfg and cfg.output) or {}
+  local max = math.max(1, out_cfg.max_lines or 50)
+  local shown = render.truncate(lines, max)
+  local meta = require("jove.execute").meta(buf, cell_hash)
+  local decorated = render.decorate(buf, shown, {
+    count = meta and meta.count or nil,
+    has_error = has_error_line(lines),
+  })
+  local header_offset = (#shown > 0 and out_cfg.header ~= false) and 1 or 0
+
+  local split_at, drop = place_images(buf, c, cell_hash, images, max, header_offset, out_cfg)
+  local top, bottom = split_around_images(decorated, split_at, drop)
+  place_extmarks(buf, c, entry, top, bottom, out_cfg)
 end
 
 ---@param buf integer
@@ -592,13 +390,7 @@ function M.clear(buf, cell_hash, opts)
     if cell_hash then
       local entry = st.outputs[cell_hash]
       if entry then
-        if entry.extmark_id then
-          pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id)
-        end
-        if entry.extmark_id_below then
-          pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id_below)
-        end
-        image.clear(buf, cell_hash)
+        clear_render(buf, cell_hash, entry)
         st.outputs[cell_hash] = nil
         if not (opts and opts.skip_dirty) then
           M.mark_dirty(buf)
@@ -606,13 +398,7 @@ function M.clear(buf, cell_hash, opts)
       end
     else
       for hash, entry in pairs(st.outputs) do
-        if entry.extmark_id then
-          pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id)
-        end
-        if entry.extmark_id_below then
-          pcall(vim.api.nvim_buf_del_extmark, buf, M.ns, entry.extmark_id_below)
-        end
-        image.clear(buf, hash)
+        clear_render(buf, hash, entry)
       end
       st.outputs = nil
       if not (opts and opts.skip_dirty) then
@@ -653,26 +439,11 @@ function M.toggle(buf, lnum)
   end)
 end
 
----@param buf integer
----@param lnum integer?
----@return integer? win
-function M.open_float(buf, lnum)
-  buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
-  local st = state.peek(buf)
-  if not st or not st.outputs or not vim.api.nvim_buf_is_loaded(buf) then
-    return nil
-  end
-  lnum = lnum or vim.api.nvim_win_get_cursor(0)[1]
-  local c = cell.at(buf, lnum)
-  if not c then
-    return nil
-  end
-  local entry = st.outputs[c.hash]
-  if not entry or #entry.chunks == 0 then
-    return nil
-  end
-
-  local lines, images = build_lines(entry.chunks)
+--- Build the scratch buffer holding plain output text with hl extmarks.
+---@param lines table[]  virt_lines from render.build_lines
+---@param ft string      filetype of the notebook buffer (for treesitter)
+---@return integer fbuf
+local function build_float_buf(lines, ft)
   local plain = {}
   for i, line in ipairs(lines) do
     local parts = {}
@@ -699,7 +470,6 @@ function M.open_float(buf, lnum)
     end
   end
 
-  local ft = vim.bo[buf].filetype
   if ft ~= "" then
     vim.bo[fbuf].filetype = ft
     pcall(function()
@@ -709,7 +479,12 @@ function M.open_float(buf, lnum)
       end
     end)
   end
+  return fbuf
+end
 
+---@param fbuf integer
+---@return integer? win
+local function open_float_win(fbuf)
   local width = math.max(20, math.floor(vim.o.columns * 0.8))
   local height = math.max(5, math.floor(vim.o.lines * 0.8))
   local win_ui = require("jove.ui.win")
@@ -724,7 +499,6 @@ function M.open_float(buf, lnum)
     border = "rounded",
   }, size)
   if not win then
-    pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
     return nil
   end
   vim.wo[win].wrap = false
@@ -747,6 +521,35 @@ function M.open_float(buf, lnum)
     close,
     { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Float" }
   )
+  return win
+end
+
+---@param buf integer
+---@param lnum integer?
+---@return integer? win
+function M.open_float(buf, lnum)
+  buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
+  local st = state.peek(buf)
+  if not st or not st.outputs or not vim.api.nvim_buf_is_loaded(buf) then
+    return nil
+  end
+  lnum = lnum or vim.api.nvim_win_get_cursor(0)[1]
+  local c = cell.at(buf, lnum)
+  if not c then
+    return nil
+  end
+  local entry = st.outputs[c.hash]
+  if not entry or #entry.chunks == 0 then
+    return nil
+  end
+
+  local lines, images = render.build_lines(entry.chunks)
+  local fbuf = build_float_buf(lines, vim.bo[buf].filetype)
+  local win = open_float_win(fbuf)
+  if not win then
+    pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
+    return nil
+  end
 
   if #images > 0 then
     pcall(image.render, fbuf, c.hash, images, { base_row = 0 })
