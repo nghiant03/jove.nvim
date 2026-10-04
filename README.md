@@ -30,11 +30,9 @@
   supervises kernel.
 - **Inline outputs**: text, tables, tracebacks and images render in each 
   cell, with displayed state of each cell.
-- **True round-tripping**: session outputs and execution counts merge back
-  into the `.ipynb` on save.
-- **Cell ergonomics** — `ic`/`ac` cell text-objects, `[c`/`]c` cell motions,
+- **Cell ergonomics**: `ic`/`ac` cell text-objects, `[c`/`]c` cell motions,
   cell borders, per-cell execution counts and elapsed time.
-- **Tooling** — a sidebar combining the variable inspector, notebook table 
+- **Tooling**: a sidebar combining the variable inspector, notebook table 
   of contents, and kernel info.
 
 ## Requirements
@@ -127,17 +125,37 @@ require("jove").setup({
     elapsed = true,             -- show per-cell elapsed time
     borders = true,             -- draw a closing line below each cell
     border_hl = nil,            -- cell border highlight
-    window_mode = "vsplit",     -- how to open the sidebar and output viewer: "float", "vsplit", or "hsplit"
+    window_mode = "vsplit",     -- all Jove viewers: "vsplit" (right), "hsplit" (below), or "float"
+    window_overrides = {},       -- optional per-view modes: sidebar, output, inspect, webview
   },
   lsp = {
     auto_attach = false,        -- start the servers in `servers` on notebook open
     servers = {},               -- language id to lsp server names,
   },
   webview = {
-    enabled = true,             -- allow :Jove open-webview
+    enabled = true, 
     cmd = "terminal-browser",   -- terminal-browser binary
-    width = 0.8,                -- webview float width as a fraction of the editor
-    height = 0.8,               -- webview float height as a fraction of the editor
+    width = 0.8,                -- webview width in float/vsplit mode, as a fraction of the editor
+    height = 0.8,               -- webview height in float/hsplit mode, as a fraction of the editor
+  },
+})
+```
+
+### Window layout
+
+The sidebar, output viewer, variable details, and webview all open in a
+right-hand split by default. Set `ui.window_mode` to `"float"` or `"hsplit"`
+to change the default for all of them. Override individual views when needed:
+
+```lua
+require("jove").setup({
+  ui = {
+    window_mode = "vsplit",
+    window_overrides = {
+      output = "hsplit",
+      inspect = "float",
+      webview = "float",
+    },
   },
 })
 ```
@@ -196,7 +214,7 @@ opts = {
 | `:Jove restart-kernel` | Restart the current notebook kernel |
 | `:Jove shutdown-kernel` | Shut down the current notebook kernel and bridge |
 | `:Jove toggle-output` | Show/hide rendered outputs of the current cell |
-| `:Jove open-output` | Open the current cell's outputs in a float |
+| `:Jove open-output` | Open the current cell's outputs in a viewer |
 | `:Jove open-webview` | Open the current cell's HTML output in an interactive terminal-browser webview |
 | `:Jove clear-output` | Clear outputs of the current cell |
 | `:Jove clear-outputs` | Clear all rendered outputs in this buffer |
@@ -205,8 +223,7 @@ opts = {
 
 ### Keymaps and motions
 
-On jove buffers (python, julia, r, javascript, typescript filetypes backed by
-an `.ipynb`):
+On jove buffers:
 
 - `ic` / `ac` cell text-objects (operator-pending and visual modes): always
   on, no extra plugin needed.
