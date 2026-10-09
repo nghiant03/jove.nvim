@@ -62,7 +62,8 @@ Run `:checkhealth jove` to verify the requirements
 > on `*.ipynb`. Jove detects it and refuses to register its handlers with a
 > warning.
 
-### lazy.nvim (recommended)
+<details open>
+<summary>lazy.nvim (recommended)</summary>
 
 ```lua
 {
@@ -75,11 +76,10 @@ Run `:checkhealth jove` to verify the requirements
 }
 ```
 
+</details>
+
 <details>
 <summary>vim.pack</summary>
-
-> [!note]
-> `vim.pack` requires Neovim ≥ 0.12, while jove itself only requires 0.11.
 
 Add this to your `init.lua`:
 
@@ -94,8 +94,6 @@ require("jove").setup({
   auto_kernel = true,
 })
 ```
-
-Update plugins later with `:packupdate` (or `vim.pack.update()`).
 
 </details>
 
