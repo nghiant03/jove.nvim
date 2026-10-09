@@ -1,4 +1,5 @@
 -- Convert Jupyter rich MIME bundles into standalone browser documents.
+
 local M = {}
 
 ---@type table<string, fun(value: any): string>

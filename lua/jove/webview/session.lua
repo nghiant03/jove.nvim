@@ -1,4 +1,4 @@
--- Native terminal input/output over a PTY, with a Kitty graphics relay.
+-- Native terminal io over a PTY.
 local impl = require("jove.webview.impl")
 local kitty = require("jove.webview.kitty")
 
@@ -139,13 +139,12 @@ end
 ---@return table<string, string>
 local function browser_env()
   local env = vim.fn.environ()
-  -- vim.NIL in jobstart's env becomes the literal "v:null", not an unset key.
   for _, key in ipairs({ "PIXEL_EMBED", "PIXEL_TTY", "PIXEL_PANE", "TMUX", "TMUX_PANE" }) do
     env[key] = nil
   end
   env.TERM = "xterm-256color"
   env.TERMINAL_BROWSER_NO_MERGE = "1"
-  env.PIXEL_SKIP_GRAPHICS_CHECK = "1" -- M.open already checks the outer terminal.
+  env.PIXEL_SKIP_GRAPHICS_CHECK = "1"
   env.TERMINAL_BROWSER_FRAMES = "inline"
   env.TERMINAL_BROWSER_PRESENT = "full"
   return env
@@ -274,7 +273,6 @@ function M.start(url, cmd, size)
       if self.closed or not data then
         return
       end
-      -- Job callbacks split on LF and represent embedded NULs as LF.
       local parts = {}
       for i, part in ipairs(data) do
         parts[i] = part:gsub("\n", "\0")

@@ -1,5 +1,5 @@
--- PTY output relay. ANSI goes to Neovim's terminal emulator; full-frame Kitty
--- images go to the outer terminal with a session-local Unicode placement.
+-- PTY output relay.
+
 local kitty = require("jove.webview.kitty")
 
 local M = {}
@@ -71,8 +71,6 @@ function Transport:kitty(sequence)
     end
     self.frame_cols = math.min(math.ceil(width / self.cell[1]), self.cols, kitty.MAX_CELLS)
     self.frame_rows = math.min(math.ceil(height / self.cell[2]), self.rows, kitty.MAX_CELLS)
-    -- The browser's native presenter uses image 1 at the cursor. Give each
-    -- session its own id and let placeholder cells determine screen placement.
     local params = {
       "a=T",
       "t=d",
@@ -97,8 +95,6 @@ function Transport:kitty(sequence)
   end
   self.frame[#self.frame + 1] = sequence
   if keys.m ~= "1" then
-    -- Keep multi-chunk frames together so concurrent webviews cannot interleave
-    -- the outer terminal's implicit continuation packets.
     self.graphics(table.concat(self.frame))
     self.frame = nil
     self.placed(self.frame_cols, self.frame_rows)

@@ -1,7 +1,5 @@
--- Kitty graphics unicode-placeholder mechanics for the webview host.
---
--- Each placeholder cell is PLACEHOLDER .. row_diacritic .. col_diacritic with
--- fg = image id (RGB); terminal-browser streams frames into those cells.
+-- Kitty graphics unicode-placeholder.
+
 local M = {}
 
 local PLACEHOLDER = vim.fn.nr2char(0x10EEEE)
@@ -18,10 +16,8 @@ setmetatable(dia_cache, {
   end,
 })
 
---- Max placeholder grid dimension (one diacritic per row/col).
 M.MAX_CELLS = #DIACRITICS
 
---- Image id base; each session increments. Must fit in 24 bits (fg RGB).
 local next_image_id = 0x6A0000
 
 ---@return integer
@@ -40,7 +36,6 @@ function M.cell(row, col)
   return PLACEHOLDER .. dia_cache[row] .. dia_cache[col]
 end
 
---- Paint placeholders through the terminal emulator, preserving its cursor.
 ---@param image_id integer
 ---@param cols integer
 ---@param rows integer

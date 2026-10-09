@@ -1,4 +1,5 @@
 -- Buffer state.
+
 local M = {}
 
 ---@class jove.BufferState

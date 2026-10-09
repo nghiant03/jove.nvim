@@ -1,10 +1,4 @@
--- Embedded interactive webview via terminal-browser (https://github.com/zenbu-labs/terminal-browser).
---
--- terminal-browser is a real Chromium (Electron offscreen rendering) that draws
--- pixels into the terminal through the kitty graphics protocol. It runs on a
--- PTY connected to a Neovim terminal buffer. A graphics relay translates its
--- full-frame images into Kitty Unicode placements inside that buffer; keyboard,
--- mouse, paste, and terminal replies use Neovim's native terminal input path.
+-- Embedded interactive webview.
 
 local impl = require("jove.webview.impl")
 local session = require("jove.webview.session")
@@ -14,7 +8,6 @@ local M = {}
 M._impl = impl
 M._Session = session.Session -- test seam
 
---- Add or replace a rich MIME renderer. It must return standalone HTML.
 ---@param mime string
 ---@param renderer fun(value: any): string
 function M.register_renderer(mime, renderer)
@@ -58,7 +51,6 @@ function M.open(url, opts)
   return session.start(url, cmd, { width = width, height = height })
 end
 
---- Write an HTML payload to a temp file and open it in a webview.
 ---@param html string
 ---@return jove.Webview? session, string? err
 function M.open_html(html)

@@ -1,4 +1,5 @@
 -- Notebook outline from markdown cell headings.
+
 local state = require("jove.state")
 local cell = require("jove.cell")
 

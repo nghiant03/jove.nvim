@@ -1,4 +1,5 @@
 -- LSP integration
+
 local lang = require("jove.lang")
 local state = require("jove.state")
 

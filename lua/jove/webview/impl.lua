@@ -1,4 +1,5 @@
--- Injectable platform primitives for the webview host (test seam: jove.webview._impl).
+-- Injectable platform primitives.
+
 local impl = {
   jobstart = vim.fn.jobstart,
   jobstop = vim.fn.jobstop,
@@ -7,7 +8,6 @@ local impl = {
   executable = vim.fn.executable,
 }
 
---- Cell size in pixels via TIOCGWINSZ (same trick snacks.image uses).
 ---@return integer, integer
 function impl.cell_pixels()
   local ok, ffi = pcall(require, "ffi")

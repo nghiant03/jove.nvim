@@ -1,4 +1,5 @@
 -- Dependency and configuration checks.
+
 local M = {}
 
 local h = vim.health

@@ -1,4 +1,5 @@
 -- Language registry
+
 local M = {}
 
 ---@class jove.Lang
