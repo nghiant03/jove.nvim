@@ -46,15 +46,10 @@ Notes:
 
 ## Layout and architecture
 
-- CI (`.github/workflows/ci.yml`) runs stylua, selene, `lua-language-server
-  --check` (warnings fail the build; pinned binary, see the `luals` job), the
-  mini.test suite on Neovim v0.11.4 + stable (Linux/macOS), ruff check/format,
-  and bridge pytest on Python 3.10 + 3.13. Lowest supported targets: Neovim
-  0.11, Python 3.10.
+- Lowest supported targets: Neovim 0.11, Python 3.10. CI (`.github/workflows/ci.yml`)
+  runs lint plus both test suites; LSP warnings fail the build.
 - Releases are cut by `.github/workflows/release.yml` (Actions > Release >
-  Run workflow): it computes the next tag from the latest `v*` tag (bare
-  semver tags like `0.2.7` also count), pushes it, creates the GitHub
-  Release, and dispatches vimdoc regeneration. Never tag by hand.
+  Run workflow), which computes the next `v*` tag. Never tag by hand.
 - `plugin/jove.lua` - startup entry: registers `BufReadCmd`/`BufWriteCmd`/
   `FileChangedShell` on `*.ipynb` and all `:Jove*` commands. Config lives in
   `lua/jove/init.lua` (`require("jove").setup`), NOT here.
@@ -78,26 +73,22 @@ Notes:
 - `lua/jove/persist.lua` - merges session outputs into the `.ipynb` JSON on
   write and replays them on read. Outputs are matched to cells by **content
   hash** because jupytext py:percent round-trips drop cell ids.
-- `lua/jove/output.lua`, `lua/jove/mime.lua`, `lua/jove/ansi.lua`,
+- `lua/jove/output/`, `lua/jove/mime.lua`, `lua/jove/ansi.lua`,
   `lua/jove/ui/` - rendering (inline extmark blocks, optional images via
-  `snacks.image`). `output.lua` owns storage and extmark placement; the pure
-  chunks-to-virt_lines pipeline is `lua/jove/output/render.lua`. The
-  terminal-browser webview entry point `lua/jove/webview.lua` delegates to
-  `lua/jove/webview/` (`document.lua` rich MIME to standalone HTML renderers,
-  `impl.lua` platform primitives = `_impl` test seam,
-  `kitty.lua` placeholder-cell mechanics, `transport.lua` native PTY output /
-  Kitty graphics relay, `session.lua` terminal-buffer and process lifecycle).
-  `ui/sidebar.lua` is the single tabbed pane hosting the
-  variables, kernel info, and TOC views (content comes from `ui/vars.lua`,
-  `ui/panel.lua`, and `jove/toc.lua`); number keys switch tabs. `ansi.lua`
-  owns all terminal escape handling: `strip` (drop sequences), `cr_concat`
-  (carriage-return folding), and `parse` (map SGR styling to highlight spans,
-  stateful across stream events).
+  `snacks.image`). `output/init.lua` owns storage and extmark placement; the
+  pure chunks-to-virt_lines pipeline is `output/render.lua` and the
+  full-output float viewer is `output/float.lua`. The terminal-browser webview
+  entry point `lua/jove/webview/init.lua` delegates to `lua/jove/webview/`
+  (MIME-to-HTML rendering, `_impl` test seam, Kitty graphics relay,
+  terminal-buffer lifecycle). `ui/sidebar.lua` is the single tabbed pane hosting
+  the variables, kernel info, and TOC views; number keys switch tabs.
+  `ansi.lua` owns all terminal escape handling: `strip` (drop sequences),
+  `cr_concat` (carriage-return folding), and `parse` (map SGR styling to
+  highlight spans, stateful across stream events).
 - `python/jove_bridge/` - stdio sidecar: `__main__.py` (envelope loop, bounded
   writer queue), `session.py` (method dispatch + iopub/shell routing),
   `kernel.py` (thin jupyter_client wrapper raising `KernelError(code, msg)`).
-  The package is intentionally unversioned (`version = "0.0.0"` in
-  `pyproject.toml`); the plugin versions via git tags.
+  The package is intentionally unversioned; the plugin versions via git tags.
 
 ## Conventions and gotchas
 
@@ -110,12 +101,8 @@ Notes:
   `M.ready_timeout_ms` are module-level so tests can shorten them. Do not use
   these outside tests.
 - Test specs use mini.test: `MiniTest.new_set` with hooks, nested sets by
-  topic; specs that need a real job inject fakes at `bridge_mod._impl`.
-- Lua test files use `<module>_spec.lua` (e.g. `win_spec.lua` for `jove.ui.win`),
-  `<module>_<submodule>_spec.lua` for submodules, and `<module>_e2e_spec.lua`
-  for cross-process flows. Group cases as `T["subject"]["describes behavior"]`,
-  using bare API/topic names without `()` and present-tense behavior descriptions.
-  Name fixture helpers for their role (e.g. `webview_terminal.py` is the raw PTY peer).
+  topic, named `<module>_spec.lua` (`<module>_e2e_spec.lua` for cross-process
+  flows); specs that need a real job inject fakes at `bridge_mod._impl`.
 - Front matter (`# ---` fenced jupytext header, comment leader per language)
   is stripped from the buffer on read and restored on write (`buffer.lua`
   `split_front`); cell markers are `<comment> %%` (e.g. `# %%` for
