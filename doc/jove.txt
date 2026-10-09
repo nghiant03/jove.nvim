@@ -1,5 +1,5 @@
 *jove.txt*                       Native .ipynb editing for Neovim via jupytext
-                               For NVIM v0.8.0    Last change: 2026 October 04
+                               For NVIM v0.8.0    Last change: 2026 October 09
 
 ==============================================================================
 Table of Contents                                     *jove-table-of-contents*
@@ -45,6 +45,7 @@ REQUIREMENTS                                     *jove-jove.nvim-requirements*
 - `jupytext` <https://github.com/mwouts/jupytext>
 - A Python interpreter with `jupyter_client` and `ipykernel` installed.
 - `snacks.nvim` <https://github.com/folke/snacks.nvim> (optional): Image rendering.
+- `terminal-browser` <https://github.com/zenbu-labs/terminal-browser> (optional): Interactive web element rendering.
 
 Run `:checkhealth jove` to verify the requirements
 
@@ -69,6 +70,27 @@ LAZY.NVIM (RECOMMENDED) ~
   [!important] **Do not** load `jupytext.nvim` with jove since both register
   `BufReadCmd` on `*.ipynb`. Jove detects it and refuses to register its handlers
   with a warning.
+vim.pack ~
+
+
+  [!note] `vim.pack` requires Neovim ≥ 0.12, while jove itself only requires
+  0.11.
+Add this to your `init.lua`:
+
+>lua
+    vim.pack.add({
+      {
+        src = "https://github.com/nghiant03/jove.nvim",
+        version = vim.version.range("v*"), -- track latest stable tag
+      },
+    })
+    require("jove").setup({
+      auto_kernel = true,
+    })
+<
+
+Update plugins later with `:packupdate` (or `vim.pack.update()`).
+
 
 PYTHON ENVIRONMENT ~
 
