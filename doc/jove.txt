@@ -56,8 +56,7 @@ INSTALLATION                                     *jove-jove.nvim-installation*
   [!important] **Do not** load `jupytext.nvim` with jove since both register
   `BufReadCmd` on `*.ipynb`. Jove detects it and refuses to register its handlers
   with a warning.
-
-LAZY.NVIM (RECOMMENDED) ~
+lazy.nvim (recommended) ~
 
 >lua
     {
@@ -72,9 +71,6 @@ LAZY.NVIM (RECOMMENDED) ~
 
 vim.pack ~
 
-
-  [!note] `vim.pack` requires Neovim ≥ 0.12, while jove itself only requires
-  0.11.
 Add this to your `init.lua`:
 
 >lua
@@ -88,8 +84,6 @@ Add this to your `init.lua`:
       auto_kernel = true,
     })
 <
-
-Update plugins later with `:packupdate` (or `vim.pack.update()`).
 
 
 PYTHON ENVIRONMENT ~
