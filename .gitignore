@@ -1,3 +1,4 @@
 .testdeps/
 __pycache__/
 *.egg-info/
+.agents/
