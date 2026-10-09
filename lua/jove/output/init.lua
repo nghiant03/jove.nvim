@@ -1,11 +1,12 @@
--- Output storage and extmark placement; the pure rendering pipeline
--- (chunks -> decorated virt_lines) lives in jove.output.render.
+-- Output storage and extmark placement.
+
 local state = require("jove.state")
 local cell = require("jove.cell")
 local mime = require("jove.mime")
 local ansi = require("jove.ansi")
 local image = require("jove.ui.image")
 local render = require("jove.output.render")
+local float = require("jove.output.float")
 
 local M = {}
 
@@ -175,7 +176,6 @@ local function image_col(buf, c, out_cfg)
   return 0
 end
 
---- Remove a cell's extmarks and inline images.
 ---@param buf integer
 ---@param cell_hash string
 ---@param entry jove.OutputEntry
@@ -204,9 +204,6 @@ local function has_error_line(lines)
   return false
 end
 
---- Place image chunks inline; returns the first replaced line index (which
---- splits the output into above/below extmarks) and the set of decorated-line
---- indices the images replaced.
 ---@param buf integer
 ---@param c jove.Cell
 ---@param cell_hash string
@@ -247,7 +244,6 @@ local function place_images(buf, c, cell_hash, images, max, header_offset, out_c
   return split_at, drop
 end
 
---- Split decorated lines around the first inline image.
 ---@param decorated table[]
 ---@param split_at integer?
 ---@param drop table<integer, boolean>
@@ -439,126 +435,8 @@ function M.toggle(buf, lnum)
   end)
 end
 
---- Build the scratch buffer holding plain output text with hl extmarks.
----@param lines table[]  virt_lines from render.build_lines
----@param ft string      filetype of the notebook buffer (for treesitter)
----@return integer fbuf
-local function build_float_buf(lines, ft)
-  local plain = {}
-  for i, line in ipairs(lines) do
-    local parts = {}
-    for _, seg in ipairs(line) do
-      parts[#parts + 1] = seg[1]
-    end
-    plain[i] = table.concat(parts)
-  end
+M.open_float = float.open
 
-  local fbuf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, plain)
-  vim.bo[fbuf].buflisted = false
-  vim.bo[fbuf].bufhidden = "wipe"
-  for i, line in ipairs(lines) do
-    local col = 0
-    for _, seg in ipairs(line) do
-      if seg[2] and #seg[1] > 0 then
-        vim.api.nvim_buf_set_extmark(fbuf, M.ns, i - 1, col, {
-          end_col = col + #seg[1],
-          hl_group = seg[2],
-        })
-      end
-      col = col + #seg[1]
-    end
-  end
-
-  if ft ~= "" then
-    vim.bo[fbuf].filetype = ft
-    pcall(function()
-      local lang = vim.treesitter.language.get_lang(ft)
-      if lang then
-        vim.treesitter.start(fbuf, lang)
-      end
-    end)
-  end
-  return fbuf
-end
-
----@param fbuf integer
----@return integer? win
-local function open_float_win(fbuf)
-  local width = math.max(20, math.floor(vim.o.columns * 0.8))
-  local height = math.max(5, math.floor(vim.o.lines * 0.8))
-  local win_ui = require("jove.ui.win")
-  local size = win_ui.mode("output") == "hsplit" and math.floor(vim.o.lines * 0.4)
-    or math.floor(vim.o.columns * 0.5)
-  local win = win_ui.open(fbuf, true, {
-    relative = "editor",
-    width = width,
-    height = height,
-    row = math.floor((vim.o.lines - height) / 2),
-    col = math.floor((vim.o.columns - width) / 2),
-    border = "rounded",
-  }, size, "output")
-  if not win then
-    return nil
-  end
-  vim.wo[win].wrap = false
-  vim.wo[win].scrolloff = 2
-
-  local function close()
-    if vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_close(win, true)
-    end
-  end
-  vim.keymap.set(
-    "n",
-    "q",
-    close,
-    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Viewer" }
-  )
-  vim.keymap.set(
-    "n",
-    "<Esc>",
-    close,
-    { buffer = fbuf, nowait = true, silent = true, desc = "Jove: Close Output Viewer" }
-  )
-  return win
-end
-
----@param buf integer
----@param lnum integer?
----@return integer? win
-function M.open_float(buf, lnum)
-  buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
-  local st = state.peek(buf)
-  if not st or not st.outputs or not vim.api.nvim_buf_is_loaded(buf) then
-    return nil
-  end
-  lnum = lnum or vim.api.nvim_win_get_cursor(0)[1]
-  local c = cell.at(buf, lnum)
-  if not c then
-    return nil
-  end
-  local entry = st.outputs[c.hash]
-  if not entry or #entry.chunks == 0 then
-    return nil
-  end
-
-  local lines, images = render.build_lines(entry.chunks)
-  local fbuf = build_float_buf(lines, vim.bo[buf].filetype)
-  local win = open_float_win(fbuf)
-  if not win then
-    pcall(vim.api.nvim_buf_delete, fbuf, { force = true })
-    return nil
-  end
-
-  if #images > 0 then
-    pcall(image.render, fbuf, c.hash, images, { base_row = 0 })
-  end
-  return win
-end
-
---- Open the current cell's latest supported rich output in an interactive
---- terminal-browser webview (requires terminal-browser + kitty graphics).
 ---@param buf integer
 ---@param lnum integer?
 function M.open_webview(buf, lnum)
