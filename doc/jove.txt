@@ -57,7 +57,7 @@ INSTALLATION                                     *jove-jove.nvim-installation*
   `BufReadCmd` on `*.ipynb`. Jove detects it and refuses to register its handlers
   with a warning.
 
-[LAZY.NVIM] (RECOMMENDED) ~
+LAZY.NVIM (RECOMMENDED) ~
 
 >lua
     {
