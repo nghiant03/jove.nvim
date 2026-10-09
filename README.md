@@ -57,7 +57,12 @@ Run `:checkhealth jove` to verify the requirements
 
 ## Installation
 
-### [lazy.nvim](https://github.com/folke/lazy.nvim) (recommended)
+> [!important]
+> **Do not** load `jupytext.nvim` with jove since both register `BufReadCmd`
+> on `*.ipynb`. Jove detects it and refuses to register its handlers with a
+> warning.
+
+### [lazy.nvim] (recommended)
 
 ```lua
 {
@@ -69,10 +74,6 @@ Run `:checkhealth jove` to verify the requirements
   },
 }
 ```
-> [!important]
-> **Do not** load `jupytext.nvim` with jove since both register `BufReadCmd`
-> on `*.ipynb`. Jove detects it and refuses to register its handlers with a
-> warning.
 
 <details>
 <summary>vim.pack</summary>
