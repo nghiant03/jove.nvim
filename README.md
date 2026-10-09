@@ -51,6 +51,7 @@
 - [`jupytext`](https://github.com/mwouts/jupytext)
 - A Python interpreter with `jupyter_client` and `ipykernel` installed.
 - [`snacks.nvim`](https://github.com/folke/snacks.nvim) (optional): Image rendering.
+- [`terminal-browser`](https://github.com/zenbu-labs/terminal-browser) (optional): Interactive web element rendering.
 
 Run `:checkhealth jove` to verify the requirements
 
@@ -72,6 +73,30 @@ Run `:checkhealth jove` to verify the requirements
 > **Do not** load `jupytext.nvim` with jove since both register `BufReadCmd`
 > on `*.ipynb`. Jove detects it and refuses to register its handlers with a
 > warning.
+
+<details>
+<summary>vim.pack</summary>
+
+> [!note]
+> `vim.pack` requires Neovim ≥ 0.12, while jove itself only requires 0.11.
+
+Add this to your `init.lua`:
+
+```lua
+vim.pack.add({
+  {
+    src = "https://github.com/nghiant03/jove.nvim",
+    version = vim.version.range("v*"), -- track latest stable tag
+  },
+})
+require("jove").setup({
+  auto_kernel = true,
+})
+```
+
+Update plugins later with `:packupdate` (or `vim.pack.update()`).
+
+</details>
 
 ### Python environment
 
