@@ -62,7 +62,7 @@ Run `:checkhealth jove` to verify the requirements
 > on `*.ipynb`. Jove detects it and refuses to register its handlers with a
 > warning.
 
-### [lazy.nvim] (recommended)
+### lazy.nvim (recommended)
 
 ```lua
 {
