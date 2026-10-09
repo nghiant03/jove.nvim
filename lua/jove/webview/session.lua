@@ -4,6 +4,8 @@ local kitty = require("jove.webview.kitty")
 
 local M = {}
 
+M._chan_send = vim.api.nvim_chan_send -- test seam
+
 ---@class jove.Webview
 ---@field buf integer?
 ---@field win integer?
@@ -37,17 +39,20 @@ function Session:send(data)
   end
 end
 
----@param cols integer
----@param rows integer
+---@param cols integer?  Grid width in cells; nil clears the placed grid.
+---@param rows integer?  Grid height in cells.
 function Session:render_placeholders(cols, rows)
   if self.closed or not self.term then
     return
   end
-  if self.grid and self.grid.cols == cols and self.grid.rows == rows then
-    return
+  if cols and rows then
+    self.grid = { cols = cols, rows = rows }
+    M._chan_send(self.term, kitty.grid(self.image_id, cols, rows))
+  elseif self.grid then
+    local clear_rows = self.grid.rows
+    self.grid = nil
+    M._chan_send(self.term, kitty.erase(clear_rows))
   end
-  self.grid = { cols = cols, rows = rows }
-  vim.api.nvim_chan_send(self.term, kitty.grid(self.image_id, cols, rows))
 end
 
 function Session:update_winbar()

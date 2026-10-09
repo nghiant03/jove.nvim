@@ -66,6 +66,8 @@ T["kitty"]["restricts global browser deletes to the session image"] = function()
   local relay, out = make()
   relay:feed("\27_Ga=d,d=A,q=2\27\\")
   MiniTest.expect.equality(out.graphics, { "\27_Ga=d,d=I,i=123,q=2\27\\" })
+  MiniTest.expect.equality(#out.placed, 1)
+  MiniTest.expect.equality(out.placed[1][1], nil)
 end
 
 T["kitty"]["answers graphics queries locally and advertises only inline transport"] = function()

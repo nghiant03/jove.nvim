@@ -16,13 +16,13 @@ local M = {}
 ---@field output fun(data: string)
 ---@field input fun(data: string)
 ---@field graphics fun(data: string)
----@field placed fun(cols: integer, rows: integer)
+---@field placed fun(cols: integer?, rows: integer?)
 local Transport = {}
 Transport.__index = Transport
 
 ---@param image_id integer
 ---@param cell integer[]
----@param callbacks { output: fun(data: string), input: fun(data: string), graphics: fun(data: string), placed: fun(cols: integer, rows: integer) }
+---@param callbacks { output: fun(data: string), input: fun(data: string), graphics: fun(data: string), placed: fun(cols: integer?, rows: integer?) }
 ---@return jove.webview.Transport
 function M.new(image_id, cell, callbacks)
   return setmetatable({
@@ -62,6 +62,7 @@ function Transport:kitty(sequence)
   if keys.a == "d" then
     self.frame = nil
     self.graphics(kitty.delete(self.image_id))
+    self.placed(nil)
     return
   end
   if keys.a == "T" and keys.t == "d" then

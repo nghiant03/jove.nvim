@@ -61,4 +61,15 @@ function M.delete(image_id)
   return ("\27_Ga=d,d=I,i=%d,q=2\27\\"):format(image_id)
 end
 
+---@param rows integer  Rows of the previously placed grid.
+---@return string
+function M.erase(rows)
+  local parts = { "\0277\27[?7l\27[0m" }
+  for row = 1, math.min(rows, M.MAX_CELLS) do
+    parts[#parts + 1] = ("\27[%d;1H\27[2K"):format(row)
+  end
+  parts[#parts + 1] = "\27[0m\0278"
+  return table.concat(parts)
+end
+
 return M

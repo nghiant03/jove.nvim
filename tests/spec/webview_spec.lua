@@ -1,15 +1,20 @@
 ---@diagnostic disable: duplicate-set-field, missing-fields, need-check-nil
 local MiniTest = require("mini.test")
 local webview = require("jove.webview")
+local session_mod = require("jove.webview.session")
 local jove = require("jove")
-local saved_impl, saved_config, sessions, captured, inputs, graphics, stopped, resized
+local saved_impl, saved_config, saved_chan, sessions, captured, inputs, graphics, stopped, resized, sends
 
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
       saved_config = vim.deepcopy(jove.config)
       saved_impl = vim.tbl_extend("force", {}, webview._impl)
-      sessions, inputs, graphics, stopped, resized = {}, {}, {}, {}, {}
+      saved_chan = session_mod._chan_send
+      sessions, inputs, graphics, stopped, resized, sends = {}, {}, {}, {}, {}, {}
+      session_mod._chan_send = function(_, data)
+        sends[#sends + 1] = data
+      end
       jove.config.ui.window_mode = "vsplit"
       jove.config.ui.window_overrides = {}
       jove.config.webview.enabled = true
@@ -50,6 +55,7 @@ local T = MiniTest.new_set({
       for key, value in pairs(saved_impl) do
         webview._impl[key] = value
       end
+      session_mod._chan_send = saved_chan
       jove.config = saved_config
     end,
   },
@@ -59,6 +65,11 @@ local function open()
   local session = assert(webview.open("about:blank"))
   sessions[#sessions + 1] = session
   return session
+end
+
+---@param cond any
+local function expect_truthy(cond)
+  MiniTest.expect.equality(cond == true, true)
 end
 
 T["available"] = MiniTest.new_set()
@@ -113,6 +124,13 @@ T["open"]["creates a terminal buffer and starts the browser on a PTY"] = functio
   MiniTest.expect.equality(vim.api.nvim_buf_get_keymap(session.buf, "t"), {})
 end
 
+---@param data string
+---@return boolean
+local function is_grid(data)
+  return data:find("\27[38;2;", 1, true) ~= nil
+    and data:find(vim.fn.nr2char(0x10EEEE), 1, true) ~= nil
+end
+
 T["output"]["forwards terminal replies and renders graphics placeholders"] = function()
   local session = open()
   captured.opts.on_stdout(42, { "\27[16t" })
@@ -122,14 +140,40 @@ T["output"]["forwards terminal replies and renders graphics placeholders"] = fun
   MiniTest.expect.equality(graphics[1]:find("U=1", 1, true) ~= nil, true)
   MiniTest.expect.equality(graphics[1]:find("i=" .. session.image_id, 1, true) ~= nil, true)
   MiniTest.expect.equality(session.grid, { cols = 4, rows = 3 })
-  vim.wait(20)
-  vim.cmd("redraw")
-  local lines = vim.api.nvim_buf_get_lines(session.buf, 0, 3, false)
-  local placeholder = vim.fn.nr2char(0x10EEEE)
-  for _, line in ipairs(lines) do
-    local _, count = line:gsub(placeholder, "")
-    MiniTest.expect.equality(count, 4)
+  MiniTest.expect.equality(#sends, 1)
+  expect_truthy(is_grid(sends[1]))
+  local _, count = sends[1]:gsub(vim.fn.nr2char(0x10EEEE), "")
+  MiniTest.expect.equality(count, 12)
+end
+
+T["output"]["repaints the placeholder grid after the browser clears the screen"] = function()
+  local session = open()
+  local function frame(payload)
+    captured.opts.on_stdout(42, { ("\27_Ga=T,f=32,s=40,v=60,t=d,i=1,m=0;%s\27\\"):format(payload) })
   end
+
+  frame("AAAA")
+  MiniTest.expect.equality(#sends, 1)
+
+  captured.opts.on_stdout(42, { "\27[2J\27[H" })
+  MiniTest.expect.equality(#sends, 1)
+
+  frame("BBBB")
+  MiniTest.expect.equality(#sends, 2)
+  expect_truthy(is_grid(sends[2]))
+  MiniTest.expect.equality(session.grid, { cols = 4, rows = 3 })
+end
+
+T["output"]["clears the placeholder grid when the browser deletes the image"] = function()
+  local session = open()
+  captured.opts.on_stdout(42, { "\27_Ga=T,f=32,s=40,v=60,t=d,i=1,m=0;AAAA\27\\" })
+  MiniTest.expect.equality(#sends, 1)
+
+  captured.opts.on_stdout(42, { "\27_Ga=d,d=I,q=2\27\\" })
+  MiniTest.expect.equality(session.grid, nil)
+  MiniTest.expect.equality(#sends, 2)
+  expect_truthy(sends[2]:find("\27[2K", 1, true) ~= nil)
+  expect_truthy(not is_grid(sends[2]))
 end
 
 T["resize"]["updates the PTY only when the viewport changes"] = function()
