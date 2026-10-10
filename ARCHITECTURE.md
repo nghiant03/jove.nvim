@@ -26,7 +26,7 @@ Neovim (Lua plugin)  --JSON lines over stdio-->  python -m jove_bridge  --ZMQ-->
   `FileChangedShell` autocommands on `*.ipynb` and all `:Jove*` commands.
   Detects conflicts with `jupytext.nvim`.
 - `lua/jove/init.lua` — `require("jove").setup`; the single config owner
-  (`M.config`, `KNOWN_KEYS`, `KNOWN_KEYMAP_KEYS`).
+  (`M.config`, `KNOWN_KEYS`). Keymaps are `<Plug>`-only in `keymaps.lua`.
 - `lua/jove/commands.lua`, `lua/jove/keymaps.lua` — user commands and keymaps.
 - `lua/jove/health.lua` — `:checkhealth` reporting.
 

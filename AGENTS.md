@@ -119,7 +119,10 @@ Notes:
   writer), no asyncio.
 - Adding a config option? Update `M.config`, `KNOWN_KEYS` (and the
   `---@class jove.Config` docs) in `lua/jove/init.lua`, plus the README table.
-  Same idea for keymaps (`KNOWN_KEYMAP_KEYS`).
+- Keymaps are `<Plug>`-only: there is no setup-time keymap config (the old
+  `keymap` option is deprecated). New actions go into `lua/jove/keymaps.lua`
+  as a `<Plug>(Jove...)` mapping with a which-key `desc`, plus the README
+  `<Plug>` table and a `:Jove` subcommand in `commands.lua` if applicable.
 - jove conflicts with `jupytext.nvim` by design (both register
   `BufReadCmd *.ipynb`); the conflict check lives in `plugin/jove.lua` and
   `health.lua`.
