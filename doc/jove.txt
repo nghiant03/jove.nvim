@@ -313,12 +313,14 @@ On jove buffers:
     on, no extra plugin needed.
 - `[c` / `]c` cell motions (normal mode): on by default, disable with
     `cell_motions = false`.
-- Bind the buffer-local `<Plug>` mappings to your custom keys:
+- Bind the buffer-local `<Plug>` mappings to your custom keys: The minimal
+    set for the core edit-run loop:
 
 >lua
     vim.keymap.set("n", "<leader>x", "<Plug>(JoveRunCell)", { desc = "Run cell" })
     vim.keymap.set("n", "<leader>X", "<Plug>(JoveRunCellAndAdvance)", { desc = "Run cell, advance" })
     vim.keymap.set("x", "<leader>xx", "<Plug>(JoveRunSelection)", { desc = "Run selection" })
+    vim.keymap.set("n", "<leader>c", "<Plug>(JoveNewCell)", { desc = "New cell below" })
     vim.keymap.set("n", "<leader>j", "<Plug>(JoveGotoRunningCell)", { desc = "Go to running cell" })
     vim.keymap.set("n", "<leader>J", "<Plug>(JoveToggleFollowRunning)", { desc = "Follow running cell" })
 <
