@@ -149,12 +149,68 @@ local function buf_lhs(buf, mode, lhs)
   return nil
 end
 
+T["new_cell"] = MiniTest.new_set()
+
+T["new_cell"]["inserts a cell below the current one and moves the cursor"] = function()
+  local buf = attach_notebook_buffer(LINES)
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+  keymaps.new_cell()
+
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false), {
+    "# %% a",
+    "x = 1",
+    "# %%",
+    "",
+    "# %% b",
+    "y = 2",
+    "# %% c",
+    "z = 3",
+  })
+  MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 4)
+end
+
+T["new_cell"]["inserts a markdown cell when asked"] = function()
+  local buf = attach_notebook_buffer(LINES)
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+  keymaps.new_cell("markdown")
+
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(buf, 2, 4, false), { "# %% [markdown]", "" })
+  local cells = require("jove.cell").all(buf)
+  MiniTest.expect.equality(cells[2].kind, "markdown")
+end
+
+T["new_cell"]["appends after the last cell at the buffer end"] = function()
+  local buf = attach_notebook_buffer(LINES)
+  vim.api.nvim_win_set_cursor(0, { 6, 0 })
+
+  keymaps.new_cell()
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  MiniTest.expect.equality(#lines, 8)
+  MiniTest.expect.equality(lines[7], "# %%")
+  MiniTest.expect.equality(vim.api.nvim_win_get_cursor(0)[1], 8)
+end
+
+T["new_cell"]["uses the buffer language comment leader"] = function()
+  local buf = make_buffer({ "// %% a", "x = 1" })
+  vim.api.nvim_set_current_buf(buf)
+  state.get(buf).lang = "javascript"
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+  keymaps.new_cell()
+
+  MiniTest.expect.equality(vim.api.nvim_buf_get_lines(buf, 2, 3, false), { "// %%" })
+end
+
 T["plug_mappings"]["defines buffer-local <Plug> mappings and default motions"] = function()
   require("jove").config.cell_motions = true
   local buf = attach_notebook_buffer(LINES)
 
   MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveRunCell)") ~= nil, true)
   MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveNextCell)") ~= nil, true)
+  MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveNewCell)") ~= nil, true)
   MiniTest.expect.equality(buf_lhs(buf, "n", "<Plug>(JoveGotoRunningCell)") ~= nil, true)
   MiniTest.expect.equality(buf_lhs(buf, "x", "<Plug>(JoveRunSelection)") ~= nil, true)
   MiniTest.expect.equality(buf_lhs(buf, "n", "]c") ~= nil, true)

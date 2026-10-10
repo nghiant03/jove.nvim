@@ -261,6 +261,7 @@ opts = {
 | `:Jove run-cell-and-advance` | Run the current cell and jump to the next |
 | `:Jove next-cell` | Jump to next notebook cell |
 | `:Jove prev-cell` | Jump to previous notebook cell |
+| `:Jove new-cell [code\|markdown]` | Insert a new cell below the current one |
 | `:Jove goto-running-cell` | Jump to the currently executing cell |
 | `:Jove toggle-follow-running` | Toggle following the currently executing cell with the cursor |
 | `:Jove init-kernel` | Start a kernel for the current notebook |
@@ -305,6 +306,7 @@ Available `<Plug>` mappings:
 | `<Plug>(JoveRunCellAndAdvance)` | Run the current cell and jump to the next |
 | `<Plug>(JoveNextCell)` | Jump to next notebook cell |
 | `<Plug>(JovePrevCell)` | Jump to previous notebook cell |
+| `<Plug>(JoveNewCell)` | Insert a new cell below the current one |
 | `<Plug>(JoveGotoRunningCell)` | Jump to the currently executing cell |
 | `<Plug>(JoveToggleFollowRunning)` | Toggle following the currently executing cell |
 

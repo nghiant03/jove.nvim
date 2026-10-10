@@ -3,7 +3,7 @@
 local M = {}
 
 ---@class jove.Subcommand
----@field impl fun()
+---@field impl fun(opts: {fargs: string[]})
 ---@field desc string
 
 ---@type table<string, jove.Subcommand>
@@ -37,6 +37,23 @@ M.subcommands = {
       require("jove.keymaps").prev_cell()
     end,
     desc = "Jump to previous notebook cell",
+  },
+  ["new-cell"] = {
+    impl = function(opts)
+      local kind = opts and opts.fargs and opts.fargs[2] or nil
+      if kind == "md" then
+        kind = "markdown"
+      end
+      if kind ~= nil and kind ~= "code" and kind ~= "markdown" then
+        vim.notify(
+          ("[Jove] new-cell: expected 'code' or 'markdown', got '%s'"):format(tostring(kind)),
+          vim.log.levels.ERROR
+        )
+        return
+      end
+      require("jove.keymaps").new_cell(kind)
+    end,
+    desc = "Insert a new cell below the current one (arg: code|markdown)",
   },
   ["goto-running-cell"] = {
     impl = function()
@@ -157,7 +174,7 @@ function M.dispatch(opts)
     )
     return
   end
-  sub.impl()
+  sub.impl(opts)
 end
 
 ---@param arg_lead string

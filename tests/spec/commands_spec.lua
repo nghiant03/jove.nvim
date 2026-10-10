@@ -34,6 +34,32 @@ T["dispatch"]["invokes the subcommand impl"] = function()
   MiniTest.expect.equality(called, 1)
 end
 
+T["dispatch"]["forwards fargs to the subcommand impl"] = function()
+  local seen
+  commands.subcommands["test-dummy"] = {
+    impl = function(opts)
+      seen = opts.fargs
+    end,
+    desc = "test seam",
+  }
+  commands.dispatch({ fargs = { "test-dummy", "markdown" } })
+  MiniTest.expect.equality(seen, { "test-dummy", "markdown" })
+end
+
+T["dispatch"]["new-cell rejects an unknown cell kind"] = function()
+  local notes = {}
+  local orig = vim.notify
+  vim.notify = function(msg, level)
+    notes[#notes + 1] = { msg = msg, level = level }
+  end
+  commands.dispatch({ fargs = { "new-cell", "bogus" } })
+  vim.notify = orig
+
+  MiniTest.expect.equality(#notes, 1)
+  MiniTest.expect.equality(notes[1].level, vim.log.levels.ERROR)
+  MiniTest.expect.equality(notes[1].msg:match("new%-cell: expected") ~= nil, true)
+end
+
 T["dispatch"]["unknown subcommand notifies an error"] = function()
   local notes = {}
   local orig = vim.notify

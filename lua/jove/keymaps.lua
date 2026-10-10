@@ -2,6 +2,7 @@
 
 local cell = require("jove.cell")
 local execute = require("jove.execute")
+local lang = require("jove.lang")
 local state = require("jove.state")
 
 local M = {}
@@ -57,6 +58,23 @@ end
 
 function M.prev_cell()
   jump(-1)
+end
+
+--- Insert a new cell below the current one and place the cursor on its
+--- empty first body line.
+---@param kind? "code"|"markdown"  cell type of the new cell (default "code")
+function M.new_cell(kind)
+  local buf = vim.api.nvim_get_current_buf()
+  local cur = vim.api.nvim_win_get_cursor(0)[1]
+  local c = cell.at(buf, cur)
+  local insert_at = c and c.end_lnum or math.min(cur, vim.api.nvim_buf_line_count(buf))
+  local comment = lang.get(state.get(buf).lang).comment
+  local header = comment .. " %%"
+  if kind == "markdown" then
+    header = header .. " [markdown]"
+  end
+  vim.api.nvim_buf_set_lines(buf, insert_at, insert_at, false, { header, "" })
+  vim.api.nvim_win_set_cursor(0, { insert_at + 2, 0 })
 end
 
 function M.goto_running_cell()
@@ -170,6 +188,7 @@ local function attach(buf)
   )
   bmap(buf, "n", "<Plug>(JoveNextCell)", M.next_cell, "Jove: Next Cell")
   bmap(buf, "n", "<Plug>(JovePrevCell)", M.prev_cell, "Jove: Previous Cell")
+  bmap(buf, "n", "<Plug>(JoveNewCell)", M.new_cell, "Jove: New Cell Below")
   bmap(buf, "n", "<Plug>(JoveGotoRunningCell)", M.goto_running_cell, "Jove: Go to Running Cell")
   bmap(
     buf,
