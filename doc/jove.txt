@@ -1,5 +1,5 @@
 *jove.txt*                       Native .ipynb editing for Neovim via jupytext
-                               For NVIM v0.8.0    Last change: 2026 October 09
+                               For NVIM v0.8.0    Last change: 2026 October 10
 
 ==============================================================================
 Table of Contents                                     *jove-table-of-contents*
@@ -261,6 +261,9 @@ COMMANDS ~
 
   :Jove prev-cell                     Jump to previous notebook cell
 
+  :Jove new-cell [code\|markdown]     Insert a new cell below the current
+                                      one
+
   :Jove goto-running-cell             Jump to the currently executing
                                       cell
 
@@ -341,6 +344,9 @@ Available `<Plug>` mappings:
   <Plug>(JoveNextCell)                Jump to next notebook cell
 
   <Plug>(JovePrevCell)                Jump to previous notebook cell
+
+  <Plug>(JoveNewCell)                 Insert a new cell below the current
+                                      one
 
   <Plug>(JoveGotoRunningCell)         Jump to the currently executing
                                       cell
