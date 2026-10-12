@@ -34,6 +34,9 @@ local function safe(fn)
   end
 end
 
+-- Outputs live outside buffer text, so changedtick cannot track them.
+-- content_rev is the revision counter buffer.read compares to skip reloading
+-- a buffer whose outputs changed while a read was in flight.
 ---@param buf integer
 function M.mark_dirty(buf)
   if vim.api.nvim_buf_is_valid(buf) then
@@ -118,6 +121,8 @@ local function append_output(entry, params, new_chunks)
       if #last.text + #chunk.text <= 4096 then
         last.text = ansi.cr_concat(last.text, chunk.text)
       else
+        -- Cap merged stream text so a single chunk cannot grow without
+        -- bound while still collapsing most stream events into one chunk.
         chunk.continues = true
         chunk.text = ansi.cr_concat("", chunk.text)
         entry.chunks[#entry.chunks + 1] = chunk
@@ -244,6 +249,10 @@ local function place_images(buf, c, cell_hash, images, max, header_offset, out_c
   return split_at, drop
 end
 
+-- Inline images drawn by snacks.image occupy real buffer rows, so they
+-- cannot sit inside one virt_lines block. Lines before the first placed
+-- image stay in the normal under-cell extmark. The rest move to a second
+-- extmark anchored below the placed images.
 ---@param decorated table[]
 ---@param split_at integer?
 ---@param drop table<integer, boolean>
@@ -358,6 +367,7 @@ function M.push(buf, cell_hash, params, opts)
     M.mark_dirty(buf)
     if opts and opts.defer then
       if not entry.render_pending then
+        -- Coalesce bursts of stream events into roughly one render per frame.
         entry.render_pending = true
         vim.defer_fn(function()
           entry.render_pending = nil

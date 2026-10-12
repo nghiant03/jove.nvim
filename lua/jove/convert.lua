@@ -1,4 +1,4 @@
--- Asynchronous jupytext conversion  for notebooks.
+-- Asynchronous jupytext conversion for notebooks.
 
 local M = {}
 
@@ -30,6 +30,9 @@ local function read_file(path, cb)
   end)
 end
 
+-- Write via a temp file next to the target and rename over it: readers never
+-- observe a half-written notebook, and the temp file lives in the target's
+-- directory so the rename stays within one filesystem.
 ---@param path string
 ---@param bytes string
 ---@return boolean, string?  -- ok, error
@@ -62,6 +65,8 @@ function M.atomic_write(path, bytes)
   end
   local stat = vim.uv.fs_stat(target)
   if stat then
+    -- stat.mode includes the file-type bits. % 4096 masks to the low 12
+    -- permission bits, so a pre-existing mode survives the rename.
     local mok, merr = vim.uv.fs_chmod(tmp, stat.mode % 4096)
     if not mok then
       os.remove(tmp)
@@ -131,6 +136,10 @@ function M.write(path, lines, cb, opts)
   local stdin = table.concat(lines, "\n") .. "\n"
   local from = percent_fmt(opts)
 
+  -- An existing notebook is updated in place: jupytext only merges into an
+  -- on-disk destination, preserving cell ids and metadata that a fresh
+  -- conversion would drop. The merge is skipped when writing to stdout.
+  -- A new file has nothing to merge, so convert to stdout and write atomically.
   if vim.uv.fs_stat(path) == nil then
     run({ "--from", from, "--to", "ipynb", "--output", "-" }, stdin, function(stdout, stderr, code)
       if code ~= 0 then

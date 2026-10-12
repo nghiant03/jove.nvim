@@ -13,6 +13,8 @@ function M.register(mime, renderer)
   assert(type(mime) == "string" and mime ~= "", "expected a MIME type")
   assert(type(renderer) == "function", "expected an HTML renderer")
   if not renderers[mime] then
+    -- Prepend: the newest registration wins when a MIME bundle carries
+    -- several renderable types (from_outputs takes the first match).
     table.insert(order, 1, mime)
   end
   renderers[mime] = renderer

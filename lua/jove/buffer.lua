@@ -8,8 +8,13 @@ local lang = require("jove.lang")
 
 local M = {}
 
+-- Guards M.read against stale async completions: each read bumps the counter,
+-- and callbacks from an earlier read of the same buffer are dropped.
 local read_seq = {}
 
+-- Single-flight writes: a write issued while a conversion is running is
+-- deferred (dirty plus pending_tick/pending_lines) and replayed when it
+-- replies, so rapid :w presses coalesce into one final conversion.
 ---@type table<integer, {in_flight: boolean, dirty: boolean, pending_tick: integer?, pending_lines: string[]?}>
 local flights = {}
 
@@ -74,6 +79,9 @@ local function replace_lines(buf, lines)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     return
   end
+  -- If the initial population became an undo state, pressing `u` right after
+  -- opening would revert the buffer to empty. Only the first load (no jove
+  -- state yet) disables undo. Reloads stay undoable.
   local undolevels = vim.bo[buf].undolevels
   vim.bo[buf].undolevels = -1
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -111,6 +119,7 @@ function M.read(buf, path, opts)
 
   convert.read(path, function(lines, err)
     vim.schedule(function()
+      -- Stale completion: a newer read was started for this buffer.
       if read_seq[buf] ~= seq or not vim.api.nvim_buf_is_valid(buf) then
         return
       end
@@ -144,6 +153,9 @@ function M.read(buf, path, opts)
 
       local marker_prefix = spec.comment .. " %%"
       if rest[#rest] and rest[#rest]:sub(1, #marker_prefix) == marker_prefix then
+        -- jupytext emits a trailing empty cell as a bare marker line with no
+        -- body. Add one body line so the cell stays reachable when its
+        -- concealed header is the only clue it exists.
         rest[#rest + 1] = ""
       end
 
@@ -309,6 +321,8 @@ function M.changed_shell(buf, path)
   local bytes = fd:read("*a")
   fd:close()
 
+  -- Identical to our own last write: the change came from us, so the
+  -- FileChangedShell event needs no reload or conflict handling.
   if st.last_write and bytes and vim.fn.sha256(bytes) == st.last_write then
     return true
   end

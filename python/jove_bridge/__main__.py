@@ -16,6 +16,9 @@ class Connection:
 
     def __init__(self, out: Any) -> None:
         self._out = out
+        # Bounded queue: a stuck stdout must not let the producer threads
+        # exhaust memory; send() blocks and retries instead of dropping
+        # replies.
         self._queue: queue.Queue[Any] = queue.Queue(maxsize=256)
         self._closed = threading.Event()
         self._thread = threading.Thread(

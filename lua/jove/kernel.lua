@@ -119,7 +119,7 @@ end
 ---@field name string?
 ---@field language string?
 ---@field status string
----@field _last_name string?
+---@field _last_name string?  kernelspec to restore when the bridge respawns
 
 ---@param buf integer
 ---@param entry jove.KernelEntry
@@ -203,6 +203,9 @@ function M.init(buf, opts)
   end)
 
   b:on("ready", function()
+    -- The bridge respawned after an unexpected exit: restart the kernel with
+    -- its previous kernelspec (saved in _last_name by the "dead" handler) so
+    -- the session survives a bridge crash.
     if st.kernel ~= entry or entry.name then
       return
     end

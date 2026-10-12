@@ -235,6 +235,8 @@ function M.start(url, cmd, size)
     return nil, "jove: could not create webview terminal: " .. tostring(term)
   end
   self.term = term
+  -- No scrollback: image rows must stay aligned with the window rows, and
+  -- any scroll history would shift them.
   vim.bo[self.buf].scrollback = 0
   for key, value in pairs({
     number = false,
@@ -278,6 +280,10 @@ function M.start(url, cmd, size)
       if self.closed or not data then
         return
       end
+      -- Job callbacks split output at newlines and drop empty parts, which
+      -- would corrupt escape-sequence streams. Mask newlines inside each part
+      -- with NUL and rejoin with real newlines to reconstruct the exact PTY
+      -- byte stream for the transport.
       local parts = {}
       for i, part in ipairs(data) do
         parts[i] = part:gsub("\n", "\0")

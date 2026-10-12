@@ -16,8 +16,14 @@ setmetatable(dia_cache, {
   end,
 })
 
+-- The diacritics double as a digit alphabet: every placeholder cell encodes
+-- its row and column as two combining marks, so the grid is capped at the
+-- alphabet size in each dimension.
 M.MAX_CELLS = #DIACRITICS
 
+-- Image ids must fit 24 bits: M.grid encodes the id as the placeholder's RGB
+-- foreground color, which kitty uses to match placeholder cells to the image.
+-- The counter wraps before overflowing that encoding.
 local next_image_id = 0x6A0000
 
 ---@return integer

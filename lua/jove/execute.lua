@@ -210,6 +210,8 @@ function pump(buf)
   end
 
   exec.start_hr[item.hash] = vim.uv.hrtime()
+  -- Wire key: unique per run (global counter), so events from a previous run
+  -- of the same cell can be told apart from this run's and dropped.
   next_run = next_run + 1
   local wire = item.hash .. ":run:" .. next_run
   local previous = exec.latest[item.hash]
@@ -240,6 +242,9 @@ function pump(buf)
       exec.routes[wire] = nil
       return
     end
+    -- The execute reply can beat the last iopub outputs. Keep the route
+    -- alive for the same 10s grace the sidecar allows (see LATE_IOPUB_GRACE in
+    -- session.py) so late events still land on this cell.
     vim.defer_fn(function()
       exec.routes[wire] = nil
       if exec.latest[item.hash] == wire then

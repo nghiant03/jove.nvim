@@ -205,6 +205,8 @@ local function attach(buf)
       { "[c", M.prev_cell, "<Plug>(JovePrevCell)", "Jove: Previous Cell" },
     }) do
       local lhs, rhs, plug, desc = motion[1], motion[2], motion[3], motion[4]
+      -- Claim the lhs only when nothing else already uses it: user mappings,
+      -- diff mode's ]c/[c, or another plugin bound to the same <Plug>.
       local taken = vim.api.nvim_buf_call(buf, function()
         return vim.fn.maparg(lhs, "n") ~= "" or vim.fn.hasmapto(plug, "n") == 1
       end)

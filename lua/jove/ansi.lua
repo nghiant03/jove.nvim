@@ -25,6 +25,9 @@ function M.cr_concat(existing, new)
   local acc = existing
   for i, seg in ipairs(vim.split(new, "\r", { plain = true, trimempty = false })) do
     if i > 1 then
+      -- A carriage return restarts the current line: drop everything after
+      -- the last newline so the following segment overwrites it, matching
+      -- terminal progress-bar behavior.
       local nl = acc:find("\n[^\n]*$")
       acc = nl and acc:sub(1, nl) or ""
     end

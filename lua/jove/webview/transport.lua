@@ -65,6 +65,10 @@ function Transport:kitty(sequence)
     self.placed(nil)
     return
   end
+  -- Rewrite "transmit image" into a unicode-placeholder placement clamped
+  -- to the grid (q=2 with explicit rows/cols): the payload is relayed
+  -- as-is, but the placement stays inside this terminal instead of
+  -- escaping to the outer one.
   if keys.a == "T" and keys.t == "d" then
     local width, height = tonumber(keys.s), tonumber(keys.v)
     if not width or not height or width <= 0 or height <= 0 then
@@ -125,6 +129,8 @@ function Transport:feed(data)
       if kind == "_" or kind == "]" or kind == "P" or kind == "^" or kind == "X" then
         local st = s:find("\27\\", 3, true)
         local bel = kind == "]" and s:find("\7", 3, true) or nil
+        -- End of the OSC: ST spans two bytes, BEL one. Take whichever
+        -- terminates the sequence first.
         last = bel and (not st or bel < st) and bel or st and st + 1
       elseif kind == "[" then
         last = s:find("[@-~]", 3)
@@ -139,6 +145,8 @@ function Transport:feed(data)
       if seq:sub(1, 3) == "\27_G" then
         self:kitty(seq)
       elseif seq == "\27[16t" then
+        -- Answer terminal geometry queries locally from the known cell size so
+        -- the browser's probes never leak to the user's outer terminal.
         self.input(("\27[6;%d;%dt"):format(self.cell[2], self.cell[1]))
       elseif seq == "\27[14t" then
         self.input(("\27[4;%d;%dt"):format(self.rows * self.cell[2], self.cols * self.cell[1]))

@@ -8,10 +8,12 @@ local impl = {
   jobstop = vim.fn.jobstop,
 }
 
+-- Test seam: specs replace these fields to inject a fake job channel.
 M._impl = impl
 
 M.trace = false
 
+-- Timing knobs, module-level so tests can shorten them. Not user config.
 M.respawn_backoff_ms = { 1000, 2000, 4000 }
 
 M.ready_timeout_ms = 20000
@@ -342,6 +344,9 @@ function Bridge:stop(cb)
   if self._ready then
     self:request("shutdown", {}, nil, { timeout_ms = SHUTDOWN_GRACE_MS })
   end
+  -- Force-kill only after the graceful shutdown request had its chance to
+  -- complete. A clean exit drains the writer queue, so late replies and
+  -- output events reach Neovim first.
   vim.defer_fn(function()
     if self._job == job then
       impl.jobstop(job)

@@ -24,6 +24,8 @@ local function ensure_cleanup_autocmd()
     return
   end
   group = vim.api.nvim_create_augroup("jove_state", { clear = true })
+  -- Cleanup happens on BufWipeout only: a buffer closed with :bdelete keeps
+  -- its jove state, including any kernel bridge, until it is wiped.
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = group,
     pattern = "*",
@@ -34,7 +36,7 @@ local function ensure_cleanup_autocmd()
 end
 
 ---@param buf integer
----@return jove.BufferState
+---@return jove.BufferState  Attaches state to the buffer when absent; peek() only reads
 function M.get(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
   ensure_cleanup_autocmd()

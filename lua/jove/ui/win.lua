@@ -26,6 +26,9 @@ end
 function M.open(fbuf, enter, float_opts, size, view)
   local mode = M.mode(view)
   local cfg = float_opts
+  -- Split modes keep only `style` from the float config, and `size` is the
+  -- width for a vsplit but the height for an hsplit, so callers must pass the
+  -- axis-appropriate value.
   if mode ~= "float" then
     cfg = { split = mode == "vsplit" and "right" or "below", style = float_opts.style }
     if type(size) == "number" and size > 0 then

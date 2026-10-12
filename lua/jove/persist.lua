@@ -1,4 +1,8 @@
 -- Notebook output persistence.
+-- Outputs are matched to cells by their content-hash identity (see jove.cell).
+-- `seen` below records which hashes had outputs during this session, so a
+-- write can tombstone cells whose outputs were cleared instead of leaving
+-- stale on-disk outputs.
 
 local state = require("jove.state")
 local cell = require("jove.cell")
@@ -124,7 +128,7 @@ end
 
 ---@param nb table?
 ---@param store table?  -- state.outputs: hash → {raw = {...}, from_disk?}
----@param seen_hashes table?  -- hash → true, "had outputs this session"
+---@param seen_hashes table?  -- hash → true, "had outputs this session" (drives tombstoning)
 ---@param meta table?  -- hash → { count?: integer, elapsed_ms?: number }
 ---@param persist_counts boolean?  -- write execution counts (default true)
 ---@return integer merged  -- number of cells replaced, tombstoned, or counted
@@ -136,6 +140,8 @@ function M.merge_into(nb, store, seen_hashes, meta, persist_counts)
     persist_counts = true
   end
   local merged = 0
+  -- Occurrence index: the n-th cell with identical content gets `#n`, so
+  -- duplicate cells keep distinct hash identities.
   local counts = {}
   for _, c in ipairs(nb.cells) do
     if c.source ~= nil then
@@ -222,6 +228,8 @@ function M.export(buf, bytes)
   nb = vim.deepcopy(nb)
 
   if buf_seen then
+    -- Prune hashes that no longer match any cell in the notebook. They can
+    -- never match again and would otherwise accumulate across saves.
     local fresh = {}
     local counts = {}
     for _, c in ipairs(nb.cells or {}) do
@@ -259,6 +267,8 @@ function M.export(buf, bytes)
   st.last_write = vim.fn.sha256(encoded)
 
   if buf_seen then
+    -- Drop tombstoned hashes once they are reflected on disk: keeping them
+    -- would re-tombstone the same cells and force a rewrite on every save.
     for hash in pairs(buf_seen) do
       if not (st.outputs and st.outputs[hash]) then
         buf_seen[hash] = nil
@@ -300,6 +310,8 @@ function M.import(buf)
     end
   end
 
+  -- Replace rather than merge: the disk state becomes the new baseline for
+  -- which hashes "had outputs".
   seen[buf] = fresh_seen
 
   require("jove.execute").reset(buf)

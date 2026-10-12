@@ -108,7 +108,7 @@ class KernelController:
             # No `block` kwarg: jupyter_client >= 8 removed it (and this module
             # pins >= 8). The default sends a polite shutdown request that an
             # idle kernel honors within milliseconds, keeping the grace loop
-            # below a rare fallback rather than the common path.
+            # a rare fallback rather than the common path.
             km.shutdown_kernel(restart=False)
         except Exception:
             pass

@@ -1,4 +1,4 @@
-"""Session logic.."""
+"""Protocol session: request dispatch plus iopub/shell routing."""
 
 from __future__ import annotations
 
@@ -34,8 +34,13 @@ VARIABLES_EXPR = (
     "])"
 )
 
+# Sentinel returned by dispatch(): the reply will be sent asynchronously from
+# the poll thread once the kernel answers, not by the stdin loop.
 DEFERRED = object()
 
+# Seconds after an execute_reply during which late iopub outputs are still
+# routed to the cell that executed. The Lua client keeps its side of the
+# route alive for the same window.
 LATE_IOPUB_GRACE = 10.0
 
 
@@ -59,6 +64,8 @@ class BridgeSession:
         self.conn = conn
         self.kernel = KernelController()
         self.pending: dict = {}
+        # msg_id -> (cell, expiry): routes iopub events that arrive after
+        # their execute_reply (see LATE_IOPUB_GRACE).
         self._recent: dict = {}
         self._lock = threading.Lock()
         self._shell_lock = threading.Lock()
@@ -382,6 +389,8 @@ class BridgeSession:
         if pending is None:
             return
         if pending.kind == "execute" and pending.cell is not None:
+            # The reply arrived; keep routing iopub events to this cell for the
+            # grace window, since outputs can trail the reply.
             now = time.monotonic()
             with self._lock:
                 self._recent[parent] = (pending.cell, now + LATE_IOPUB_GRACE)

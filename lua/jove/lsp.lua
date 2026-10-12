@@ -8,6 +8,10 @@ local M = {}
 local impl = {
   get_clients = vim.lsp.get_clients,
   start = vim.lsp.start,
+  -- Indexing vim.lsp.config runs its lazy resolution, which can throw for a
+  -- name only defined by a broken config. Treat that as "no entry". A
+  -- config without `cmd` is skipped too: jove never invents a command or
+  -- root_dir for a server.
   config = function(name)
     local ok, conf = pcall(function()
       return vim.lsp.config[name]

@@ -24,6 +24,8 @@ local function ensure_wipeout_cleanup()
   })
 end
 
+-- Require "snacks" first so a lazy plugin manager loads the plugin before
+-- the "snacks.image" submodule becomes requireable.
 ---@return table? snacks
 local function load()
   pcall(require, "snacks")
@@ -62,6 +64,8 @@ function M.decode(chunk)
   if type(chunk) ~= "table" or type(chunk.data) ~= "string" then
     return nil
   end
+  -- Memoized on the chunk itself so re-renders reuse the decoded file
+  -- instead of decoding base64 and hitting the cache directory again.
   if chunk.image_path and vim.fn.filereadable(chunk.image_path) == 1 then
     return chunk.image_path
   end

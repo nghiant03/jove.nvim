@@ -1,4 +1,9 @@
 -- Cell parser and cell model for buffers.
+-- Cells are identified by content hash, not position: jupytext py:percent
+-- round-trips drop cell ids, so outputs and run state can only be matched
+-- back to cells by what their body contains. Duplicate cells get distinct
+-- identities (see `jove.Cell.hash` and `M.dup_key`). jove.persist relies on
+-- this identity when merging outputs.
 
 local state = require("jove.state")
 
