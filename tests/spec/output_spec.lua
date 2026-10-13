@@ -399,6 +399,38 @@ T["images"]["a blank anchor line indents the image inside the frame"] = function
   release_buffer(buf)
 end
 
+T["images"]["an execute_result followed by an identical display_data renders one image"] = function()
+  local calls = stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()", "fig" })
+  local hash = cell_hash(buf)
+  local mime = { ["image/png"] = "iVBORw0KGgo=", ["text/plain"] = "<Figure size 100x100>" }
+
+  output.push(buf, hash, { kind = "execute_result", execution_count = 6, mime = mime })
+  output.push(buf, hash, { kind = "display_data", mime = mime })
+
+  local entry = state.peek(buf).outputs[hash]
+  MiniTest.expect.equality(#entry.raw, 1)
+  MiniTest.expect.equality(#entry.chunks, 1)
+  MiniTest.expect.equality(#calls, 2)
+  MiniTest.expect.equality(calls[1].src, calls[2].src)
+  release_buffer(buf)
+end
+
+T["images"]["different image payloads still render separately"] = function()
+  local calls = stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()", "fig" })
+  local hash = cell_hash(buf)
+
+  output.push(buf, hash, { kind = "execute_result", mime = { ["image/png"] = "AAAA" } })
+  output.push(buf, hash, { kind = "display_data", mime = { ["image/png"] = "BBBB" } })
+
+  local entry = state.peek(buf).outputs[hash]
+  MiniTest.expect.equality(#entry.raw, 2)
+  MiniTest.expect.equality(#calls, 3)
+  expect_truthy(calls[2].src ~= calls[3].src)
+  release_buffer(buf)
+end
+
 T["images"]["re-render closes the previous placement instead of stacking grids"] = function()
   local calls, closed = stub_snacks()
   local buf = make_buffer({ "# %% a", "plt.plot()" })
@@ -721,6 +753,26 @@ T["import"]["re-importing a cell replaces its outputs instead of stacking duplic
   MiniTest.expect.equality(#entry.chunks, 1)
   MiniTest.expect.equality(#calls, 2)
   MiniTest.expect.equality(#closed, 1)
+  release_buffer(buf)
+end
+
+T["import"]["a kernel-duplicated image output is imported once"] = function()
+  local calls = stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()", "fig" })
+  local hash = cell_hash(buf)
+  local mime = { ["image/png"] = "iVBORw0KGgo=" }
+
+  output.import(buf, {
+    [hash] = {
+      { kind = "execute_result", mime = mime },
+      { kind = "display_data", mime = mime },
+    },
+  })
+
+  local entry = state.peek(buf).outputs[hash]
+  MiniTest.expect.equality(#entry.raw, 1)
+  MiniTest.expect.equality(#entry.chunks, 1)
+  MiniTest.expect.equality(#calls, 1)
   release_buffer(buf)
 end
 

@@ -82,11 +82,32 @@ local function get_entry(st, cell_hash)
   return entry, store
 end
 
+---@param bundle table?
+---@return boolean
+local function has_image_mime(bundle)
+  for k in pairs(bundle or {}) do
+    if vim.startswith(k, "image/") then
+      return true
+    end
+  end
+  return false
+end
+
 ---@param entry table
 ---@param params table       raw output event (kept in entry.raw for persist)
 ---@param new_chunks table[] mime.render(params)
 local function append_output(entry, params, new_chunks)
   if entry.truncated then
+    return
+  end
+  local previous = entry.raw[#entry.raw]
+  if
+    previous
+    and (params.kind == "display_data" or params.kind == "execute_result")
+    and (previous.kind == "display_data" or previous.kind == "execute_result")
+    and has_image_mime(params.mime)
+    and vim.deep_equal(params.mime, previous.mime)
+  then
     return
   end
   local cfg = require("jove").config
@@ -102,7 +123,6 @@ local function append_output(entry, params, new_chunks)
       { kind = "stream", name = "stderr", mime = { ["text/plain"] = text } }
     return
   end
-  local previous = entry.raw[#entry.raw]
   local can_merge = params.kind == "stream"
     and previous
     and previous.kind == "stream"
