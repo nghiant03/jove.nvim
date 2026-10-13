@@ -707,6 +707,23 @@ T["import"]["bulk-attaches outputs by hash and renders them"] = function()
   release_buffer(buf)
 end
 
+T["import"]["re-importing a cell replaces its outputs instead of stacking duplicates"] = function()
+  local calls, closed = stub_snacks()
+  local buf = make_buffer({ "# %% a", "plt.plot()" })
+  local hash = cell_hash(buf)
+  local event = { kind = "display_data", mime = { ["image/png"] = "iVBORw0KGgo=" } }
+
+  output.import(buf, { [hash] = { event } })
+  output.import(buf, { [hash] = { event } })
+
+  local entry = state.peek(buf).outputs[hash]
+  MiniTest.expect.equality(#entry.raw, 1)
+  MiniTest.expect.equality(#entry.chunks, 1)
+  MiniTest.expect.equality(#calls, 2)
+  MiniTest.expect.equality(#closed, 1)
+  release_buffer(buf)
+end
+
 T["import"]["ignores unknown hashes and non-jove buffers without erroring"] = function()
   local buf = make_buffer({ "# %% a", "print(1)" })
   output.import(buf, { deadbeef = { { kind = "stream", mime = { ["text/plain"] = "x" } } } })

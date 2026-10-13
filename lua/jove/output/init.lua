@@ -490,6 +490,12 @@ function M.import(buf, outputs_by_hash)
     end
     for hash, events in pairs(outputs_by_hash or {}) do
       local entry = get_entry(st, hash)
+      entry.chunks = {}
+      entry.raw = {}
+      entry.hidden = false
+      entry.bytes = 0
+      entry.truncated = false
+      entry.render_pending = nil
       entry.from_disk = true
       for _, params in ipairs(events or {}) do
         append_output(entry, params, mime.render(params))
