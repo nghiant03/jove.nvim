@@ -20,21 +20,22 @@ env:
   LUALS_SHA256: "e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8"
 
 jobs:
-  stylua:
-    name: stylua --check
+  format-lua:
+    name: format lua (stylua)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: JohnnyMorganz/stylua-action@v5
+      - name: Check Lua formatting
+        uses: JohnnyMorganz/stylua-action@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: v2.1.0
           args: --check .
 
-  selene:
-    name: selene
+  lint-lua:
+    name: lint lua (selene)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,11 +48,11 @@ jobs:
           echo "$SELENE_SHA256  selene.zip" | sha256sum --check -
           unzip -o selene.zip
           chmod +x selene
-      - name: Lint
+      - name: Lint Lua
         run: ./selene .
 
-  luals:
-    name: lua-language-server --check
+  typecheck-lua:
+    name: typecheck lua (LuaLS)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -64,11 +65,41 @@ jobs:
           echo "$LUALS_SHA256  $RUNNER_TEMP/luals.tar.gz" | sha256sum --check -
           mkdir -p "$RUNNER_TEMP/luals"
           tar -xzf "$RUNNER_TEMP/luals.tar.gz" -C "$RUNNER_TEMP/luals"
-      - name: Type-check
+      - name: Type-check Lua
         run: $RUNNER_TEMP/luals/bin/lua-language-server --check . --checklevel=Warning --logpath "$RUNNER_TEMP/luals-log"
 
-  test:
-    name: test (nvim ${{ matrix.nvim }} on ${{ matrix.os }})
+  lint-python:
+    name: lint python (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Lint Python
+        run: uv run --project python --locked --extra dev ruff check python
+
+  format-python:
+    name: format python (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Check Python formatting
+        run: uv run --project python --locked --extra dev ruff format --check python
+
+  test-plugin:
+    name: plugin tests (nvim ${{ matrix.nvim }} on ${{ matrix.os }})
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -114,26 +145,11 @@ jobs:
           git -C .testdeps/mini.test fetch --depth 1 https://github.com/nvim-mini/mini.test ${{ env.MINI_TEST_SHA }}
           git -C .testdeps/mini.test checkout --detach FETCH_HEAD
 
-      - name: Run tests
+      - name: Run plugin tests
         run: uv run --project python --locked --extra dev bash scripts/test.sh
 
-  python-quality:
-    name: ruff (check + format)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: python/uv.lock
-      - run: uv run --project python --locked --extra dev ruff check python
-      - run: uv run --project python --locked --extra dev ruff format --check python
-
-  bridge:
-    name: bridge (pytest, py${{ matrix.python }} on ${{ matrix.os }})
+  test-bridge:
+    name: bridge tests (py${{ matrix.python }} on ${{ matrix.os }})
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -166,6 +182,6 @@ jobs:
         working-directory: python
         run: uv run --locked --extra dev python -m ipykernel install --user --name python3 --display-name "Python 3 (ipykernel)"
 
-      - name: Run bridge conformance tests
+      - name: Run bridge tests
         working-directory: python
         run: uv run --locked --extra dev python -m pytest -q
