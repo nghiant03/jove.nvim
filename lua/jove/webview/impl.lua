@@ -6,6 +6,7 @@ local impl = {
   jobsend = vim.fn.chansend,
   jobresize = vim.fn.jobresize,
   executable = vim.fn.executable,
+  ui_open = vim.ui.open,
 }
 
 ---@return integer, integer

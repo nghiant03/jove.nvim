@@ -37,6 +37,7 @@ local M = {}
 ---@class jove.Config.Webview  Interactive HTML output viewer (terminal-browser).
 ---@field enabled boolean                   Allow :Jove open-webview (default true).
 ---@field cmd string                        terminal-browser binary (default "terminal-browser").
+---@field renderer "auto"|"terminal"|"browser"  "auto" (default) embeds terminal-browser when available and falls back to the system default browser; "terminal" embeds only and errors when unavailable; "browser" always uses the system default browser.
 ---@field width number                      Webview width in float/vsplit mode as a fraction of the editor (0-1, default 0.5).
 ---@field height number                     Webview height in float/hsplit mode as a fraction of the editor (0-1, default 0.5).
 
@@ -109,6 +110,7 @@ M.config = {
   webview = {
     enabled = true,
     cmd = "terminal-browser",
+    renderer = "auto",
     width = 0.5,
     height = 0.5,
   },
@@ -227,6 +229,9 @@ local function validate_config(cfg)
   vim.validate("webview", cfg.webview, "table")
   vim.validate("webview.enabled", cfg.webview.enabled, "boolean")
   vim.validate("webview.cmd", cfg.webview.cmd, "string")
+  vim.validate("webview.renderer", cfg.webview.renderer, function(v)
+    return v == "auto" or v == "terminal" or v == "browser"
+  end, '"auto", "terminal", or "browser"')
   vim.validate("webview.width", cfg.webview.width, function(v)
     return type(v) == "number" and v > 0 and v <= 1
   end, "fraction between 0 and 1")

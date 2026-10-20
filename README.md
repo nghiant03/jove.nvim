@@ -168,6 +168,7 @@ require("jove").setup({
   webview = {
     enabled = true, 
     cmd = "terminal-browser",   -- terminal-browser binary
+    renderer = "auto",          -- "auto", "terminal", or "browser"
     width = 0.5,                -- webview width in float/vsplit mode, as a fraction of the editor
     height = 0.5,               -- webview height in float/hsplit mode, as a fraction of the editor
   },
@@ -196,8 +197,8 @@ require("jove").setup({
 ### Webview interaction
 
 `:Jove open-webview` runs `terminal-browser` in a terminal buffer and enters
-Terminal mode automatically.
-The webview recognizes HTML, Plotly, Vega-Lite v4–v6, and Vega v5–v6 output. 
+Terminal mode automatically. With the default `webview.renderer = "auto"`,
+the priority is `terminal` then `browser`.
 
 > [!note]
 > Hover events require Neovim's `mousemoveevent` option to be enabled.

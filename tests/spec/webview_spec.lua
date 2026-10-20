@@ -18,6 +18,7 @@ local T = MiniTest.new_set({
       jove.config.ui.window_mode = "vsplit"
       jove.config.ui.window_overrides = {}
       jove.config.webview.enabled = true
+      jove.config.webview.renderer = "auto"
       webview._impl.executable = function()
         return 1
       end
@@ -63,6 +64,7 @@ local T = MiniTest.new_set({
 
 local function open()
   local session = assert(webview.open("about:blank"))
+  ---@cast session jove.Webview
   sessions[#sessions + 1] = session
   return session
 end
@@ -216,6 +218,76 @@ T["open"]["cleans up the terminal and window when jobstart raises"] = function()
   MiniTest.expect.equality(session, nil)
   MiniTest.expect.equality(err:find("spawn failed", 1, true) ~= nil, true)
   MiniTest.expect.equality(#vim.api.nvim_list_wins(), before)
+end
+
+T["open"]["falls back to the default browser when terminal-browser is missing"] = function()
+  webview._impl.executable = function()
+    return 0
+  end
+  local opened
+  webview._impl.ui_open = function(url)
+    opened = url
+    return {}
+  end
+  webview._impl.jobstart = function()
+    error("jobstart must not be called")
+  end
+  local result, err = webview.open("https://example.com")
+  MiniTest.expect.equality(result, true)
+  MiniTest.expect.equality(err, nil)
+  MiniTest.expect.equality(opened, "https://example.com")
+end
+
+T["open"]["falls back to the default browser without kitty graphics"] = function()
+  webview._impl.terminal_supports_kitty = function()
+    return false
+  end
+  local opened
+  webview._impl.ui_open = function(url)
+    opened = url
+    return {}
+  end
+  local result = webview.open("https://example.com")
+  MiniTest.expect.equality(result, true)
+  MiniTest.expect.equality(opened, "https://example.com")
+end
+
+T["open"]["reports the embedded-webview error when renderer is terminal"] = function()
+  jove.config.webview.renderer = "terminal"
+  webview._impl.executable = function()
+    return 0
+  end
+  local result, err = webview.open("https://example.com")
+  MiniTest.expect.equality(result, nil)
+  MiniTest.expect.equality(err:find("not found on PATH", 1, true) ~= nil, true)
+end
+
+T["open"]["always uses the default browser when renderer is browser"] = function()
+  jove.config.webview.renderer = "browser"
+  local opened
+  webview._impl.ui_open = function(url)
+    opened = url
+    return {}
+  end
+  webview._impl.jobstart = function()
+    error("jobstart must not be called")
+  end
+  local result, err = webview.open("https://example.com")
+  MiniTest.expect.equality(result, true)
+  MiniTest.expect.equality(err, nil)
+  MiniTest.expect.equality(opened, "https://example.com")
+end
+
+T["open"]["reports an error when the default browser cannot open the URL"] = function()
+  webview._impl.executable = function()
+    return 0
+  end
+  webview._impl.ui_open = function()
+    return nil, "no opener"
+  end
+  local result, err = webview.open("https://example.com")
+  MiniTest.expect.equality(result, nil)
+  MiniTest.expect.equality(err:find("no opener", 1, true) ~= nil, true)
 end
 
 T["close"]["stops the PTY and deletes only the session image exactly once"] = function()

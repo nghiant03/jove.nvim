@@ -28,22 +28,49 @@ function M.available()
 end
 
 ---@param url string
+---@param embedded_err string?  why the embedded webview was skipped (auto fallback)
+---@return boolean? ok, string? err
+local function open_browser(url, embedded_err)
+  local proc, open_err = impl.ui_open(url)
+  if not proc then
+    return nil,
+      (embedded_err and (embedded_err .. "; ") or "")
+        .. "could not open the default browser: "
+        .. tostring(open_err)
+  end
+  return true
+end
+
+---@param url string
 ---@param opts { width: number?, height: number? }?  fractions of the editor (0-1)
----@return jove.Webview? session, string? err
+---@return jove.Webview|boolean|nil session, string? err  true when handed off to the system browser
 function M.open(url, opts)
   opts = opts or {}
   local cfg = require("jove").config
   local wv = (cfg and cfg.webview) or {}
   local cmd = wv.cmd or "terminal-browser"
-  if impl.executable(cmd) ~= 1 then
-    return nil,
-      ("jove: %q not found on PATH; install terminal-browser (https://terminal-browser.sh)"):format(
-        cmd
-      )
+  local renderer = wv.renderer or "auto"
+  if renderer == "browser" then
+    return open_browser(url)
   end
-  if not impl.terminal_supports_kitty() then
-    return nil,
+  local embedded_err
+  if impl.executable(cmd) ~= 1 then
+    embedded_err = ("jove: %q not found on PATH; install terminal-browser (https://terminal-browser.sh)"):format(
+      cmd
+    )
+  elseif not impl.terminal_supports_kitty() then
+    embedded_err =
       "jove: webview requires a terminal with kitty graphics support (kitty, ghostty, wezterm)"
+  end
+  if embedded_err then
+    if renderer == "terminal" then
+      return nil, embedded_err
+    end
+    vim.notify(
+      "[Jove] terminal-browser unavailable; opened in the default browser",
+      vim.log.levels.INFO
+    )
+    return open_browser(url, embedded_err)
   end
 
   local width = tonumber(opts.width or wv.width) or 0.5
@@ -52,7 +79,7 @@ function M.open(url, opts)
 end
 
 ---@param html string
----@return jove.Webview? session, string? err
+---@return jove.Webview|boolean|nil session, string? err  true when handed off to the system browser
 function M.open_html(html)
   local file = vim.fn.tempname() .. ".html"
   local fd = io.open(file, "w")

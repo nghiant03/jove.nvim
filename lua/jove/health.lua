@@ -60,7 +60,7 @@ function M.check()
   if ver then
     h.ok("jupytext: " .. ver)
   else
-    h.error("`jupytext` not found on $PATH (pip install jupytext)")
+    h.error("`jupytext` not found on $PATH")
   end
 
   local bridge = require("jove.bridge")
@@ -72,7 +72,7 @@ function M.check()
     h.ok(("bridge python: %s (v%s)"):format(python, vim.trim(vres.stdout)))
   else
     h.warn(
-      ("bridge python %q not runnable; set `jove.bridge_python` to a working interpreter"):format(
+      ("bridge python %q not runnable. set `jove.bridge_python` to a working interpreter"):format(
         python
       )
     )
@@ -85,7 +85,7 @@ function M.check()
   else
     h.error(
       (
-        "jupyter_client/ipykernel not importable via %s (%s) — run: %s -m pip install "
+        "jupyter_client/ipykernel not importable via %s (%s). Run %s -m pip install "
         .. "jupyter_client ipykernel. If your Python lives in a virtualenv or conda env, "
         .. "point `jove.bridge_python` at its interpreter."
       ):format(python, detail, python)
@@ -112,25 +112,30 @@ function M.check()
 
   local ok_snacks, snacks = pcall(require, "snacks")
   if ok_snacks and type(snacks) == "table" and snacks.image ~= nil then
-    h.info("snacks.image detected (optional; enables inline image outputs)")
+    h.info("snacks.image detected (optional inline image outputs)")
   else
     h.info(
-      "snacks.image not detected (optional; enables inline image outputs — install folke/snacks.nvim)"
+      "snacks.image not detected (optional inline image outputs)"
     )
   end
 
   local webview_mod = require("jove.webview")
+  local renderer = (cfg.webview or {}).renderer or "auto"
   if webview_mod.available() then
-    h.ok("terminal-browser available (enables interactive HTML webview via :Jove open-webview)")
+    h.ok("terminal-browser available")
+  elseif renderer == "terminal" then
+    h.warn(
+      'terminal-browser not available and webview.renderer = "terminal"; '
+        .. ":Jove open-webview will report an error"
+    )
   else
     h.info(
-      "terminal-browser not available (optional; enables interactive HTML webview — "
-        .. "requires a kitty-graphics terminal and https://terminal-browser.sh)"
+      "terminal-browser not available (optional terminal interactive element rendering)"
     )
   end
 
   if vim.g.loaded_jupytext == 1 or package.loaded["jupytext"] then
-    h.error("jupytext.nvim is loaded; jove.nvim refuses to attach handlers. Disable one.")
+    h.error("jupytext.nvim is loaded. jove.nvim refuses to attach handlers. Disable one.")
   else
     h.ok("no conflicting .ipynb plugin detected")
   end
@@ -139,7 +144,7 @@ function M.check()
   local lsp_cfg = cfg.lsp or {}
   local bufs = require("jove.state").buffers()
   if #bufs == 0 then
-    h.info("LSP: no notebook buffers open; open a .ipynb to check server attach")
+    h.info("No notebook buffers open. Open a .ipynb to check LSP server attach")
   end
   for _, buf in ipairs(bufs) do
     local st = require("jove.state").peek(buf)
@@ -151,11 +156,11 @@ function M.check()
       for _, c in ipairs(clients) do
         names[#names + 1] = c.name
       end
-      h.ok(("LSP %s (%s): %s attached"):format(name, spec.id, table.concat(names, ", ")))
+      h.ok(("LSP %s (%s) have %s attached"):format(name, spec.id, table.concat(names, ", ")))
     else
       local hint = #spec.servers > 0 and ("; known servers: " .. table.concat(spec.servers, ", "))
         or ""
-      h.warn(("LSP %s (%s): no language server attached%s"):format(name, spec.id, hint))
+      h.warn(("LSP %s (%s) have no language server attached%s"):format(name, spec.id, hint))
     end
   end
   if lsp_cfg.auto_attach then
