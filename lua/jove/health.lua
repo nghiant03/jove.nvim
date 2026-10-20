@@ -114,9 +114,7 @@ function M.check()
   if ok_snacks and type(snacks) == "table" and snacks.image ~= nil then
     h.info("snacks.image detected (optional inline image outputs)")
   else
-    h.info(
-      "snacks.image not detected (optional inline image outputs)"
-    )
+    h.info("snacks.image not detected (optional inline image outputs)")
   end
 
   local webview_mod = require("jove.webview")
@@ -129,9 +127,7 @@ function M.check()
         .. ":Jove open-webview will report an error"
     )
   else
-    h.info(
-      "terminal-browser not available (optional terminal interactive element rendering)"
-    )
+    h.info("terminal-browser not available (optional terminal interactive element rendering)")
   end
 
   if vim.g.loaded_jupytext == 1 or package.loaded["jupytext"] then
