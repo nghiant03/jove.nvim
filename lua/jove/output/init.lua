@@ -25,6 +25,7 @@ local RENDER_PRIORITY = 200
 ---@field truncated boolean           payload cap reached; further output is dropped
 ---@field render_pending boolean?     a deferred render_cell is scheduled
 ---@field from_disk boolean?          imported from the .ipynb rather than produced this session
+---@field line_cache jove.OutputLineCache?  parsed output, independent of placement and decoration
 
 ---@param fn fun()
 local function safe(fn)
@@ -325,7 +326,8 @@ local function render_cell_untimed(buf, cell_hash)
     return
   end
 
-  local lines, images = render.build_lines(entry.chunks)
+  local lines, images, cache = render.build_lines(entry.chunks, entry.line_cache)
+  entry.line_cache = cache
   local cfg = require("jove").config
   local out_cfg = (cfg and cfg.output) or {}
   local max = math.max(1, out_cfg.max_lines or 50)
@@ -507,6 +509,7 @@ function M.import(buf, outputs_by_hash)
     for hash, events in pairs(outputs_by_hash or {}) do
       local entry = get_entry(st, hash)
       entry.chunks = {}
+      entry.line_cache = nil
       entry.raw = {}
       entry.hidden = false
       entry.bytes = 0

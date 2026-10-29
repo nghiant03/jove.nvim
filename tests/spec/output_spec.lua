@@ -634,6 +634,58 @@ T["refresh_cell"]["picks up the execution count for the header"] = function()
   release_buffer(buf)
 end
 
+T["refresh_cell"]["redecorates cached lines after display options change"] = function()
+  local buf = make_buffer({ "# %%", "print(1)" })
+  local hash = cell_hash(buf)
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "one\ntwo\nthree" } })
+  local entry = state.peek(buf).outputs[hash]
+  local cached_lines = vim.deepcopy(entry.line_cache.lines)
+  jove.config.output.max_lines = 1
+  jove.config.output.header = false
+  jove.config.output.guide = "> "
+  output.refresh_cell(buf, hash)
+  MiniTest.expect.equality(texts(extmark_of(buf, hash).virt_lines), {
+    "> one",
+    "> … +2 lines · :Jove open-output",
+  })
+  MiniTest.expect.equality(entry.line_cache.lines, cached_lines)
+  output.toggle(buf, 1)
+  output.toggle(buf, 1)
+  MiniTest.expect.equality(entry.line_cache.lines, cached_lines)
+  release_buffer(buf)
+end
+
+T["refresh_cell"]["stream chunk rollover keeps the cached prefix and raw events intact"] = function()
+  local buf = make_buffer({ "# %%", "print(1)" })
+  local hash = cell_hash(buf)
+  local prefix = string.rep("x", 4096)
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = prefix } })
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "\27[31mred" } })
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "\27[0m plain" } })
+  local entry = state.peek(buf).outputs[hash]
+  MiniTest.expect.equality(#entry.chunks, 2)
+  MiniTest.expect.equality(#entry.raw, 3)
+  MiniTest.expect.equality(entry.raw[1].mime["text/plain"], prefix)
+  MiniTest.expect.equality(entry.raw[2].mime["text/plain"], "\27[31mred")
+  local lines = require("jove.output.render").build_lines(entry.chunks)
+  MiniTest.expect.equality(entry.line_cache.lines, lines)
+  MiniTest.expect.equality(lines[1][1][1], prefix)
+  MiniTest.expect.equality(lines[1][2][1], "red")
+  MiniTest.expect.equality(lines[1][3][1], " plain")
+  release_buffer(buf)
+end
+
+T["refresh_cell"]["late errors beyond the visible limit update the cached output guide"] = function()
+  local buf = make_buffer({ "# %%", "print(1)" })
+  local hash = cell_hash(buf)
+  jove.config.output.max_lines = 1
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "one\ntwo" } })
+  output.push(buf, hash, { kind = "error", ename = "Error", evalue = "late", traceback = {} })
+  output.refresh_cell(buf, hash)
+  MiniTest.expect.equality(extmark_of(buf, hash).virt_lines[2][1][2], "JoveOutputGuideError")
+  release_buffer(buf)
+end
+
 T["clear"] = MiniTest.new_set()
 
 T["clear"]["drops one cell's extmark and store entry"] = function()
@@ -753,6 +805,21 @@ T["import"]["re-importing a cell replaces its outputs instead of stacking duplic
   MiniTest.expect.equality(#entry.chunks, 1)
   MiniTest.expect.equality(#calls, 2)
   MiniTest.expect.equality(#closed, 1)
+  release_buffer(buf)
+end
+
+T["import"]["re-importing text invalidates parsed output and ANSI state"] = function()
+  local buf = make_buffer({ "# %%", "print(1)" })
+  local hash = cell_hash(buf)
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = "\27[31mold" } })
+  output.import(buf, {
+    [hash] = { { kind = "stream", mime = { ["text/plain"] = "new" } } },
+  })
+  local line = extmark_of(buf, hash).virt_lines[2]
+  MiniTest.expect.equality(line[2], { "new" })
+  output.push(buf, hash, { kind = "stream", mime = { ["text/plain"] = " merged" } })
+  expect_truthy(texts(extmark_of(buf, hash).virt_lines)[2]:find("new merged", 1, true) ~= nil)
+  MiniTest.expect.equality(#state.peek(buf).outputs[hash].raw, 2)
   release_buffer(buf)
 end
 

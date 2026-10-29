@@ -51,13 +51,57 @@ local function split_segments(text, spans, base_hl)
   return out
 end
 
+---@class jove.OutputLinePrefix
+---@field line_count integer
+---@field image_count integer
+---@field state jove.AnsiState?
+---@field last_line table[]?
+
+---@class jove.OutputLineCache
+---@field chunks table[]
+---@field lines table[]
+---@field images table[]
+---@field count integer
+---@field state jove.AnsiState?
+---@field tail_text string?
+---@field prefix jove.OutputLinePrefix?
+
 ---@param chunks table[]
+---@param cache jove.OutputLineCache?
 ---@return table[] lines    virt_lines entries: { { text, hl_group? } }
 ---@return table[] images    { { chunk = <image chunk>, index = <int> } }
-function M.build_lines(chunks)
-  local lines, images = {}, {}
-  local ansi_state
-  for _, chunk in ipairs(chunks) do
+---@return jove.OutputLineCache cache
+function M.build_lines(chunks, cache)
+  if not cache or cache.chunks ~= chunks or cache.count > #chunks then
+    cache = { chunks = chunks, lines = {}, images = {}, count = 0 }
+  end
+  local lines, images = cache.lines, cache.images
+  local start = cache.count + 1
+  local prefix = cache.prefix
+  if prefix and chunks[cache.count].text ~= cache.tail_text then
+    for i = #lines, prefix.line_count + 1, -1 do
+      lines[i] = nil
+    end
+    for i = #images, prefix.image_count + 1, -1 do
+      images[i] = nil
+    end
+    if prefix.last_line then
+      lines[prefix.line_count] = vim.deepcopy(prefix.last_line)
+    end
+    cache.state = vim.deepcopy(prefix.state)
+    start = cache.count
+  end
+  local ansi_state = cache.state
+  for idx = start, #chunks do
+    local chunk = chunks[idx]
+    if idx == #chunks then
+      cache.prefix = {
+        line_count = #lines,
+        image_count = #images,
+        state = vim.deepcopy(ansi_state),
+        last_line = chunk.continues and vim.deepcopy(lines[#lines]) or nil,
+      }
+    end
     if chunk.kind == "image" then
       local index = #lines + 1
       images[#images + 1] = { chunk = chunk, index = index }
@@ -86,7 +130,10 @@ function M.build_lines(chunks)
       end
     end
   end
-  return lines, images
+  cache.count = #chunks
+  cache.tail_text = chunks[#chunks] and chunks[#chunks].text or nil
+  cache.state = ansi_state
+  return lines, images, cache
 end
 
 ---@param lines table[]
