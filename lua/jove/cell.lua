@@ -19,6 +19,7 @@ local M = {}
 
 ---@class jove.CellCache
 ---@field list jove.Cell[]
+---@field by_hash table<string, jove.Cell>
 ---@field tick integer        changedtick the list was parsed from
 ---@field lang string         language id the list was parsed with
 
@@ -129,8 +130,22 @@ function M.all(buf)
   end
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local list = log.time("cell_parse", parse_cells, lines, lang.comment)
-  entry.cells = { list = list, tick = tick, lang = lang.id }
+  local by_hash = {}
+  for _, c in ipairs(list) do
+    by_hash[c.hash] = c
+  end
+  entry.cells = { list = list, by_hash = by_hash, tick = tick, lang = lang.id }
   return list
+end
+
+---@param buf integer
+---@param hash string
+---@return jove.Cell?
+function M.by_hash(buf, hash)
+  buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
+  M.all(buf)
+  local cache = state.get(buf).cells
+  return cache and cache.by_hash[hash] or nil
 end
 
 ---@param cells jove.Cell[]

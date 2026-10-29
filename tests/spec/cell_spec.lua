@@ -176,6 +176,40 @@ end
 
 T["at"] = MiniTest.new_set()
 
+T["by_hash"] = MiniTest.new_set()
+
+T["by_hash"]["indexes distinct duplicate identities and accepts buffer zero"] = function()
+  local buf = make_buffer({ "# %%", "x", "# %%", "x", "# %%", "y" })
+  local cells = cell.all(buf)
+  for _, c in ipairs(cells) do
+    expect_truthy(cell.by_hash(buf, c.hash) == c)
+  end
+  MiniTest.expect.equality(cell.by_hash(buf, "missing"), nil)
+  vim.api.nvim_set_current_buf(buf)
+  expect_truthy(cell.by_hash(0, cells[2].hash) == cells[2])
+  release_buffer(buf)
+end
+
+T["by_hash"]["invalidates identities and ranges after an edit"] = function()
+  local buf = make_buffer({ "# %%", "x", "# %%", "y" })
+  local cells = cell.all(buf)
+  local old_hash, kept_hash = cells[1].hash, cells[2].hash
+  vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "changed", "extra" })
+  MiniTest.expect.equality(cell.by_hash(buf, old_hash), nil)
+  MiniTest.expect.equality(cell.by_hash(buf, kept_hash).start_lnum, 4)
+  expect_truthy(cell.by_hash(buf, cell.all(buf)[1].hash) == cell.all(buf)[1])
+  release_buffer(buf)
+end
+
+T["by_hash"]["invalidates the index when the language changes"] = function()
+  local buf = make_buffer({ "// %%", "x", "// %%", "y" })
+  local old_hash = cell.all(buf)[1].hash
+  state.get(buf).lang = "javascript"
+  MiniTest.expect.equality(cell.by_hash(buf, old_hash), nil)
+  MiniTest.expect.equality(cell.by_hash(buf, cell.hash_source("y")).start_lnum, 3)
+  release_buffer(buf)
+end
+
 T["at"]["returns the cell containing lnum"] = function()
   local buf = make_buffer({ "# %% a", "x1", "# %% b", "y1", "y2" })
   MiniTest.expect.equality(cell.at(buf, 1).header, 1)

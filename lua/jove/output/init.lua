@@ -49,18 +49,6 @@ function M.mark_dirty(buf)
   end
 end
 
----@param buf integer
----@param hash string
----@return jove.Cell?
-local function find_cell(buf, hash)
-  for _, c in ipairs(cell.all(buf)) do
-    if c.hash == hash then
-      return c
-    end
-  end
-  return nil
-end
-
 ---@param st jove.BufferState
 ---@param cell_hash string
 ---@return jove.OutputEntry entry, table<string, jove.OutputEntry> store
@@ -332,7 +320,7 @@ local function render_cell_untimed(buf, cell_hash)
   end
 
   clear_render(buf, cell_hash, entry)
-  local c = find_cell(buf, cell_hash)
+  local c = cell.by_hash(buf, cell_hash)
   if not c or entry.hidden or not vim.api.nvim_buf_is_loaded(buf) then
     return
   end
