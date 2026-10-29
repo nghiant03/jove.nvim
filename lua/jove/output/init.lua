@@ -2,6 +2,7 @@
 
 local state = require("jove.state")
 local cell = require("jove.cell")
+local log = require("jove.log")
 local mime = require("jove.mime")
 local ansi = require("jove.ansi")
 local image = require("jove.ui.image")
@@ -323,7 +324,7 @@ end
 
 ---@param buf integer
 ---@param cell_hash string
-local function render_cell(buf, cell_hash)
+local function render_cell_untimed(buf, cell_hash)
   local st = state.peek(buf)
   local entry = st and st.outputs and st.outputs[cell_hash]
   if not entry then
@@ -355,6 +356,12 @@ end
 
 ---@param buf integer
 ---@param cell_hash string
+local function render_cell(buf, cell_hash)
+  log.time("output_render", render_cell_untimed, buf, cell_hash)
+end
+
+---@param buf integer
+---@param cell_hash string
 function M.refresh_cell(buf, cell_hash)
   safe(function()
     buf = (buf == 0 or buf == nil) and vim.api.nvim_get_current_buf() or buf
@@ -374,6 +381,7 @@ function M.push(buf, cell_hash, params, opts)
     if type(buf) ~= "number" or not vim.api.nvim_buf_is_valid(buf) then
       return
     end
+    log.count("output_push")
     local st = state.peek(buf)
     if not st then
       return

@@ -2,6 +2,7 @@
 
 local convert = require("jove.convert")
 local persist = require("jove.persist")
+local log = require("jove.log")
 local state = require("jove.state")
 local kernel = require("jove.kernel")
 local lang = require("jove.lang")
@@ -109,7 +110,8 @@ function M.read(buf, path, opts)
 
   vim.bo[buf].buftype = "acwrite"
 
-  local json = read_json(path)
+  local span = log.span_begin("buffer_read")
+  local json = log.time("read_json", read_json, path)
   local spec = lang.for_notebook(json)
 
   local seq = (read_seq[buf] or 0) + 1
@@ -121,10 +123,12 @@ function M.read(buf, path, opts)
     vim.schedule(function()
       -- Stale completion: a newer read was started for this buffer.
       if read_seq[buf] ~= seq or not vim.api.nvim_buf_is_valid(buf) then
+        log.span_end("buffer_read", span)
         return
       end
 
       if not lines then
+        log.span_end("buffer_read", span)
         vim.notify("[Jove] read failed: " .. (err or "?"), vim.log.levels.ERROR)
         return
       end
@@ -134,6 +138,7 @@ function M.read(buf, path, opts)
         or not vim.deep_equal(initial_lines, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
         or ((state.peek(buf) or {}).content_rev or 0) ~= initial_rev
       then
+        log.span_end("buffer_read", span)
         vim.notify(
           "[Jove] reload skipped: the buffer was edited while reading",
           vim.log.levels.WARN
@@ -184,11 +189,13 @@ function M.read(buf, path, opts)
         end)
       end
       if cfg.auto_import_outputs then
-        persist.import(buf)
+        log.time("persist_import", persist.import, buf)
       else
         require("jove.execute").reset(buf)
         require("jove.output").clear(buf, nil, { skip_dirty = true })
       end
+
+      log.span_end("buffer_read", span)
     end)
   end, { fmt = spec.fmt })
 end
@@ -201,6 +208,7 @@ end
 local function start_write(buf, path, tick, lines, fmt)
   local cfg = require("jove").config
   local flight = flights[buf]
+  local span = log.span_begin("buffer_write")
   flight.in_flight = true
 
   convert.write(path, lines, function(bytes, err)
@@ -209,6 +217,7 @@ local function start_write(buf, path, tick, lines, fmt)
 
       if not vim.api.nvim_buf_is_valid(buf) then
         flights[buf] = nil
+        log.span_end("buffer_write", span)
         return
       end
 
@@ -217,6 +226,7 @@ local function start_write(buf, path, tick, lines, fmt)
         flight.pending_tick = nil
         flight.pending_lines = nil
         vim.notify("[Jove] write failed: " .. (err or "?"), vim.log.levels.ERROR)
+        log.span_end("buffer_write", span)
         return
       end
 
@@ -231,7 +241,7 @@ local function start_write(buf, path, tick, lines, fmt)
 
       local export_failed = false
       if cfg.auto_export_outputs and not flight.dirty then
-        local _, export_err = persist.export(buf, bytes)
+        local _, export_err = log.time("persist_export", persist.export, buf, bytes)
         export_failed = export_err ~= nil
       end
 
@@ -255,6 +265,8 @@ local function start_write(buf, path, tick, lines, fmt)
       else
         flights[buf] = nil
       end
+
+      log.span_end("buffer_write", span)
     end)
   end, { fmt = fmt })
 end

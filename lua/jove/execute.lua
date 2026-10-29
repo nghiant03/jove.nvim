@@ -2,6 +2,7 @@
 
 local cell = require("jove.cell")
 local state = require("jove.state")
+local log = require("jove.log")
 
 local M = {}
 local next_run = 0
@@ -253,6 +254,9 @@ function pump(buf)
     end, 10000)
     local start = exec2.start_hr and exec2.start_hr[item.hash]
     local elapsed = start and (vim.uv.hrtime() - start) / 1e6 or nil
+    if elapsed then
+      log.record("execute_roundtrip", elapsed)
+    end
     if exec2.start_hr then
       exec2.start_hr[item.hash] = nil
     end

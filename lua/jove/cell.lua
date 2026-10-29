@@ -6,6 +6,7 @@
 -- this identity when merging outputs.
 
 local state = require("jove.state")
+local log = require("jove.log")
 
 local M = {}
 
@@ -126,7 +127,8 @@ function M.all(buf)
   if cache and cache.tick == tick and cache.lang == lang.id then
     return cache.list
   end
-  local list = parse_cells(vim.api.nvim_buf_get_lines(buf, 0, -1, false), lang.comment)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local list = log.time("cell_parse", parse_cells, lines, lang.comment)
   entry.cells = { list = list, tick = tick, lang = lang.id }
   return list
 end

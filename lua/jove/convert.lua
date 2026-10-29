@@ -1,5 +1,7 @@
 -- Asynchronous jupytext conversion for notebooks.
 
+local log = require("jove.log")
+
 local M = {}
 
 local function jupytext_bin()
@@ -36,7 +38,7 @@ end
 ---@param path string
 ---@param bytes string
 ---@return boolean, string?  -- ok, error
-function M.atomic_write(path, bytes)
+local function atomic_write_impl(path, bytes)
   local target = vim.uv.fs_realpath(path) or path
   local temp_fd, tmp = vim.uv.fs_mkstemp(target .. ".jove-XXXXXX")
   if not temp_fd then
@@ -81,6 +83,13 @@ function M.atomic_write(path, bytes)
   return true
 end
 
+---@param path string
+---@param bytes string
+---@return boolean, string?  -- ok, error
+function M.atomic_write(path, bytes)
+  return log.time("atomic_write", atomic_write_impl, path, bytes)
+end
+
 ---@param args string[]
 ---@param stdin string
 ---@param cb fun(stdout: string?, stderr: string?, code: integer)
@@ -111,6 +120,7 @@ end
 ---@param cb fun(lines: string[]?, err: string?)
 ---@param opts {fmt: string?}?  fmt: percent-format stem ("py", "js", ...); default python
 function M.read(path, cb, opts)
+  log.count("convert_read")
   read_file(path, function(data, err)
     if not data then
       return cb(nil, err)
@@ -133,6 +143,7 @@ end
 ---@param cb fun(bytes: string?, err: string?)
 ---@param opts {fmt: string?}?  fmt: percent-format stem ("py", "js", ...); default python
 function M.write(path, lines, cb, opts)
+  log.count("convert_write")
   local stdin = table.concat(lines, "\n") .. "\n"
   local from = percent_fmt(opts)
 
