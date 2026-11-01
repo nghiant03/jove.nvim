@@ -313,3 +313,17 @@ Available `<Plug>` mappings:
 | `<Plug>(JoveGotoRunningCell)` | Jump to the currently executing cell |
 | `<Plug>(JoveToggleFollowRunning)` | Toggle following the currently executing cell |
 
+## Acknowledgements
+
+- [jupytext](https://github.com/mwouts/jupytext): a tool for converting
+  Jupyter notebooks to and from script files.
+- [molten-nvim](https://github.com/benlubas/molten-nvim): a Neovim plugin for
+  running Jupyter kernels and rendering output inline.
+- [jupynium.nvim](https://github.com/kiyoon/jupynium.nvim): a Neovim plugin
+  that syncs a buffer to a Jupyter notebook in the browser.
+- [jupytext.vim](https://github.com/goerz/jupytext.vim): a Vim plugin for
+  editing Jupyter notebooks as scripts via jupytext.
+- [snacks.nvim](https://github.com/folke/snacks.nvim): a collection of Neovim
+  QoL plugins, including image rendering.
+- [terminal-browser](https://github.com/zenbu-labs/terminal-browser): a tool
+  for viewing web content from the terminal.
