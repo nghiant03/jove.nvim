@@ -2,9 +2,8 @@
 
 This document describes the architecture of jove.nvim, a Neovim plugin (Lua) that
 edits Jupyter `.ipynb` notebooks as native buffers, plus a Python sidecar that
-owns one Jupyter kernel per notebook. It was generated from the GitNexus
-knowledge graph (291 symbols, 501 edges, 10 functional clusters, 19 execution
-flows) combined with the repository's module layout.
+owns one Jupyter kernel per notebook, based on the repository's module layout
+and the conventions documented in AGENTS.md.
 
 At a high level there are two cooperating processes:
 
@@ -237,10 +236,9 @@ flowchart TB
 ## Diagram Notes and Caveats
 
 - The diagram's Lua-side edges reflect module layout and ownership (from
-  AGENTS.md and the repository structure); the GitNexus flow synthesis
-  captured call-level traces for the Python sidecar only, because Lua
-  `require`-based wiring is not resolved into symbol-level call edges by the
-  current analyzer build.
+  AGENTS.md and the repository structure); call-level traces are shown for the
+  Python sidecar only, because Lua `require`-based wiring is not resolved into
+  symbol-level call edges.
 - The sidecar's internal arrows are the knowledge graph's top-ranked
   cross-community flows; `poll_forever` runs on a dedicated worker thread,
   which is why output events can arrive after the execute reply.
