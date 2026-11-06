@@ -1,4 +1,4 @@
-"""Protocol session: request dispatch plus iopub/shell routing."""
+"""Request dispatch and routing."""
 
 from __future__ import annotations
 
@@ -10,29 +10,7 @@ import traceback
 from typing import Any, Callable, Optional
 
 from .kernel import KernelController, KernelError
-
-_VARIABLES_HELPERS = (
-    "def _jv_repr(v):\n"
-    "    try:\n"
-    "        return repr(v)[:120]\n"
-    "    except Exception:\n"
-    "        return '<repr failed>'\n"
-    "def _jv_size(v):\n"
-    "    try:\n"
-    "        return len(v)\n"
-    "    except Exception:\n"
-    "        return None\n"
-)
-
-VARIABLES_EXPR = (
-    "exec(" + repr(_VARIABLES_HELPERS) + ", globals()) or __import__('json').dumps(["
-    "{'name': _jv_n, 'type': type(_jv_v).__name__, "
-    "'value': _jv_repr(_jv_v), "
-    "'size': _jv_size(_jv_v)}"
-    " for _jv_n, _jv_v in list(globals().items())"
-    " if not _jv_n.startswith('_') and type(_jv_v).__name__ != 'module'"
-    "])"
-)
+from .languages import lookup
 
 # Sentinel returned by dispatch(): the reply will be sent asynchronously from
 # the poll thread once the kernel answers, not by the stdin loop.
@@ -158,16 +136,17 @@ class BridgeSession:
     def variables(self, reply_id: int) -> Any:
         """Snapshot user-namespace variables."""
         language = self._kernel_language()
-        if language and language != "python":
+        probe = lookup(language)
+        if probe is None:
             return {"variables": [], "unsupported": language}
         return self._submit_shell(
             "variables",
             reply_id,
             lambda client: client.execute(
-                "",
-                silent=False,
+                probe.install,
+                silent=True,
                 store_history=False,
-                user_expressions={"__jove__": VARIABLES_EXPR},
+                user_expressions={"__jove__": probe.query},
             ),
         )
 

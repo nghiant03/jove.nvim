@@ -7,7 +7,8 @@ import json
 import pytest
 
 from jove_bridge.kernel import KernelError
-from jove_bridge.session import DEFERRED, VARIABLES_EXPR, BridgeSession, _Pending
+from jove_bridge.languages import _PYTHON_REVISION, PYTHON, Probe, lookup, register
+from jove_bridge.session import DEFERRED, BridgeSession, _Pending
 
 try:
     from test_bridge import BridgeProcess
@@ -60,12 +61,13 @@ class _RecordingClient:
 
 
 class _KernelWithClient:
-    def __init__(self, client: _RecordingClient) -> None:
+    def __init__(self, client: _RecordingClient, language: str = "python") -> None:
         self.km = _FakeKM("python3")
         self.client = client
+        self._language = language
 
     def list_kernelspecs(self):
-        return {"python3": {"language": "python"}}
+        return {self.km.kernel_name: {"language": self._language}}
 
     def require_client(self):
         return self.client
@@ -144,11 +146,11 @@ def test_variables_submits_silent_user_expression_and_replies_on_shell_reply():
     session.kernel = _KernelWithClient(client)  # type: ignore[assignment]
 
     assert session.variables(10) is DEFERRED
-    assert client.captured["code"] == ""
-    assert client.captured["silent"] is False
+    assert client.captured["code"] == PYTHON.install
+    assert client.captured["silent"] is True
     assert client.captured["store_history"] is False
-    expr = client.captured["user_expressions"]["__jove__"]
-    assert "globals()" in expr and "json" in expr
+    assert client.captured["user_expressions"]["__jove__"] == PYTHON.query
+    assert "globals()" in PYTHON.query
 
     content = {
         "status": "ok",
@@ -178,9 +180,11 @@ def test_variables_per_item_resilience():
         def __repr__(self):
             raise ValueError("broken repr")
 
-    assert isinstance(VARIABLES_EXPR, str)
+    assert isinstance(PYTHON.install, str)
+    assert isinstance(PYTHON.query, str)
     ns = {"regular": 41, "s": "hi", "boom_len": BoomLen(), "boom_repr": BoomRepr()}
-    data = json.loads(eval(VARIABLES_EXPR, ns))
+    exec(PYTHON.install, ns)
+    data = json.loads(eval(PYTHON.query, ns))
 
     by_name = {v["name"]: v for v in data}
     assert not any(n.startswith("_") for n in by_name), by_name
@@ -192,16 +196,108 @@ def test_variables_per_item_resilience():
     assert by_name["boom_len"]["size"] is None
     assert by_name["boom_repr"]["value"] == "<repr failed>"
 
+    assert not any(k.startswith("_jv_") or k == "_jove_inspector" for k in ns), ns
+
+    exec(PYTHON.install, ns)
+    assert json.loads(eval(PYTHON.query, ns)) == data
+    assert not any(k.startswith("_jv_") or k == "_jove_inspector" for k in ns), ns
+
+
+def test_variables_install_preserves_existing_names():
+    namespace = {
+        "_jv_sys": object(),
+        "_jv_types": object(),
+        "_jv_m": object(),
+        "source": object(),
+        "revision": object(),
+        "module": object(),
+        "x": 41,
+    }
+    original = namespace.copy()
+    exec(PYTHON.install, namespace)
+    assert namespace.keys() == original.keys() | {"__builtins__"}
+    assert all(namespace[name] is value for name, value in original.items())
+
+
+def test_variables_install_reuses_current_module():
+    import sys
+
+    exec(PYTHON.install, {})
+    installed = sys.modules["_jove_inspector"]
+    exec(PYTHON.install, {})
+    assert sys.modules["_jove_inspector"] is installed
+
+
+def test_variables_install_replaces_stale_module():
+    import sys
+
+    ns = {"x": 41}
+    exec(PYTHON.install, ns)
+    assert sys.modules["_jove_inspector"]._jove_rev == _PYTHON_REVISION
+
+    sys.modules["_jove_inspector"]._jove_rev = "stale"
+    exec(PYTHON.install, ns)
+    assert sys.modules["_jove_inspector"]._jove_rev == _PYTHON_REVISION
+    assert json.loads(eval(PYTHON.query, ns))[0]["name"] == "x"
+
+    del sys.modules["_jove_inspector"]
+
 
 def test_variables_per_item_resilience_numpy_zero_dim():
     """Zero-dimensional NumPy arrays report size=None rather than erroring."""
     np = pytest.importorskip("numpy")
     ns = {"scalar": np.array(1), "regular": 41}
-    data = json.loads(eval(VARIABLES_EXPR, ns))
+    exec(PYTHON.install, ns)
+    data = json.loads(eval(PYTHON.query, ns))
     by_name = {v["name"]: v for v in data}
     assert by_name["scalar"]["type"] == "ndarray"
     assert by_name["scalar"]["size"] is None
     assert by_name["regular"]["size"] is None
+
+
+def test_lookup_normalizes_language_spellings():
+    assert lookup("Python3") is PYTHON
+    assert lookup(" python ") is PYTHON
+    assert lookup(None) is None
+    assert lookup("not-a-language") is None
+
+
+def test_variables_resolves_probe_from_kernel_language():
+    conn = _FakeConn()
+    session = BridgeSession(conn)
+    client = _RecordingClient(msg_id="msg-lang")
+    session.kernel = _KernelWithClient(client, language="Python3")  # type: ignore[assignment]
+
+    assert session.variables(12) is DEFERRED
+    assert client.captured["code"] == PYTHON.install
+
+
+def test_variables_uses_registered_probe_for_new_language():
+    probe = Probe(" Dummy ", install="1 + 1", query="'[]'")
+    register(probe)
+    try:
+        conn = _FakeConn()
+        session = BridgeSession(conn)
+        client = _RecordingClient(msg_id="msg-dummy")
+        session.kernel = _KernelWithClient(client, language="Dummy")  # type: ignore[assignment]
+
+        assert session.variables(13) is DEFERRED
+        assert client.captured["code"] == "1 + 1"
+        assert client.captured["user_expressions"]["__jove__"] == "'[]'"
+    finally:
+        from jove_bridge.languages import REGISTRY
+
+        REGISTRY.pop("dummy", None)
+
+
+def test_variables_unsupported_for_unresolvable_language():
+    assert lookup(None) is None
+
+    conn = _FakeConn()
+    session = BridgeSession(conn)
+    session.kernel = _FakeKernel(language=None, name="mystery")  # type: ignore[arg-type]
+
+    assert session.variables(14) == {"variables": [], "unsupported": None}
 
 
 @pytest.mark.skipif(BridgeProcess is None, reason="test_bridge helper unavailable")
