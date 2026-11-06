@@ -33,12 +33,17 @@ local function require_dependencies()
 end
 
 local function open_notebook(path)
+  local expected_path = assert(vim.uv.fs_realpath(path))
   vim.cmd("edit " .. vim.fn.fnameescape(path))
   local buf = vim.api.nvim_get_current_buf()
   buffers[#buffers + 1] = buf
   await(function()
     local st = state.peek(buf)
-    return st ~= nil and st.json ~= nil and st.path == path and vim.bo[buf].filetype == "python"
+    return st ~= nil
+      and st.json ~= nil
+      and st.path ~= nil
+      and vim.uv.fs_realpath(st.path) == expected_path
+      and vim.bo[buf].filetype == "python"
   end)
   MiniTest.expect.equality(vim.bo[buf].buftype, "acwrite")
   MiniTest.expect.equality(vim.bo[buf].modified, false)
@@ -111,6 +116,17 @@ local T = MiniTest.new_set({
     end,
   },
 })
+
+T["opens a notebook through a symlinked directory"] = function()
+  local actual = vim.fs.joinpath(directory, "actual")
+  local alias = vim.fs.joinpath(directory, "alias")
+  vim.fn.mkdir(actual, "p")
+  MiniTest.expect.equality(vim.uv.fs_symlink(actual, alias), true)
+  local path = vim.fs.joinpath(alias, "notebook.ipynb")
+  MiniTest.expect.equality(vim.uv.fs_copyfile(fixture, path), true)
+  local buf = open_notebook(path)
+  MiniTest.expect.equality(vim.uv.fs_realpath(state.get(buf).path), vim.uv.fs_realpath(path))
+end
 
 T["commands open execute save and reopen a real notebook"] = function()
   local path = vim.fs.joinpath(directory, "notebook.ipynb")
