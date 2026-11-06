@@ -4,52 +4,70 @@ Guidance for agents working in this repository.
 
 ## What this is
 
-`jove.nvim` is a Neovim plugin (Lua) that edits Jupyter `.ipynb` notebooks as
-native buffers, plus a Python sidecar (`python/jove_bridge`) that owns one
-Jupyter kernel per notebook and speaks a JSON-lines protocol over stdio with
-the Lua client.
+`jove.nvim` is a Neovim plugin that edits Jupyter `.ipynb` notebooks as
+native buffers, plus a Python sidecar that owns one Jupyter kernel per notebook 
+and speaks a JSON-lines protocol over stdio with the Lua client.
 
 ## Commands
 
-Lua plugin tests (mini.test, headless Neovim, requires real `jupytext` on PATH):
+Lua plugin tests:
 
 ```sh
-git clone --depth 1 https://github.com/nvim-mini/mini.test .testdeps/mini.test  # one-time
+git clone --depth 1 https://github.com/nvim-mini/mini.test .testdeps/mini.test
+bash scripts/test.sh unit
+bash scripts/test.sh component
+uv sync --project python --locked --extra dev --python 3.12
+uv run --project python --locked --extra dev python -m ipykernel install --user --name python3 --display-name "Python 3 (ipykernel)"
+JOVE_TEST_STRICT=1 uv run --project python --locked --extra dev bash scripts/test.sh adapter
+JOVE_TEST_STRICT=1 uv run --project python --locked --extra dev bash scripts/test.sh e2e
 uv run --project python --locked --extra dev bash scripts/test.sh
 ```
 
 Run a single spec:
 
 ```sh
-nvim --headless -u scripts/minimal_init.lua -c 'lua MiniTest.run({ file = "tests/spec/cell_spec.lua" })'
+nvim --headless -u scripts/minimal_init.lua -c 'lua MiniTest.run_file("tests/spec/cell_spec.lua")'
 ```
 
 Bridge tests / lint / format:
 
 ```sh
+uv run --project python --locked --extra dev python -m pytest -q -m unit
+uv run --project python --locked --extra dev python -m pytest -q -m integration
 uv run --project python --locked --extra dev python -m pytest -q
 uv run --project python --locked --extra dev ruff check python
 uv run --project python --locked --extra dev ruff format --check python
-stylua .        # check with: stylua --check .
-selene .        # std = neovim (see neovim.yml / selene.toml)
+stylua .
+selene .
 ```
 
 Notes:
 - `.testdeps/mini.test` must exist at the repo root or `test.sh` exits 2.
-- Lua tests must run with the project's Python env active (that's why CI wraps
-  them in `uv run --project python`): the specs exercise the real `jupytext`
-  binary, and `bridge_e2e_spec.lua` launches the real sidecar (it self-skips
-  without `jupyter_client`/`ipykernel`).
-- Bridge pytest needs a registered `python3` kernelspec
-  (`python -m ipykernel install --user --name python3`); CI does this
-  explicitly. Kernel startup is slow; the tests use 60-120s timeouts.
+- `scripts/test.sh [all|unit|component|adapter|e2e]` defaults to `all`, or
+  `JOVE_TEST_TIER` when set. The minimal init filters discovery, keeping 
+  specs flat in `tests/spec/`.
+- Unit files: `ansi`, `lang`, `mime`, `output_render`, `persist`,
+  `webview_document`, `webview_transport`. Adapter files: `buffer`, `convert`,
+  `persist_adapter`, `webview_terminal`. Files named `*_e2e_spec.lua` are e2e;
+  remaining files are component.
+- Only adapter/e2e/all need the project's Python environment and real `jupytext`.
+  Lua real-kernel tests need a registered `python3` kernelspec. CI runs fast Lua tiers
+  before Python setup, then adapter/e2e separately with `JOVE_TEST_STRICT=1` to
+  fail on missing real-bridge prerequisites.
+- Python pytest uses strict registered `unit` and `integration` markers. Keep
+  in-process tests separate from subprocess/kernel coverage; the unfiltered
+  command still runs both. Python integration fixtures supply a temporary
+  `python3` kernelspec. Kernel startup can need 60-120s timeouts.
+- Shared Lua fake ownership lives in `tests/helpers/bridge.lua`.
+  Specs own cleanup of their buffers/windows/files and any additional patches.
+- Python subprocess ownership lives in `python/tests/support.py`; reuse the
+  `bridge`/`kernel` fixtures in `python/tests/conftest.py` for cleanup and reader
+  health checks.
 
 ## Layout and architecture
 
 - Lowest supported targets: Neovim 0.11, Python 3.10. CI (`.github/workflows/ci.yml`)
   runs lint plus both test suites; LSP warnings fail the build.
-- Releases are cut by `.github/workflows/release.yml` (Actions > Release >
-  Run workflow), which computes the next `v*` tag. Never tag by hand.
 - `plugin/jove.lua` - startup entry: registers `BufReadCmd`/`BufWriteCmd`/
   `FileChangedShell` on `*.ipynb` and all `:Jove*` commands. Config lives in
   `lua/jove/init.lua` (`require("jove").setup`), NOT here.
@@ -102,7 +120,7 @@ Notes:
   these outside tests.
 - Test specs use mini.test: `MiniTest.new_set` with hooks, nested sets by
   topic, named `<module>_spec.lua` (`<module>_e2e_spec.lua` for cross-process
-  flows); specs that need a real job inject fakes at `bridge_mod._impl`.
+  flows); component specs inject fake jobs at `bridge_mod._impl`.
 - Front matter (`# ---` fenced jupytext header, comment leader per language)
   is stripped from the buffer on read and restored on write (`buffer.lua`
   `split_front`); cell markers are `<comment> %%` (e.g. `# %%` for
@@ -128,4 +146,3 @@ Notes:
   `health.lua`.
 - `doc/jove.txt` is generated from README.md by panvimdoc (on README changes
   to `main` and after each release); do not hand-edit it.
-

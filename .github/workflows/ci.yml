@@ -117,19 +117,6 @@ jobs:
           neovim: true
           version: ${{ matrix.nvim }}
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: python/uv.lock
-
-      - name: Install jupytext + bridge deps
-        run: uv sync --project python --locked --extra dev --python 3.12
-
       - name: Cache mini.test
         id: mini-test
         uses: actions/cache@v6
@@ -145,8 +132,37 @@ jobs:
           git -C .testdeps/mini.test fetch --depth 1 https://github.com/nvim-mini/mini.test ${{ env.MINI_TEST_SHA }}
           git -C .testdeps/mini.test checkout --detach FETCH_HEAD
 
-      - name: Run plugin tests
-        run: uv run --project python --locked --extra dev bash scripts/test.sh
+      - name: Run Lua unit tests
+        run: bash scripts/test.sh unit
+
+      - name: Run Lua component tests
+        run: bash scripts/test.sh component
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+
+      - name: Install jupytext + bridge deps
+        run: uv sync --project python --locked --extra dev --python 3.12
+
+      - name: Ensure python3 kernelspec is registered
+        run: uv run --project python --locked --extra dev python -m ipykernel install --user --name python3 --display-name "Python 3 (ipykernel)"
+
+      - name: Run Lua adapter tests
+        env:
+          JOVE_TEST_STRICT: "1"
+        run: uv run --project python --locked --extra dev bash scripts/test.sh adapter
+
+      - name: Run Lua end-to-end tests
+        env:
+          JOVE_TEST_STRICT: "1"
+        run: uv run --project python --locked --extra dev bash scripts/test.sh e2e
 
   test-bridge:
     name: bridge tests (py${{ matrix.python }} on ${{ matrix.os }})
@@ -178,10 +194,10 @@ jobs:
           uv sync --locked --extra dev --python ${{ matrix.python }}
           uv run --locked --extra dev python -m ipykernel --version
 
-      - name: Ensure python3 kernelspec is registered
+      - name: Run bridge unit tests
         working-directory: python
-        run: uv run --locked --extra dev python -m ipykernel install --user --name python3 --display-name "Python 3 (ipykernel)"
+        run: uv run --locked --extra dev python -m pytest -q -m unit
 
-      - name: Run bridge tests
+      - name: Run bridge integration tests
         working-directory: python
-        run: uv run --locked --extra dev python -m pytest -q
+        run: uv run --locked --extra dev python -m pytest -q -m integration

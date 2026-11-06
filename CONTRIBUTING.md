@@ -30,29 +30,53 @@ uv run --project python --locked --extra dev nvim
 
 ## Tests and checks
 
-Run the Lua plugin and Python bridge suites:
+```sh
+bash scripts/test.sh unit
+bash scripts/test.sh component
+```
+
+The runner selects whole files using `JOVE_TEST_TIER` through `scripts/minimal_init.lua`:
+
+| Tier | Scope |
+| --- | --- |
+| `unit` | Focused transformations and logic. |
+| `component` | Neovim buffers, UI, state, and orchestration. |
+| `adapter` | Real conversion, filesystem, or terminal-process boundaries. |
+| `e2e` | Real kernel flows. |
+
+Persistence specs are separated by dependency: in-memory transformations and
+merging run as unit tests, buffer-only behavior runs as component tests, and
+real file writes and notebook conversion run as adapter tests.
+
+Run the external-boundary tiers and Python tiers:
+
+```sh
+JOVE_TEST_STRICT=1 uv run --project python --locked --extra dev bash scripts/test.sh adapter
+JOVE_TEST_STRICT=1 uv run --project python --locked --extra dev bash scripts/test.sh e2e
+uv run --project python --locked --extra dev python -m pytest -q -m unit
+uv run --project python --locked --extra dev python -m pytest -q -m integration
+```
+
+Adapter and e2e runs require the Python environment and `jupytext`; Lua real-kernel
+flows also need the registered `python3` kernelspec. `JOVE_TEST_STRICT=1` makes
+missing real-bridge prerequisites fail instead of skipping. CI uses this mode.
+Python uses strict registered `unit` and `integration` pytest markers; mark new
+tests according to whether they stay in-process or exercise real external
+boundaries. Integration tests can take several minutes.
+
+The full-suite commands remain supported (`all` is the Lua default, unless
+`JOVE_TEST_TIER` is set; an explicit argument overrides that environment variable):
 
 ```sh
 uv run --project python --locked --extra dev bash scripts/test.sh
 uv run --project python --locked --extra dev python -m pytest -q
 ```
 
-The Lua suite requires `.testdeps/mini.test` and a `jupytext` executable.
-Keep the project environment active even when running a single spec:
+Run a single component spec without the Python environment, or wrap Neovim in
+`uv run --project python --locked --extra dev` for an adapter/e2e spec:
 
 ```sh
-uv run --project python --locked --extra dev nvim --headless -u scripts/minimal_init.lua -c 'lua MiniTest.run({ file = "tests/spec/cell_spec.lua" })'
-```
-
-Integration tests start real kernels and can take several minutes.
-
-Install StyLua and Selene separately, then run formatting and lint checks:
-
-```sh
-stylua --check .
-selene .
-uv run --project python --locked --extra dev ruff check python
-uv run --project python --locked --extra dev ruff format --check python
+nvim --headless -u scripts/minimal_init.lua -c 'lua MiniTest.run_file("tests/spec/cell_spec.lua")'
 ```
 
 ## Making changes
