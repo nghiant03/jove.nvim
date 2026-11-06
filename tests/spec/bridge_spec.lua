@@ -1,61 +1,16 @@
 local MiniTest = require("mini.test")
 local bridge_mod = require("jove.bridge")
 
-local T = MiniTest.new_set()
+local fixture = require("tests.helpers.bridge")
+local job
 
----@return table
-local function fake_job()
-  local job = { id = 7, sent = {}, spawn_count = 0, stopped = false }
-  local real = {
-    jobstart = bridge_mod._impl.jobstart,
-    jobsend = bridge_mod._impl.jobsend,
-    jobstop = bridge_mod._impl.jobstop,
-  }
-
-  function job.install()
-    bridge_mod._impl.jobstart = function(_, opts)
-      job.spawn_count = job.spawn_count + 1
-      job.opts = opts
-      return job.id
-    end
-    bridge_mod._impl.jobsend = function(_, data)
-      table.insert(job.sent, data)
-      return true
-    end
-    bridge_mod._impl.jobstop = function(_)
-      job.stopped = true
-      return 1
-    end
-  end
-
-  function job.restore()
-    bridge_mod._impl.jobstart = real.jobstart
-    bridge_mod._impl.jobsend = real.jobsend
-    bridge_mod._impl.jobstop = real.jobstop
-  end
-
-  function job.stdout(chunk)
-    job.opts.on_stdout(job.id, vim.split(chunk, "\n", { plain = true }))
-  end
-
-  function job.stderr(chunk)
-    job.opts.on_stderr(job.id, vim.split(chunk, "\n", { plain = true }))
-  end
-
-  function job.exit(code)
-    job.opts.on_exit(job.id, code or 0)
-  end
-
-  return job
-end
-
-T = MiniTest.new_set({
+local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      bridge_mod._impl.jobstart = vim.fn.jobstart
-      bridge_mod._impl.jobsend = vim.fn.jobsend
-      bridge_mod._impl.jobstop = vim.fn.jobstop
-      bridge_mod.respawn_backoff_ms = { 1000, 2000, 4000 }
+      job = fixture.new()
+    end,
+    post_case = function()
+      job.restore()
     end,
   },
 })
@@ -63,8 +18,6 @@ T = MiniTest.new_set({
 T["line_buffering"] = MiniTest.new_set()
 
 T["line_buffering"]["assembles JSON split across chunks"] = function()
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
 
@@ -82,12 +35,9 @@ T["line_buffering"]["assembles JSON split across chunks"] = function()
   MiniTest.expect.equality(#events, 1)
   MiniTest.expect.equality(events[1].status, "busy")
   MiniTest.expect.equality(b:is_ready(), true)
-  job.restore()
 end
 
 T["line_buffering"]["ignores trailing partial data until a newline arrives"] = function()
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
 
@@ -106,14 +56,11 @@ T["line_buffering"]["ignores trailing partial data until a newline arrives"] = f
     return #events > 0
   end)
   MiniTest.expect.equality(events[1].status, "idle")
-  job.restore()
 end
 
 T["requests"] = MiniTest.new_set()
 
 T["requests"]["queue before ready, flush in order, route by id"] = function()
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   local got = {}
 
@@ -144,12 +91,9 @@ T["requests"]["queue before ready, flush in order, route by id"] = function()
   end)
   MiniTest.expect.equality(got.exec.status, "ok")
   MiniTest.expect.equality(got.ks.kernelspecs.python3.display_name, "Python 3")
-  job.restore()
 end
 
 T["requests"]["deliver error responses as err"] = function()
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
@@ -166,12 +110,9 @@ T["requests"]["deliver error responses as err"] = function()
   MiniTest.expect.equality(result == nil, true)
   MiniTest.expect.equality(err.code, "kernel_not_running")
   MiniTest.expect.equality(err.message, "start a kernel first")
-  job.restore()
 end
 
 T["requests"]["time out when no response arrives"] = function()
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
@@ -186,12 +127,9 @@ T["requests"]["time out when no response arrives"] = function()
   MiniTest.expect.equality(called, true)
   MiniTest.expect.equality(result == nil, true)
   MiniTest.expect.equality(type(err) == "string" and err:find("timeout", 1, true) ~= nil, true)
-  job.restore()
 end
 
 T["requests"]["timeout_ms is false disables the timer"] = function()
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
@@ -205,15 +143,12 @@ T["requests"]["timeout_ms is false disables the timer"] = function()
   end)
   MiniTest.expect.equality(not called, true)
   MiniTest.expect.equality(result == nil and err == nil, true)
-  job.restore()
 end
 
 T["lifecycle"] = MiniTest.new_set()
 
 T["lifecycle"]["respawns on unexpected exit with backoff"] = function()
   bridge_mod.respawn_backoff_ms = { 10, 10, 10 }
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
@@ -231,13 +166,10 @@ T["lifecycle"]["respawns on unexpected exit with backoff"] = function()
   MiniTest.expect.equality(type(err) == "string" and err:find("exited", 1, true) ~= nil, true)
   MiniTest.expect.equality(job.spawn_count, 2)
   MiniTest.expect.equality(b:is_ready(), false)
-  job.restore()
 end
 
 T["lifecycle"]["does not respawn after user-initiated stop"] = function()
   bridge_mod.respawn_backoff_ms = { 10, 10, 10 }
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
@@ -252,12 +184,9 @@ T["lifecycle"]["does not respawn after user-initiated stop"] = function()
   end)
   MiniTest.expect.equality(job.spawn_count, 1)
   MiniTest.expect.equality(b:is_ready(), false)
-  job.restore()
 end
 
 T["lifecycle"]["sends shutdown request before killing the job"] = function()
-  local job = fake_job()
-  job.install()
   local b = bridge_mod.new()
   b:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
@@ -269,13 +198,9 @@ T["lifecycle"]["sends shutdown request before killing the job"] = function()
   local req = vim.json.decode(job.sent[1])
   MiniTest.expect.equality(req.method, "shutdown")
   MiniTest.expect.equality(not job.stopped, true)
-  job.restore()
 end
 
 T["lifecycle"]["readiness timeout fails queued requests once"] = function()
-  local job = fake_job()
-  job.install()
-  local timeout = bridge_mod.ready_timeout_ms
   bridge_mod.ready_timeout_ms = 10
   local b = bridge_mod.new({ respawn = false }):start()
   local replies = {}
@@ -289,11 +214,66 @@ T["lifecycle"]["readiness timeout fails queued requests once"] = function()
   vim.wait(30, function()
     return false
   end)
-  bridge_mod.ready_timeout_ms = timeout
-  job.restore()
   MiniTest.expect.equality(expired, true)
   MiniTest.expect.equality(job.stopped, true)
   MiniTest.expect.equality(replies, { "bridge readiness timeout" })
+end
+
+T["lifecycle"]["fixture cleans all handles after a failed case"] = function()
+  local ready_timer, request_timer
+  local first_id, second_id
+  local replies = 0
+  local ok = pcall(function()
+    local first = bridge_mod.new():start()
+    first_id = job.id
+    job.stdout('{"event":"ready","params":{"protocol":1}}\n')
+    first:request("execute", {}, function()
+      replies = replies + 1
+    end)
+    request_timer = first._pending[1].timer
+    local second = bridge_mod.new():start()
+    second_id = job.id
+    ready_timer = second._ready_timer
+    bridge_mod.new():request("execute", {}, function()
+      replies = replies + 1
+    end)
+    error("simulated case failure")
+  end)
+  MiniTest.expect.equality(ok, false)
+  MiniTest.expect.no_equality(first_id, second_id)
+  MiniTest.expect.equality(#job.handles, 3)
+  job.restore()
+  job.assert_quiescent()
+  MiniTest.expect.equality(replies, 2)
+  MiniTest.expect.equality(ready_timer:is_closing(), true)
+  MiniTest.expect.equality(request_timer:is_closing(), true)
+  job.restore()
+end
+
+T["lifecycle"]["fixture drains an exit queued before teardown"] = function()
+  bridge_mod.respawn_backoff_ms = { 10000 }
+  local b = bridge_mod.new():start()
+  job.exit(1)
+  job.restore()
+  job.assert_quiescent()
+  MiniTest.expect.equality(b:is_alive(), false)
+  MiniTest.expect.equality(job.spawn_count, 1)
+end
+
+T["lifecycle"]["fake jobstop supports automatic and controlled exits"] = function()
+  local b = bridge_mod.new({ respawn = false }):start()
+  job.auto_exit = false
+  bridge_mod._impl.jobstop(job.id)
+  MiniTest.expect.equality(job.stopped, true)
+  MiniTest.expect.equality(b:is_alive(), true)
+  b:stop()
+  job.exit(0)
+  MiniTest.expect.equality(b:is_alive(), false)
+  local other = bridge_mod.new({ respawn = false }):start()
+  other:stop()
+  job.auto_exit = true
+  bridge_mod._impl.jobstop(job.id)
+  MiniTest.expect.equality(other:is_alive(), false)
 end
 
 T["resolve_python"] = MiniTest.new_set()

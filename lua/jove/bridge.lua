@@ -6,6 +6,7 @@ local impl = {
   jobstart = vim.fn.jobstart,
   jobsend = vim.fn.chansend,
   jobstop = vim.fn.jobstop,
+  defer_fn = vim.defer_fn,
 }
 
 -- Test seam: specs replace these fields to inject a fake job channel.
@@ -186,7 +187,7 @@ function Bridge:_spawn()
   self._next_id = 1
   self._ready = false
   self._rbuf = ""
-  self._ready_timer = vim.defer_fn(function()
+  self._ready_timer = impl.defer_fn(function()
     self._ready_timer = nil
     if self._ready or not self._job then
       return
@@ -247,7 +248,7 @@ function Bridge:_send(req)
   end
   local entry = { cb = req.cb }
   if req.timeout_ms and req.timeout_ms > 0 then
-    entry.timer = vim.defer_fn(function()
+    entry.timer = impl.defer_fn(function()
       entry.timer = nil
       if self._pending[id] ~= entry then
         return
@@ -347,7 +348,7 @@ function Bridge:stop(cb)
   -- Force-kill only after the graceful shutdown request had its chance to
   -- complete. A clean exit drains the writer queue, so late replies and
   -- output events reach Neovim first.
-  vim.defer_fn(function()
+  impl.defer_fn(function()
     if self._job == job then
       impl.jobstop(job)
     end
@@ -547,7 +548,7 @@ function Bridge:_on_exit(_, code)
     local delay = M.respawn_backoff_ms[attempts + 1] or M.respawn_backoff_ms[#M.respawn_backoff_ms]
     self._respawn_attempts = attempts + 1
     self:_trace(("unexpected exit (code %d); respawn in %dms"):format(code, delay))
-    self._respawn_timer = vim.defer_fn(function()
+    self._respawn_timer = impl.defer_fn(function()
       self._respawn_timer = nil
       if self._job or self._stopping or self._shutdown_sent then
         return

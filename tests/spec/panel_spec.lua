@@ -3,53 +3,8 @@ local bridge_mod = require("jove.bridge")
 local state = require("jove.state")
 local panel = require("jove.ui.panel")
 
-local T = MiniTest.new_set()
-
----@return table
-local function fake_job()
-  local job = { id = 7, sent = {}, spawn_count = 0, stopped = false }
-  local real = {
-    jobstart = bridge_mod._impl.jobstart,
-    jobsend = bridge_mod._impl.jobsend,
-    jobstop = bridge_mod._impl.jobstop,
-  }
-
-  function job.install()
-    bridge_mod._impl.jobstart = function(_, opts)
-      job.spawn_count = job.spawn_count + 1
-      job.opts = opts
-      return job.id
-    end
-    bridge_mod._impl.jobsend = function(_, data)
-      table.insert(job.sent, data)
-      return true
-    end
-    bridge_mod._impl.jobstop = function(_)
-      job.stopped = true
-      return 1
-    end
-  end
-
-  function job.restore()
-    bridge_mod._impl.jobstart = real.jobstart
-    bridge_mod._impl.jobsend = real.jobsend
-    bridge_mod._impl.jobstop = real.jobstop
-  end
-
-  function job.stdout(chunk)
-    job.opts.on_stdout(job.id, vim.split(chunk, "\n", { plain = true }))
-  end
-
-  function job.stderr(chunk)
-    job.opts.on_stderr(job.id, vim.split(chunk, "\n", { plain = true }))
-  end
-
-  function job.exit(code)
-    job.opts.on_exit(job.id, code or 0)
-  end
-
-  return job
-end
+local fixture = require("tests.helpers.bridge")
+local job
 
 local created
 
@@ -80,27 +35,24 @@ local function stub_kernel(name, status, alive)
   }
 end
 
-T = MiniTest.new_set({
+local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
       created = {}
-      bridge_mod._impl.jobstart = vim.fn.jobstart
-      bridge_mod._impl.jobsend = vim.fn.jobsend
-      bridge_mod._impl.jobstop = vim.fn.jobstop
-      bridge_mod.respawn_backoff_ms = { 1000, 2000, 4000 }
+      job = fixture.new()
       for _, buf in ipairs(vim.api.nvim_list_bufs()) do
         state.clear(buf)
       end
     end,
     post_case = function()
+      local ok, err = pcall(job.restore)
       for _, buf in ipairs(created) do
         state.clear(buf)
         pcall(vim.api.nvim_buf_delete, buf, { force = true })
       end
-      bridge_mod._impl.jobstart = vim.fn.jobstart
-      bridge_mod._impl.jobsend = vim.fn.jobsend
-      bridge_mod._impl.jobstop = vim.fn.jobstop
-      bridge_mod.respawn_backoff_ms = { 1000, 2000, 4000 }
+      if not ok then
+        error(err, 0)
+      end
     end,
   },
 })
@@ -149,8 +101,6 @@ end
 T["installed_kernelspecs"] = MiniTest.new_set()
 
 T["installed_kernelspecs"]["reuses a live bridge and sorts specs by name"] = function()
-  local job = fake_job()
-  job.install()
   local bridge = bridge_mod.new()
   bridge:start()
   job.stdout('{"event":"ready","params":{"protocol":1}}\n')
@@ -180,12 +130,9 @@ T["installed_kernelspecs"]["reuses a live bridge and sorts specs by name"] = fun
   MiniTest.expect.equality(got.specs[2].name, "python3")
   MiniTest.expect.equality(got.specs[2].language, "python")
   MiniTest.expect.equality(job.stopped, false)
-  job.restore()
 end
 
 T["installed_kernelspecs"]["starts a temporary bridge and stops it"] = function()
-  local job = fake_job()
-  job.install()
   make_buffer("/tmp/jove_temp.ipynb")
 
   local got = {}
@@ -210,15 +157,10 @@ T["installed_kernelspecs"]["starts a temporary bridge and stops it"] = function(
     end),
     true
   )
-  job.restore()
 end
 
 T["installed_kernelspecs"]["reports a spawn failure when the bridge cannot start"] = function()
-  local bridge_mod_local = require("jove.bridge")
-  local real_jobstart = bridge_mod_local._impl.jobstart
-  bridge_mod_local._impl.jobstart = function()
-    return -1
-  end
+  job.fail_spawn = true
   make_buffer("/tmp/jove_spawn_fail.ipynb")
 
   local got = {}
@@ -236,12 +178,9 @@ T["installed_kernelspecs"]["reports a spawn failure when the bridge cannot start
   MiniTest.expect.equality(got.specs, nil)
   MiniTest.expect.equality(type(got.err), "string")
   MiniTest.expect.no_equality(got.err, "")
-  bridge_mod_local._impl.jobstart = real_jobstart
 end
 
 T["installed_kernelspecs"]["reports an error and still stops the temporary bridge"] = function()
-  local job = fake_job()
-  job.install()
   make_buffer("/tmp/jove_temperr.ipynb")
 
   local got = {}
@@ -265,7 +204,6 @@ T["installed_kernelspecs"]["reports an error and still stops the temporary bridg
     end),
     true
   )
-  job.restore()
 end
 
 return T

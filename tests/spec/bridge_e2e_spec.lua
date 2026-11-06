@@ -2,10 +2,16 @@ local MiniTest = require("mini.test")
 local bridge_mod = require("jove.bridge")
 
 local T = MiniTest.new_set()
+local active_bridge
 
 ---@return boolean
 local function deps_present()
-  vim.fn.system({ "python3", "-c", "import jupyter_client, ipykernel" })
+  vim.fn.system({
+    bridge_mod.resolve_python(),
+    "-c",
+    "import jupyter_client, ipykernel; "
+      .. "assert 'python3' in jupyter_client.kernelspec.KernelSpecManager().find_kernel_specs()",
+  })
   if vim.v.shell_error ~= 0 then
     return false
   end
@@ -16,8 +22,24 @@ end
 T["sidecar"] = MiniTest.new_set({
   hooks = {
     pre_case = function()
+      active_bridge = nil
       if not deps_present() then
-        MiniTest.skip("python3 lacks jupyter_client/ipykernel or python/jove_bridge is missing")
+        local reason =
+          "bridge Python lacks jupyter_client/ipykernel/python3 kernelspec or sidecar is missing"
+        if vim.env.JOVE_TEST_STRICT == "1" then
+          error(reason)
+        end
+        MiniTest.skip(reason)
+      end
+    end,
+    post_case = function()
+      if active_bridge then
+        active_bridge:stop()
+        local stopped = vim.wait(10000, function()
+          return not active_bridge:is_alive()
+        end)
+        active_bridge = nil
+        MiniTest.expect.equality(stopped, true)
       end
     end,
   },
@@ -25,6 +47,7 @@ T["sidecar"] = MiniTest.new_set({
 
 T["sidecar"]["complete kernel lifecycle"] = function()
   local b = bridge_mod.new()
+  active_bridge = b
 
   local ready_params
   b:on("ready", function(params)
@@ -48,9 +71,12 @@ T["sidecar"]["complete kernel lifecycle"] = function()
   b:request("list_kernelspecs", {}, function(r, e)
     ks, ks_err = r, e
   end)
-  vim.wait(10000, function()
-    return ks or ks_err
-  end)
+  MiniTest.expect.equality(
+    vim.wait(10000, function()
+      return ks or ks_err
+    end),
+    true
+  )
   MiniTest.expect.equality(ks_err, nil)
   MiniTest.expect.equality(type(ks.kernelspecs), "table")
   MiniTest.expect.equality(ks.kernelspecs["python3"] ~= nil, true)
@@ -59,9 +85,12 @@ T["sidecar"]["complete kernel lifecycle"] = function()
   b:request("start_kernel", { kernelspec = "python3" }, function(r, e)
     sk_res, sk_err = r, e
   end, { timeout_ms = 30000 })
-  vim.wait(35000, function()
-    return sk_res or sk_err
-  end)
+  MiniTest.expect.equality(
+    vim.wait(35000, function()
+      return sk_res or sk_err
+    end),
+    true
+  )
   MiniTest.expect.equality(sk_err, nil)
   MiniTest.expect.equality(type(sk_res), "table")
 
@@ -69,21 +98,31 @@ T["sidecar"]["complete kernel lifecycle"] = function()
   b:request("execute", { code = "print(21*2)", cell = "e2e-cell" }, function(r, e)
     ex_res, ex_err = r, e
   end, { timeout_ms = 30000 })
-  vim.wait(30000, function()
-    return ex_res or ex_err
-  end)
+  MiniTest.expect.equality(
+    vim.wait(30000, function()
+      return ex_res or ex_err
+    end),
+    true
+  )
   MiniTest.expect.equality(ex_err, nil)
   MiniTest.expect.equality(ex_res.status, "ok")
 
   local found
-  for _, o in ipairs(outputs) do
-    if o.cell == "e2e-cell" and o.kind == "stream" then
-      local text = tostring((o.mime or {})["text/plain"] or "")
-      if text:find("42", 1, true) then
-        found = o
+  MiniTest.expect.equality(
+    vim.wait(15000, function()
+      for _, o in ipairs(outputs) do
+        if o.cell == "e2e-cell" and o.kind == "stream" then
+          local text = tostring((o.mime or {})["text/plain"] or "")
+          if text:find("42", 1, true) then
+            found = o
+            return true
+          end
+        end
       end
-    end
-  end
+      return false
+    end),
+    true
+  )
   MiniTest.expect.equality(type(found), "table")
   MiniTest.expect.equality(found and found.name, "stdout")
 

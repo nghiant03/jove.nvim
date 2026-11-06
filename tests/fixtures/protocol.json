@@ -1,0 +1,147 @@
+{
+  "requests": [
+    {
+      "id": 1,
+      "method": "execute",
+      "params": {
+        "cell": "cell-hash:1",
+        "code": "print(42)"
+      }
+    },
+    {
+      "id": 2,
+      "method": "execute",
+      "params": {
+        "cell": "cell-hash:2",
+        "code": "raise ValueError(\"bad\")"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "channel": "iopub",
+      "content": {
+        "name": "stdout",
+        "text": "42\n"
+      },
+      "msg_type": "stream",
+      "request_id": 1,
+      "wire": {
+        "event": "output",
+        "params": {
+          "cell": "cell-hash:1",
+          "kind": "stream",
+          "mime": {
+            "text/plain": "42\n"
+          },
+          "name": "stdout"
+        }
+      }
+    },
+    {
+      "channel": "iopub",
+      "content": {
+        "data": {
+          "text/plain": "42"
+        },
+        "execution_count": 7
+      },
+      "msg_type": "execute_result",
+      "request_id": 1,
+      "wire": {
+        "event": "output",
+        "params": {
+          "cell": "cell-hash:1",
+          "execution_count": 7,
+          "kind": "execute_result",
+          "mime": {
+            "text/plain": "42"
+          }
+        }
+      }
+    },
+    {
+      "channel": "iopub",
+      "content": {
+        "ename": "ValueError",
+        "evalue": "bad",
+        "traceback": [
+          "\u001b[31mValueError: bad\u001b[0m"
+        ]
+      },
+      "msg_type": "error",
+      "request_id": 2,
+      "wire": {
+        "event": "output",
+        "params": {
+          "cell": "cell-hash:2",
+          "ename": "ValueError",
+          "evalue": "bad",
+          "kind": "error",
+          "mime": {
+            "text/plain": "\u001b[31mValueError: bad\u001b[0m"
+          },
+          "traceback": [
+            "\u001b[31mValueError: bad\u001b[0m"
+          ]
+        }
+      }
+    },
+    {
+      "channel": "shell",
+      "content": {
+        "ename": "ValueError",
+        "evalue": "bad",
+        "execution_count": 8,
+        "status": "error"
+      },
+      "msg_type": "execute_reply",
+      "request_id": 2,
+      "wire": {
+        "id": 2,
+        "result": {
+          "ename": "ValueError",
+          "evalue": "bad",
+          "execution_count": 8,
+          "status": "error"
+        }
+      }
+    },
+    {
+      "channel": "shell",
+      "content": {
+        "execution_count": 7,
+        "status": "ok"
+      },
+      "msg_type": "execute_reply",
+      "request_id": 1,
+      "wire": {
+        "id": 1,
+        "result": {
+          "execution_count": 7,
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "channel": "iopub",
+      "content": {
+        "name": "stderr",
+        "text": "late\n"
+      },
+      "msg_type": "stream",
+      "request_id": 1,
+      "wire": {
+        "event": "output",
+        "params": {
+          "cell": "cell-hash:1",
+          "kind": "stream",
+          "mime": {
+            "text/plain": "late\n"
+          },
+          "name": "stderr"
+        }
+      }
+    }
+  ]
+}
