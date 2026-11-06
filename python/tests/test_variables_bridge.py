@@ -10,10 +10,7 @@ from jove_bridge.kernel import KernelError
 from jove_bridge.languages import _PYTHON_REVISION, PYTHON, Probe, lookup, register
 from jove_bridge.session import DEFERRED, BridgeSession, _Pending
 
-try:
-    from test_bridge import BridgeProcess
-except Exception:
-    BridgeProcess = None  # type: ignore[assignment]
+pytestmark = pytest.mark.usefixtures("isolated_inspector", "isolated_registry")
 
 
 class _FakeConn:
@@ -73,6 +70,7 @@ class _KernelWithClient:
         return self.client
 
 
+@pytest.mark.unit
 def test_finish_variables_parses_user_expression():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -90,6 +88,7 @@ def test_finish_variables_parses_user_expression():
     assert conn.msgs == [{"id": 5, "result": {"variables": payload}}]
 
 
+@pytest.mark.unit
 def test_finish_variables_unwraps_ipython_string_repr():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -105,6 +104,7 @@ def test_finish_variables_unwraps_ipython_string_repr():
     assert conn.msgs == [{"id": 8, "result": {"variables": payload}}]
 
 
+@pytest.mark.unit
 def test_finish_variables_degrades_to_empty_on_bad_json():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -118,6 +118,7 @@ def test_finish_variables_degrades_to_empty_on_bad_json():
     assert conn.msgs == [{"id": 6, "result": {"variables": []}}]
 
 
+@pytest.mark.unit
 def test_finish_variables_empty_when_expression_errored():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -129,6 +130,7 @@ def test_finish_variables_empty_when_expression_errored():
     assert conn.msgs == [{"id": 7, "result": {"variables": []}}]
 
 
+@pytest.mark.unit
 def test_variables_unsupported_for_non_python_kernel():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -139,6 +141,7 @@ def test_variables_unsupported_for_non_python_kernel():
     assert conn.msgs == []
 
 
+@pytest.mark.unit
 def test_variables_submits_silent_user_expression_and_replies_on_shell_reply():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -168,6 +171,7 @@ def test_variables_submits_silent_user_expression_and_replies_on_shell_reply():
     assert conn.msgs == [{"id": 10, "result": {"variables": []}}]
 
 
+@pytest.mark.unit
 def test_variables_per_item_resilience():
     class BoomLen:
         def __len__(self):
@@ -203,6 +207,7 @@ def test_variables_per_item_resilience():
     assert not any(k.startswith("_jv_") or k == "_jove_inspector" for k in ns), ns
 
 
+@pytest.mark.unit
 def test_variables_install_preserves_existing_names():
     namespace = {
         "_jv_sys": object(),
@@ -219,6 +224,7 @@ def test_variables_install_preserves_existing_names():
     assert all(namespace[name] is value for name, value in original.items())
 
 
+@pytest.mark.unit
 def test_variables_install_reuses_current_module():
     import sys
 
@@ -228,6 +234,7 @@ def test_variables_install_reuses_current_module():
     assert sys.modules["_jove_inspector"] is installed
 
 
+@pytest.mark.unit
 def test_variables_install_replaces_stale_module():
     import sys
 
@@ -240,9 +247,8 @@ def test_variables_install_replaces_stale_module():
     assert sys.modules["_jove_inspector"]._jove_rev == _PYTHON_REVISION
     assert json.loads(eval(PYTHON.query, ns))[0]["name"] == "x"
 
-    del sys.modules["_jove_inspector"]
 
-
+@pytest.mark.unit
 def test_variables_per_item_resilience_numpy_zero_dim():
     """Zero-dimensional NumPy arrays report size=None rather than erroring."""
     np = pytest.importorskip("numpy")
@@ -255,6 +261,7 @@ def test_variables_per_item_resilience_numpy_zero_dim():
     assert by_name["regular"]["size"] is None
 
 
+@pytest.mark.unit
 def test_lookup_normalizes_language_spellings():
     assert lookup("Python3") is PYTHON
     assert lookup(" python ") is PYTHON
@@ -262,6 +269,7 @@ def test_lookup_normalizes_language_spellings():
     assert lookup("not-a-language") is None
 
 
+@pytest.mark.unit
 def test_variables_resolves_probe_from_kernel_language():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -272,24 +280,21 @@ def test_variables_resolves_probe_from_kernel_language():
     assert client.captured["code"] == PYTHON.install
 
 
+@pytest.mark.unit
 def test_variables_uses_registered_probe_for_new_language():
     probe = Probe(" Dummy ", install="1 + 1", query="'[]'")
     register(probe)
-    try:
-        conn = _FakeConn()
-        session = BridgeSession(conn)
-        client = _RecordingClient(msg_id="msg-dummy")
-        session.kernel = _KernelWithClient(client, language="Dummy")  # type: ignore[assignment]
+    conn = _FakeConn()
+    session = BridgeSession(conn)
+    client = _RecordingClient(msg_id="msg-dummy")
+    session.kernel = _KernelWithClient(client, language="Dummy")  # type: ignore[assignment]
 
-        assert session.variables(13) is DEFERRED
-        assert client.captured["code"] == "1 + 1"
-        assert client.captured["user_expressions"]["__jove__"] == "'[]'"
-    finally:
-        from jove_bridge.languages import REGISTRY
-
-        REGISTRY.pop("dummy", None)
+    assert session.variables(13) is DEFERRED
+    assert client.captured["code"] == "1 + 1"
+    assert client.captured["user_expressions"]["__jove__"] == "'[]'"
 
 
+@pytest.mark.unit
 def test_variables_unsupported_for_unresolvable_language():
     assert lookup(None) is None
 
@@ -300,41 +305,36 @@ def test_variables_unsupported_for_unresolvable_language():
     assert session.variables(14) == {"variables": [], "unsupported": None}
 
 
-@pytest.mark.skipif(BridgeProcess is None, reason="test_bridge helper unavailable")
-def test_variables_e2e_real_kernel():
-    proc = BridgeProcess()  # type: ignore[misc]
-    try:
-        proc.wait_ready()
-        proc.start_kernel("python3")
-        msg = proc.request(
-            "execute",
-            {
-                "code": (
-                    "jv_x = 41\njv_s = 'hi'\nimport os\n"
-                    "class jv_Boom:\n"
-                    "    def __len__(self):\n"
-                    "        raise TypeError('len() of unsized object')\n"
-                    "    def __repr__(self):\n"
-                    "        return 'jv_Boom()'\n"
-                    "jv_boom = jv_Boom()"
-                ),
-                "cell": "v0",
-            },
-        )
-        assert msg.get("result", {}).get("status") == "ok"
+@pytest.mark.integration
+def test_variables_e2e_real_kernel(kernel):
+    proc = kernel
+    msg = proc.request(
+        "execute",
+        {
+            "code": (
+                "jv_x = 41\njv_s = 'hi'\nimport os\n"
+                "class jv_Boom:\n"
+                "    def __len__(self):\n"
+                "        raise TypeError('len() of unsized object')\n"
+                "    def __repr__(self):\n"
+                "        return 'jv_Boom()'\n"
+                "jv_boom = jv_Boom()"
+            ),
+            "cell": "v0",
+        },
+    )
+    assert msg.get("result", {}).get("status") == "ok"
 
-        msg = proc.request("variables")
-        result = msg["result"]
-        assert "variables" in result, msg
-        by_name = {v["name"]: v for v in result["variables"]}
-        assert by_name["jv_x"]["type"] == "int"
-        assert by_name["jv_x"]["value"] == "41"
-        assert by_name["jv_s"]["type"] == "str"
-        assert by_name["jv_s"]["value"] == "'hi'"
-        assert by_name["jv_s"]["size"] == 2
-        assert by_name["jv_boom"]["value"] == "jv_Boom()"
-        assert by_name["jv_boom"]["size"] is None
-        assert "os" not in by_name
-        assert not any(n.startswith("_") for n in by_name)
-    finally:
-        proc.close()
+    msg = proc.request("variables")
+    result = msg["result"]
+    assert "variables" in result, msg
+    by_name = {v["name"]: v for v in result["variables"]}
+    assert by_name["jv_x"]["type"] == "int"
+    assert by_name["jv_x"]["value"] == "41"
+    assert by_name["jv_s"]["type"] == "str"
+    assert by_name["jv_s"]["value"] == "'hi'"
+    assert by_name["jv_s"]["size"] == 2
+    assert by_name["jv_boom"]["value"] == "jv_Boom()"
+    assert by_name["jv_boom"]["size"] is None
+    assert "os" not in by_name
+    assert not any(n.startswith("_") for n in by_name)

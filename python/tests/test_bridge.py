@@ -2,189 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
-import sys
-import threading
-import time
-
 import pytest
 
 from jove_bridge.kernel import KernelError
 from jove_bridge.session import DEFERRED as DEFERRED_SENTINEL
 from jove_bridge.session import BridgeSession
 
-REQ_TIMEOUT = 60.0
-KERNEL_TIMEOUT = 120.0
 
-
-class BridgeProcess:
-    """A sidecar subprocess plus helpers for speaking the protocol."""
-
-    def __init__(self) -> None:
-        self.proc = subprocess.Popen(
-            [sys.executable, "-m", "jove_bridge"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            bufsize=1,
-        )
-        self.messages: list = []
-        self._cond = threading.Condition()
-        self._eof = False
-        self._stderr: list[str] = []
-        self._next_id = 0
-        threading.Thread(target=self._read_stdout, daemon=True).start()
-        threading.Thread(target=self._read_stderr, daemon=True).start()
-
-    def _read_stdout(self) -> None:
-        assert self.proc.stdout is not None
-        for line in self.proc.stdout:
-            try:
-                msg = json.loads(line)
-            except ValueError:
-                continue
-            with self._cond:
-                self.messages.append(msg)
-                self._cond.notify_all()
-        with self._cond:
-            self._eof = True
-            self._cond.notify_all()
-
-    def _read_stderr(self) -> None:
-        assert self.proc.stderr is not None
-        for line in self.proc.stderr:
-            self._stderr.append(line)
-
-    def cursor(self) -> int:
-        """Snapshot of the message count; use as ``since`` in waiters."""
-        return len(self.messages)
-
-    def send(self, obj) -> None:
-        assert self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps(obj) + "\n")
-        self.proc.stdin.flush()
-
-    def send_line(self, text: str) -> None:
-        """Send a raw (possibly malformed) line."""
-        assert self.proc.stdin is not None
-        self.proc.stdin.write(text + "\n")
-        self.proc.stdin.flush()
-
-    def wait(self, predicate, timeout=REQ_TIMEOUT, since=0):
-        """Return the first message matching ``predicate`` from ``since``."""
-        deadline = time.monotonic() + timeout
-        with self._cond:
-            i = since
-            while True:
-                while i < len(self.messages):
-                    msg = self.messages[i]
-                    i += 1
-                    if predicate(msg):
-                        return msg
-                if self._eof:
-                    raise AssertionError(
-                        "bridge exited before the expected message; "
-                        "stderr tail:\n" + "".join(self._stderr[-30:])
-                    )
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise AssertionError(
-                        "timed out waiting for a message; messages since "
-                        f"{since}:\n"
-                        + json.dumps(self.messages[since:], indent=1)[:4000]
-                    )
-                self._cond.wait(remaining)
-
-    def wait_ready(self, timeout=REQ_TIMEOUT) -> dict:
-        msg = self.wait(lambda m: m.get("event") == "ready", timeout)
-        assert self.messages[0] is msg, "ready must be the first message"
-        return msg
-
-    def send_request(self, method: str, params=None) -> int:
-        self._next_id += 1
-        self.send({"id": self._next_id, "method": method, "params": params or {}})
-        return self._next_id
-
-    def wait_response(self, reply_id, timeout=REQ_TIMEOUT, since=0) -> dict:
-        return self.wait(
-            lambda m: m.get("id") == reply_id and ("result" in m or "error" in m),
-            timeout,
-            since,
-        )
-
-    def request(self, method: str, params=None, timeout=REQ_TIMEOUT) -> dict:
-        since = self.cursor()
-        reply_id = self.send_request(method, params)
-        return self.wait_response(reply_id, timeout, since)
-
-    def wait_event(self, event, timeout=REQ_TIMEOUT, since=0, pred=None) -> dict:
-        def check(msg):
-            if msg.get("event") != event:
-                return False
-            return pred is None or pred(msg.get("params") or {})
-
-        return self.wait(check, timeout, since)
-
-    def wait_status(self, *states, timeout=KERNEL_TIMEOUT, since=0) -> dict:
-        return self.wait_event(
-            "kernel_status",
-            timeout,
-            since,
-            pred=lambda p: p.get("status") in states,
-        )
-
-    def statuses_since(self, since: int) -> list:
-        return [
-            m["params"]["status"]
-            for m in self.messages[since:]
-            if m.get("event") == "kernel_status"
-        ]
-
-    def outputs_since(self, since: int) -> list:
-        return [
-            m["params"] for m in self.messages[since:] if m.get("event") == "output"
-        ]
-
-    def start_kernel(self, name="python3", timeout=KERNEL_TIMEOUT) -> dict:
-        since = self.cursor()
-        msg = self.request("start_kernel", {"kernelspec": name}, timeout)
-        assert "result" in msg, f"start_kernel failed: {msg}"
-        self.wait_status("idle", since=since, timeout=timeout)
-        return msg
-
-    def close(self) -> None:
-        try:
-            if self.proc.poll() is None and self.proc.stdin is not None:
-                self.proc.stdin.close()
-                self.proc.wait(timeout=15)
-        except Exception:
-            pass
-        if self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                self.proc.wait(timeout=5)
-            except Exception:
-                self.proc.kill()
-
-
-@pytest.fixture
-def bridge():
-    proc = BridgeProcess()
-    proc.wait_ready()
-    yield proc
-    proc.close()
-
-
-@pytest.fixture
-def kernel(bridge):
-    """A bridge with a running python3 kernel."""
-    bridge.start_kernel("python3")
-    return bridge
-
-
+@pytest.mark.integration
 def test_ready_and_list_kernelspecs(bridge):
     ready = bridge.messages[0]
     assert ready["event"] == "ready"
@@ -197,6 +22,7 @@ def test_ready_and_list_kernelspecs(bridge):
     assert specs["python3"]["language"]
 
 
+@pytest.mark.integration
 def test_requests_before_kernel_start(bridge):
     for method, params in (
         ("execute", {"code": "1+1", "cell": "c"}),
@@ -207,11 +33,13 @@ def test_requests_before_kernel_start(bridge):
         assert msg["error"]["code"] == "kernel_not_running", msg
 
 
+@pytest.mark.integration
 def test_unknown_method(bridge):
     msg = bridge.request("definitely_not_a_method", {})
     assert msg["error"]["code"] == "unknown_method"
 
 
+@pytest.mark.integration
 def test_invalid_params(bridge):
     msg = bridge.request("start_kernel", {})
     assert msg["error"]["code"] == "invalid_params"
@@ -219,6 +47,7 @@ def test_invalid_params(bridge):
     assert msg["error"]["code"] == "invalid_params"
 
 
+@pytest.mark.integration
 def test_protocol_error_then_recover(bridge):
     bridge.send_line("this is not json {{{")
     ev = bridge.wait_event("protocol_error", since=0)
@@ -227,6 +56,7 @@ def test_protocol_error_then_recover(bridge):
     assert "python3" in msg["result"]["kernelspecs"]
 
 
+@pytest.mark.integration
 def test_start_kernel_status_sequence(bridge):
     since = bridge.cursor()
     bridge.start_kernel("python3")
@@ -235,6 +65,7 @@ def test_start_kernel_status_sequence(bridge):
     assert "idle" in statuses
 
 
+@pytest.mark.integration
 def test_execute_stream(kernel):
     since = kernel.cursor()
     msg = kernel.request("execute", {"code": "print(1+1)", "cell": "cell-a1"})
@@ -248,6 +79,7 @@ def test_execute_stream(kernel):
     assert params["mime"]["text/plain"] == "2\n"
 
 
+@pytest.mark.integration
 def test_execute_error(kernel):
     since = kernel.cursor()
     msg = kernel.request("execute", {"code": "raise ValueError('boom')", "cell": "e1"})
@@ -269,6 +101,7 @@ def test_execute_error(kernel):
     assert params["mime"]["text/plain"]
 
 
+@pytest.mark.integration
 def test_execute_result_mime_bundle(kernel):
     since = kernel.cursor()
     msg = kernel.request("execute", {"code": "'hello'", "cell": "r1"})
@@ -282,6 +115,7 @@ def test_execute_result_mime_bundle(kernel):
     assert params["mime"]["text/plain"] == "'hello'"
 
 
+@pytest.mark.integration
 def test_execute_display_data(kernel):
     since = kernel.cursor()
     code = "from IPython.display import display, HTML\ndisplay(HTML('<b>jove</b>'))"
@@ -296,6 +130,7 @@ def test_execute_display_data(kernel):
     assert params["mime"]["text/html"] == "<b>jove</b>"
 
 
+@pytest.mark.integration
 def test_overlapping_executes(kernel):
     since = kernel.cursor()
     rid1 = kernel.send_request(
@@ -328,6 +163,7 @@ def _interruptable_sleep():
     return "print('started'); import time; time.sleep(30)"
 
 
+@pytest.mark.integration
 def test_interrupt(kernel):
     since = kernel.cursor()
     rid = kernel.send_request(
@@ -351,6 +187,7 @@ def test_interrupt(kernel):
     assert ev["params"]["mime"]["text/plain"] == "alive\n"
 
 
+@pytest.mark.integration
 def test_interrupt_with_queued_execute_error_implies_output(kernel):
     since = kernel.cursor()
     rid_sleep = kernel.send_request(
@@ -382,6 +219,7 @@ def test_interrupt_with_queued_execute_error_implies_output(kernel):
     assert msg["result"].get("status") == "ok"
 
 
+@pytest.mark.integration
 def test_restart(bridge):
     bridge.start_kernel("python3")
     msg = bridge.request("execute", {"code": "jove_secret = 42", "cell": "s1"})
@@ -400,6 +238,7 @@ def test_restart(bridge):
     assert result["ename"] == "NameError"
 
 
+@pytest.mark.integration
 def test_shutdown_exits_zero(bridge):
     bridge.start_kernel("python3")
     msg = bridge.request("shutdown")
@@ -408,6 +247,7 @@ def test_shutdown_exits_zero(bridge):
     assert rc == 0
 
 
+@pytest.mark.integration
 def test_stdin_eof_exits_zero(bridge):
     bridge.start_kernel("python3")
     bridge.proc.stdin.close()
@@ -461,6 +301,7 @@ class _FakeKernel:
         self.client = None
 
 
+@pytest.mark.unit
 def test_single_response_when_kernel_dies_during_execute():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -475,6 +316,7 @@ def test_single_response_when_kernel_dies_during_execute():
     assert session.pending == {}
 
 
+@pytest.mark.unit
 def test_execute_on_dead_kernel_raises_without_double_response():
     conn = _FakeConn()
     session = BridgeSession(conn)
@@ -489,6 +331,7 @@ def test_execute_on_dead_kernel_raises_without_double_response():
     assert conn.responses(42) == []
 
 
+@pytest.mark.unit
 def test_late_iopub_after_execute_reply_still_tagged():
     from jove_bridge.session import _Pending
 

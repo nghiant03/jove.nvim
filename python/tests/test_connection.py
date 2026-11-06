@@ -4,7 +4,11 @@ import io
 import json
 import time
 
+import pytest
+
 from jove_bridge.__main__ import Connection
+
+pytestmark = pytest.mark.unit
 
 
 def test_close_flushes_queued_messages():
