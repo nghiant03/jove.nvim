@@ -10,7 +10,7 @@ import traceback
 from typing import Any, Callable, Optional
 
 from .kernel import KernelController, KernelError
-from .languages import lookup
+from .languages import DisplayProbe, lookup
 
 # Sentinel returned by dispatch(): the reply will be sent asynchronously from
 # the poll thread once the kernel answers, not by the stdin loop.
@@ -35,6 +35,127 @@ class _Pending:
         self.cell = cell
 
 
+VARIABLES_TIMEOUT = 12.0
+MAX_VARIABLE_BYTES = 1024 * 1024
+MAX_VARIABLE_ROWS = 4096
+MAX_VARIABLE_REQUESTS = 8
+
+
+def _bounded_text(text: str) -> None:
+    if len(text) > MAX_VARIABLE_BYTES or len(text.encode("utf-8")) > MAX_VARIABLE_BYTES:
+        raise ValueError("variable snapshot is too large")
+
+
+def _variable_rows(payload: Any) -> list[dict]:
+    """Normalize a JSON MIME value (array or serialized array) for the wire."""
+    if isinstance(payload, str):
+        _bounded_text(payload)
+        try:
+            payload = json.loads(payload)
+        except (ValueError, RecursionError) as exc:
+            raise ValueError("invalid variable snapshot JSON") from exc
+    if not isinstance(payload, list):
+        raise ValueError("expected an array of variable rows")
+    if len(payload) > MAX_VARIABLE_ROWS:
+        raise ValueError("too many variable rows")
+    rows = []
+    size = 2
+    for item in payload:
+        if not isinstance(item, dict) or not all(
+            isinstance(item.get(k), str) for k in ("name", "type", "value")
+        ):
+            raise ValueError("invalid variable row")
+        length = item.get("size")
+        if length is not None and (
+            type(length) is not int or not 0 <= length <= 2**63 - 1
+        ):
+            raise ValueError("invalid variable size")
+        row = {
+            "name": item["name"],
+            "type": item["type"],
+            "value": item["value"],
+            "size": length,
+        }
+        if any(len(row[k]) > MAX_VARIABLE_BYTES for k in ("name", "type", "value")):
+            raise ValueError("variable snapshot is too large")
+        size += len(json.dumps(row)) + 1
+        if size > MAX_VARIABLE_BYTES:
+            raise ValueError("variable snapshot is too large")
+        rows.append(row)
+    return rows
+
+
+def _python_rows(content: dict) -> list[dict]:
+    expressions = content.get("user_expressions")
+    expr = expressions.get("__jove__") if isinstance(expressions, dict) else None
+    if not isinstance(expr, dict) or expr.get("status") != "ok":
+        raise ValueError("kernel did not return a successful variable expression")
+    data = expr.get("data")
+    text = data.get("text/plain") if isinstance(data, dict) else None
+    if not isinstance(text, str):
+        raise ValueError("missing text/plain variable expression")
+    _bounded_text(text)
+    if text.lstrip().startswith(("'", '"')):
+        try:
+            text = ast.literal_eval(text)
+        except (SyntaxError, ValueError, RecursionError) as exc:
+            raise ValueError("invalid quoted variable expression") from exc
+        if not isinstance(text, str):
+            raise ValueError("invalid quoted variable expression")
+    return _variable_rows(text)
+
+
+class _Variables(_Pending):
+    """Collect the shell reply and IOPub messages for one inspector request."""
+
+    __slots__ = ("deadline", "idle", "replied", "rows", "error")
+
+    def __init__(self, kind: str, reply_id: int) -> None:
+        super().__init__(kind, reply_id)
+        self.deadline = time.monotonic() + VARIABLES_TIMEOUT
+        self.replied = self.idle = False
+        self.rows: list[dict] | None = None
+        self.error: str | None = None
+
+    def receive(self, shell: bool, msg_type: str, content: dict) -> bool:
+        """Display probes need both the shell reply and IOPub idle, in either order."""
+        try:
+            if shell:
+                self.replied = True
+                if msg_type != "execute_reply" or content.get("status") != "ok":
+                    raise ValueError("variable probe execution failed")
+                if self.kind == "variables":
+                    self.rows = _python_rows(content)
+            elif self.kind == "variables_display":
+                if msg_type == "status" and content.get("execution_state") == "idle":
+                    self.idle = True
+                elif msg_type == "error":
+                    raise ValueError("variable probe execution failed")
+                elif (
+                    msg_type in ("display_data", "execute_result")
+                    and self.error is None
+                ):
+                    data = content.get("data")
+                    if isinstance(data, dict) and "application/json" in data:
+                        if self.rows is not None:
+                            raise ValueError("duplicate variable snapshot")
+                        self.rows = _variable_rows(data["application/json"])
+        except ValueError as exc:
+            self.rows = None
+            self.error = str(exc)
+        return self.replied and (self.kind == "variables" or self.idle)
+
+    def respond(self, conn: Any) -> None:
+        if self.error is not None or self.rows is None:
+            conn.send_error(
+                self.reply_id,
+                "variables_failed",
+                self.error or "missing application/json variable snapshot",
+            )
+        else:
+            conn.send_result(self.reply_id, {"variables": self.rows})
+
+
 class BridgeSession:
     """Bridges protocol requests onto one Jupyter kernel."""
 
@@ -50,6 +171,7 @@ class BridgeSession:
         self._stop = threading.Event()
         self._restarting = False
         self._shutting_down = False
+        self._kernel_info: tuple[str | None, str | None] = (None, None)
         self._ready = threading.Event()
         self._iopub_live = threading.Event()
 
@@ -135,10 +257,22 @@ class BridgeSession:
 
     def variables(self, reply_id: int) -> Any:
         """Snapshot user-namespace variables."""
-        language = self._kernel_language()
-        probe = lookup(language)
+        self.kernel.require_client()
+        language, implementation = self._kernel_info
+        if not language:
+            language = self._kernel_language()
+            implementation = None
+        probe = lookup(language, implementation)
         if probe is None:
-            return {"variables": [], "unsupported": language}
+            return {"variables": [], "unsupported": language or "unknown"}
+        if isinstance(probe, DisplayProbe):
+            return self._submit_shell(
+                "variables_display",
+                reply_id,
+                lambda client: client.execute(
+                    probe.code, silent=True, store_history=False, allow_stdin=False
+                ),
+            )
         return self._submit_shell(
             "variables",
             reply_id,
@@ -163,54 +297,33 @@ class BridgeSession:
         language = spec.get("language")
         return language or None
 
-    def _finish_variables(
-        self, pending: _Pending, msg_type: Any, content: dict
-    ) -> None:
-        """Parse the user_expressions JSON out of an execute_reply and reply."""
-        empty: dict = {"variables": []}
-        if msg_type != "execute_reply" or content.get("status") != "ok":
-            self.conn.send_result(pending.reply_id, empty)
-            return
-        ue = (content.get("user_expressions") or {}).get("__jove__") or {}
-        if ue.get("status") != "ok":
-            self.conn.send_result(pending.reply_id, empty)
-            return
-        text = (ue.get("data") or {}).get("text/plain") or ""
-        if not isinstance(text, str):
-            self.conn.send_result(pending.reply_id, empty)
-            return
-        try:
-            raw = json.loads(text)
-        except Exception:
-            try:
-                unwrapped = ast.literal_eval(text)
-            except Exception:
-                self.conn.send_result(pending.reply_id, empty)
-                return
-            if isinstance(unwrapped, str):
-                try:
-                    raw = json.loads(unwrapped)
-                except Exception:
-                    self.conn.send_result(pending.reply_id, empty)
-                    return
-            else:
-                raw = unwrapped
-        if not isinstance(raw, list):
-            self.conn.send_result(pending.reply_id, empty)
-            return
-        variables = []
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            variables.append(
-                {
-                    "name": item.get("name"),
-                    "type": item.get("type"),
-                    "value": item.get("value"),
-                    "size": item.get("size"),
-                }
+    def _route_variables(
+        self, parent: str, msg_type: str, content: dict, *, shell: bool
+    ) -> bool:
+        """Return True for probe messages so they aren't routed to notebook cells."""
+        with self._lock:
+            pending = self.pending.get(parent)
+            if not isinstance(pending, _Variables):
+                return False
+            if not pending.receive(shell, msg_type, content):
+                return True
+            del self.pending[parent]
+        pending.respond(self.conn)
+        return True
+
+    def _expire_variables(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            expired = [
+                key
+                for key, p in self.pending.items()
+                if isinstance(p, _Variables) and p.deadline <= now
+            ]
+            requests = [self.pending.pop(key) for key in expired]
+        for pending in requests:
+            self.conn.send_error(
+                pending.reply_id, "variables_timeout", "variable probe timed out"
             )
-        self.conn.send_result(pending.reply_id, {"variables": variables})
 
     def _submit_shell(
         self,
@@ -222,9 +335,20 @@ class BridgeSession:
         """Send a shell-channel request and register it atomically."""
         with self._lock:
             client = self.kernel.require_client()
+            if kind in ("variables", "variables_display"):
+                if (
+                    sum(isinstance(p, _Variables) for p in self.pending.values())
+                    >= MAX_VARIABLE_REQUESTS
+                ):
+                    raise KernelError(
+                        "variables_busy", "too many pending variable requests"
+                    )
+                pending = _Variables(kind, reply_id)
+            else:
+                pending = _Pending(kind, reply_id, cell)
             with self._shell_lock:
                 msg_id = send(client)
-            self.pending[msg_id] = _Pending(kind, reply_id, cell)
+            self.pending[msg_id] = pending
         return DEFERRED
 
     def restart(self) -> dict:
@@ -250,11 +374,13 @@ class BridgeSession:
     def shutdown_kernel(self) -> None:
         """Best-effort kernel teardown used on exit paths."""
         self._shutting_down = True
+        self._fail_pending("kernel_not_running", "kernel is shutting down")
         self.kernel.shutdown()
 
     def poll_forever(self) -> None:
         """Worker loop: drain iopub + shell, watch for kernel death."""
         while not self._stop.is_set():
+            self._expire_variables()
             client = self.kernel.client
             if client is None:
                 self._stop.wait(0.1)
@@ -294,12 +420,15 @@ class BridgeSession:
         if msg_type == "iopub_welcome":
             self._iopub_live.set()
             return
+        parent = (msg.get("parent_header") or {}).get("msg_id")
+        if self._route_variables(parent, msg_type, content, shell=False):
+            return
         if msg_type == "status":
+            self._iopub_live.set()
             state = content.get("execution_state")
             if state in ("starting", "busy", "idle"):
                 self.conn.send_event("kernel_status", {"status": state})
             return
-        parent = (msg.get("parent_header") or {}).get("msg_id")
         cell = None
         with self._lock:
             pending = self.pending.get(parent)
@@ -363,8 +492,24 @@ class BridgeSession:
 
     def _handle_shell(self, msg: dict) -> None:
         parent = (msg.get("parent_header") or {}).get("msg_id")
+        msg_type = msg.get("msg_type")
+        content = msg.get("content") or {}
+        if self._route_variables(parent, msg_type, content, shell=True):
+            return
         with self._lock:
             pending = self.pending.pop(parent, None)
+            if (
+                pending is not None
+                and pending.kind == "ready_probe"
+                and msg_type == "kernel_info_reply"
+            ):
+                info = content.get("language_info")
+                language = info.get("name") if isinstance(info, dict) else None
+                impl = content.get("implementation")
+                self._kernel_info = (
+                    language.strip() if isinstance(language, str) else None,
+                    impl.strip() if isinstance(impl, str) else None,
+                )
         if pending is None:
             return
         if pending.kind == "execute" and pending.cell is not None:
@@ -380,11 +525,6 @@ class BridgeSession:
         if pending.kind == "ready_probe":
             self.conn.send_event("kernel_status", {"status": "idle"})
             self._ready.set()
-            return
-        msg_type = msg.get("msg_type")
-        content = msg.get("content") or {}
-        if pending.kind == "variables":
-            self._finish_variables(pending, msg_type, content)
             return
         if msg_type == "execute_reply":
             if content.get("status") == "ok":
@@ -443,14 +583,14 @@ class BridgeSession:
         self._ready.clear()
         self._iopub_live.clear()
         try:
-            with self._shell_lock:
-                msg_id = client.kernel_info()
+            with self._lock:
+                with self._shell_lock:
+                    msg_id = client.kernel_info()
+                self.pending[msg_id] = _Pending("ready_probe", None)
         except Exception:
             self._ready.set()
             self._iopub_live.set()
             return True
-        with self._lock:
-            self.pending[msg_id] = _Pending("ready_probe", None)
         deadline = time.monotonic() + timeout
         if not self._iopub_live.wait(timeout):
             self._iopub_live.set()
@@ -466,6 +606,8 @@ class BridgeSession:
         with self._lock:
             items = list(self.pending.values())
             self.pending.clear()
+            self._kernel_info = (None, None)
+            self._recent.clear()
         for pending in items:
             if pending.reply_id is None:
                 continue

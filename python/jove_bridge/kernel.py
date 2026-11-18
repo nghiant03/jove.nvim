@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from typing import Any, Optional
 
@@ -66,7 +67,8 @@ class KernelController:
             self.shutdown()
         km = KernelManager(kernel_name=kernelspec)
         try:
-            km.start_kernel()
+            # Kernel startup banners must not enter the bridge's JSON-lines stream.
+            km.start_kernel(stdout=sys.stderr)
         except Exception as exc:
             raise KernelError(
                 "kernel_start_failed",

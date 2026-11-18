@@ -20,7 +20,10 @@ def kernel_environment(tmp_path_factory):
         "language": "python",
     }
     (spec_dir / "kernel.json").write_text(json.dumps(spec), encoding="utf-8")
-    return {**os.environ, "JUPYTER_PATH": str(root)}
+    search_path = [str(root)]
+    if os.environ.get("JUPYTER_PATH"):
+        search_path.append(os.environ["JUPYTER_PATH"])
+    return {**os.environ, "JUPYTER_PATH": os.pathsep.join(search_path)}
 
 
 @pytest.fixture

@@ -15,23 +15,44 @@ class Probe:
     query: str
 
 
+@dataclass(frozen=True)
+class DisplayProbe:
+    """Kernel-specific code that publishes one application/json MIME result."""
+
+    language: str
+    implementation: str
+    resource: str
+
+    @property
+    def code(self) -> str:
+        return _source(self.resource)
+
+
 ALIASES = {
     "python": "python",
     "python2": "python",
     "python3": "python",
 }
 
-REGISTRY: dict[str, Probe] = {}
+REGISTRY: dict[tuple[str, str], Probe | DisplayProbe] = {}
 
 
-def register(probe: Probe) -> None:
-    REGISTRY[probe.language.strip().lower()] = probe
-
-
-def lookup(language: str | None) -> Probe | None:
+def _language_key(language: str | None) -> str:
     key = (language or "").strip().lower()
-    key = ALIASES.get(key, key)
-    return REGISTRY.get(key)
+    return ALIASES.get(key, key)
+
+
+def register(probe: Probe | DisplayProbe) -> None:
+    implementation = probe.implementation if isinstance(probe, DisplayProbe) else ""
+    REGISTRY[_language_key(probe.language), implementation.strip().lower()] = probe
+
+
+def lookup(
+    language: str | None, implementation: str | None = None
+) -> Probe | DisplayProbe | None:
+    key = _language_key(language)
+    impl = (implementation or "").strip().lower()
+    return REGISTRY.get((key, impl)) or REGISTRY.get((key, ""))
 
 
 def _source(filename: str) -> str:
@@ -61,3 +82,5 @@ PYTHON = Probe(
 )
 
 register(PYTHON)
+register(DisplayProbe("r", "IRkernel", "r_inspector.R"))
+register(DisplayProbe("julia", "ijulia", "julia_inspector.jl"))
