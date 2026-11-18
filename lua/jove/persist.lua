@@ -1,8 +1,4 @@
 -- Notebook output persistence.
--- Outputs are matched to cells by their content-hash identity (see jove.cell).
--- `seen` below records which hashes had outputs during this session, so a
--- write can tombstone cells whose outputs were cleared instead of leaving
--- stale on-disk outputs.
 
 local state = require("jove.state")
 local cell = require("jove.cell")
@@ -267,8 +263,6 @@ function M.export(buf, bytes)
   st.last_write = vim.fn.sha256(encoded)
 
   if buf_seen then
-    -- Drop tombstoned hashes once they are reflected on disk: keeping them
-    -- would re-tombstone the same cells and force a rewrite on every save.
     for hash in pairs(buf_seen) do
       if not (st.outputs and st.outputs[hash]) then
         buf_seen[hash] = nil
@@ -310,8 +304,6 @@ function M.import(buf)
     end
   end
 
-  -- Replace rather than merge: the disk state becomes the new baseline for
-  -- which hashes "had outputs".
   seen[buf] = fresh_seen
 
   require("jove.execute").reset(buf)

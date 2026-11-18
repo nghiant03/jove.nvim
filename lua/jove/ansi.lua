@@ -1,4 +1,4 @@
--- ANSI escape sequence handling
+-- ANSI escape sequence handling.
 
 local M = {}
 
@@ -15,7 +15,7 @@ function M.strip(s)
   return (s:gsub(OSC_ST, ""):gsub(OSC_BEL, ""):gsub(CSI, ""):gsub("\27", ""):gsub("\r", ""))
 end
 
----@param existing string  text accumulated so far (may end mid-line)
+---@param existing string  text accumulated so far
 ---@param new string       incoming text
 ---@return string
 function M.cr_concat(existing, new)

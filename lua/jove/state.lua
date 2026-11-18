@@ -3,16 +3,16 @@
 local M = {}
 
 ---@class jove.BufferState
----@field path string?        Path of the .ipynb backing this buffer (set on successful read).
----@field json table?         Parsed .ipynb JSON, refreshed on read and write.
+---@field path string?        Path of the .ipynb backing this buffer.
+---@field json table?         Parsed .ipynb JSON.
 ---@field last_write string?  Checksum of the last written bytes, used to suppress self-triggered reloads.
----@field lang string?        Kernelspec language id (see jove.lang), set on read.
----@field cells jove.CellCache?                    Parsed cell cache (owned by jove.cell).
----@field kernel jove.KernelEntry?                 Kernel handle (owned by jove.kernel).
----@field exec jove.ExecState?                     Execution queue/status (owned by jove.execute).
----@field outputs table<string, jove.OutputEntry>? Rendered outputs by cell hash (owned by jove.output).
----@field front_matter string[]?                   Stripped jupytext header lines (owned by jove.buffer).
----@field content_rev integer?                     Output-driven content revision (owned by jove.output), used to detect read/write races.
+---@field lang string?        Kernelspec language id.
+---@field cells jove.CellCache?                    Parsed cell cache.
+---@field kernel jove.KernelEntry?                 Kernel handle.
+---@field exec jove.ExecState?                     Execution queue/status.
+---@field outputs table<string, jove.OutputEntry>? Rendered outputs by cell hash.
+---@field front_matter string[]?                   Stripped jupytext header lines.
+---@field content_rev integer?                     Detects output changes during a read or write.
 
 ---@type table<integer, jove.BufferState>
 local registry = {}
@@ -24,8 +24,7 @@ local function ensure_cleanup_autocmd()
     return
   end
   group = vim.api.nvim_create_augroup("jove_state", { clear = true })
-  -- Cleanup happens on BufWipeout only: a buffer closed with :bdelete keeps
-  -- its jove state, including any kernel bridge, until it is wiped.
+  -- Keep the kernel alive across :bdelete; release its buffer state only on wipeout.
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = group,
     pattern = "*",
@@ -36,7 +35,7 @@ local function ensure_cleanup_autocmd()
 end
 
 ---@param buf integer
----@return jove.BufferState  Attaches state to the buffer when absent; peek() only reads
+---@return jove.BufferState  Buffer state, created on first access.
 function M.get(buf)
   buf = buf == 0 and vim.api.nvim_get_current_buf() or buf
   ensure_cleanup_autocmd()
