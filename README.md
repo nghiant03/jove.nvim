@@ -228,12 +228,6 @@ Built-in languages:
 | JavaScript | `javascript` | `// %%` | ts_ls | Not supported |
 | TypeScript | `typescript` | `// %%` | ts_ls | Not supported |
 
-Open `:Jove sidebar` and press `1` for variables, `r` to refresh, or `<CR>`
-for details. The inspector uses the running kernel; opening the Variables tab
-neither installs nor starts one. JavaScript and TypeScript editing and execution
-are unaffected: tslab 1.0.22 advances the execution count even for silent
-requests, so Jove does not run an inspector probe on it.
-
 Unknown languages fall back to Python conventions. Register
 more yourself:
 
