@@ -149,6 +149,18 @@ T["queue"]["notifies and drops the queue when no kernel"] = function()
   MiniTest.expect.equality(#notes, 2)
 end
 
+T["queue"]["a dead kernel needs replacement, not initialization"] = function()
+  local buf = make_buffer(LINES)
+  local br = fake_bridge()
+  inject_kernel(br, buf)
+  state.get(buf).kernel.status = "dead"
+
+  execute.run_cell(buf, 1)
+  MiniTest.expect.equality(#br.requests, 0)
+  MiniTest.expect.equality(#notes, 1)
+  expect_truthy(notes[1].msg:find(":Jove select-kernel", 1, true) ~= nil)
+end
+
 T["queue"]["kernel gone mid-queue: remaining items dropped as error"] = function()
   local buf = make_buffer(LINES)
   local br = fake_bridge()

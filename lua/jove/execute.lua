@@ -12,7 +12,11 @@ M._output = function()
   return ok and m or nil
 end
 
-local NO_KERNEL_MSG = "No kernel detected! Run :Jove init-kernel"
+local function notify_unavailable(kernel)
+  local message = kernel and "Kernel unavailable. Run :Jove select-kernel to replace it."
+    or "No kernel detected! Run :Jove init-kernel"
+  vim.notify(message, vim.log.levels.WARN)
+end
 
 ---@class jove.ExecItem
 ---@field hash string  cell hash (or "selection")
@@ -198,7 +202,7 @@ function pump(buf)
       set_status(buf, dropped.hash, "error")
     end
     exec.queue = {}
-    vim.notify(NO_KERNEL_MSG, vim.log.levels.WARN)
+    notify_unavailable(k)
     return
   end
 
@@ -238,7 +242,11 @@ function pump(buf)
           set_status(buf, queued.hash, "error")
         end
         exec.queue = {}
-        vim.notify(NO_KERNEL_MSG, vim.log.levels.WARN)
+        if st2.kernel then
+          vim.notify("Kernel changed. Run the cell again.", vim.log.levels.WARN)
+        else
+          notify_unavailable(nil)
+        end
       end
       exec.routes[wire] = nil
       return
@@ -293,7 +301,7 @@ local function enqueue(buf, items)
       end
       st.exec.queue = {}
     end
-    vim.notify(NO_KERNEL_MSG, vim.log.levels.WARN)
+    notify_unavailable(st.kernel)
     return
   end
   local st = state.get(buf)
