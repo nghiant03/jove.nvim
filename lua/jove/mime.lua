@@ -1,4 +1,4 @@
--- Normalize an output event's mime bundle.
+-- Normalize MIME bundles from kernel output events.
 
 local ansi = require("jove.ansi")
 
@@ -22,7 +22,7 @@ local function html_cell_text(s)
     return vim.fn.nr2char(tonumber(hex, 16))
   end)
   s = s:gsub("&#(%d+);", function(dec)
-    return vim.fn.nr2char(tonumber(dec))
+    return vim.fn.nr2char(tonumber(dec, 10))
   end)
   s = s:gsub("&nbsp;", " ")
   s = s:gsub("&quot;", '"')
