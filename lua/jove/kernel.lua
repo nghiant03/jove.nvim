@@ -119,6 +119,7 @@ end
 ---@field name string?
 ---@field language string?
 ---@field status string
+---@field generation integer?  Changes when a new kernel uses the same entry.
 ---@field _last_name string?  kernelspec to restore when the bridge respawns
 
 ---@param buf integer
@@ -126,6 +127,7 @@ end
 ---@param name string
 ---@param spec table?  -- kernelspec (carries `language`)
 local function start_kernel(buf, entry, name, spec)
+  entry.generation = (entry.generation or 0) + 1
   entry.name = name
   if spec and type(spec.language) == "string" and spec.language ~= "" then
     entry.language = spec.language:lower()
@@ -251,66 +253,51 @@ function M.init(buf, opts)
 end
 
 ---@param buf integer
----@return boolean
-function M.available(buf)
+---@return jove.KernelEntry?
+function M.running(buf)
   local st = state.peek(norm_buf(buf))
   local k = st and st.kernel
-  return k ~= nil and k.name ~= nil and k.bridge ~= nil and k.bridge:is_alive()
-end
-
-local VARIABLES_TIMEOUT_MS = 5000
-
----@param buf integer
----@return string?
-local function language_of(buf)
-  local entry = state.peek(buf)
-  local k = entry and entry.kernel
-  if k and type(k.language) == "string" and k.language ~= "" then
-    return k.language
-  end
-  local json = entry and entry.json
-  local ks = json and json.metadata and json.metadata.kernelspec
-  if ks and type(ks.language) == "string" and ks.language ~= "" then
-    return ks.language
+  if k and k.name and k.status ~= "dead" and k.bridge and k.bridge:is_alive() then
+    return k
   end
   return nil
 end
 
+---@param buf integer
+---@return boolean
+function M.available(buf)
+  return M.running(buf) ~= nil
+end
+
+-- Keep this longer than the bridge timeout so its probe error reaches the sidebar.
+local VARIABLES_TIMEOUT_MS = 15000
+
 ---@param buf integer  Buffer handle (0 = current).
----@param cb fun(result: {variables: table[]?, unsupported: string?})?
+---@param cb fun(result: {variables: table[]?, unsupported: string?, no_kernel: boolean?}?, err: string?)?
 function M.variables(buf, cb)
   buf = norm_buf(buf)
-  local respond = function(result)
+  local respond = function(result, err)
     if cb then
       vim.schedule(function()
-        cb(result)
+        cb(result, err)
       end)
     end
   end
 
-  local language = language_of(buf)
-  if language ~= nil and language ~= "python" then
-    respond({ variables = nil, unsupported = language })
-    return
-  end
-
-  local entry = state.peek(buf)
-  local k = entry and entry.kernel
-  if not (k and k.name and k.bridge and k.bridge:is_alive()) then
-    respond({ variables = {} })
+  local k = M.running(buf)
+  if not k then
+    respond({ no_kernel = true })
     return
   end
 
   k.bridge:request("variables", {}, function(result, err)
-    if err or type(result) ~= "table" or type(result.variables) ~= "table" then
-      vim.notify(
-        ("[Jove] variable inspector: request failed (%s)"):format(tostring(err or "bad reply")),
-        vim.log.levels.WARN
-      )
-      respond({ variables = {} })
-      return
+    if err then
+      respond(nil, describe_err(err))
+    elseif type(result) ~= "table" or not vim.islist(result.variables) then
+      respond(nil, "Invalid variables reply")
+    else
+      respond(result)
     end
-    respond(result)
   end, { timeout_ms = VARIABLES_TIMEOUT_MS })
 end
 
@@ -337,6 +324,7 @@ function M.restart(buf)
     notify_no_kernel()
     return
   end
+  k.generation = (k.generation or 0) + 1
   k.status = "restarting"
   k.bridge:request("restart", {}, function(_, err)
     if err then

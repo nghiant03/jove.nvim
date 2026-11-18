@@ -220,13 +220,19 @@ fig.show(renderer="plotly_mimetype")
 
 Built-in languages:
 
-| Language | Filetype | Cell marker | Known servers |
-|---|---|---|---|
-| Python | `python` | `# %%` | pyright, basedpyright, ruff |
-| Julia | `julia` | `# %%` | julials |
-| R | `r` | `# %%` | r_language_server |
-| JavaScript | `javascript` | `// %%` | ts_ls |
-| TypeScript | `typescript` | `// %%` | ts_ls |
+| Language | Filetype | Cell marker | Known servers | Variable inspector |
+|---|---|---|---|---|
+| Python | `python` | `# %%` | pyright, basedpyright, ruff | IPython kernel |
+| Julia | `julia` | `# %%` | julials | IJulia |
+| R | `r` | `# %%` | r_language_server | IRkernel |
+| JavaScript | `javascript` | `// %%` | ts_ls | Not supported |
+| TypeScript | `typescript` | `// %%` | ts_ls | Not supported |
+
+Open `:Jove sidebar` and press `1` for variables, `r` to refresh, or `<CR>`
+for details. The inspector uses the running kernel; opening the Variables tab
+neither installs nor starts one. JavaScript and TypeScript editing and execution
+are unaffected: tslab 1.0.22 advances the execution count even for silent
+requests, so Jove does not run an inspector probe on it.
 
 Unknown languages fall back to Python conventions. Register
 more yourself:

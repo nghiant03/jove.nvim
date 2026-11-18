@@ -1,7 +1,7 @@
 -- Variable-inspector data and formatting for the tabbed sidebar
 
 local ansi = require("jove.ansi")
-local state = require("jove.state")
+local kernel = require("jove.kernel")
 
 local M = {}
 
@@ -15,11 +15,14 @@ local function truncate(s, max)
   if vim.fn.strdisplaywidth(s) <= max then
     return s
   end
-  local i = #s
-  while i > 0 and vim.fn.strdisplaywidth(s:sub(1, i)) + 1 > max do
+  -- Wide characters can take two columns; trim whole characters to leave room for the ellipsis.
+  local i = max - 1
+  local prefix = vim.fn.strcharpart(s, 0, i, true)
+  while i > 0 and vim.fn.strdisplaywidth(prefix) + 1 > max do
     i = i - 1
+    prefix = vim.fn.strcharpart(s, 0, i, true)
   end
-  return s:sub(1, i) .. "…"
+  return prefix .. "…"
 end
 
 ---@param s string
@@ -48,8 +51,8 @@ function M.format(vars, width)
   end
   local name_w, type_w = 4, 4
   for _, v in ipairs(vars) do
-    name_w = math.max(name_w, vim.fn.strdisplaywidth(tostring(v.name or "")))
-    type_w = math.max(type_w, vim.fn.strdisplaywidth(tostring(v.type or "")))
+    name_w = math.max(name_w, vim.fn.strdisplaywidth(flatten(tostring(v.name or ""))))
+    type_w = math.max(type_w, vim.fn.strdisplaywidth(flatten(tostring(v.type or ""))))
   end
   name_w = math.min(name_w, math.max(6, math.floor(width * 0.4)))
   type_w = math.min(type_w, math.max(4, math.floor(width * 0.3)))
@@ -58,27 +61,24 @@ function M.format(vars, width)
   local lines = { truncate(header, width) }
   local spans = { { 1, 0, #lines[1], "JoveSidebarMuted" } }
   for i, v in ipairs(vars) do
-    local name = pad(truncate(tostring(v.name or ""), name_w), name_w)
-    local type_col = #name + 2
-    local ty = pad(truncate(tostring(v.type or ""), type_w), type_w)
+    local name = truncate(flatten(tostring(v.name or "")), name_w)
+    local ty = truncate(flatten(tostring(v.type or "")), type_w)
     local value = truncate(flatten(tostring(v.value or "")), value_w)
-    lines[#lines + 1] = name .. "  " .. ty .. "  " .. value
+    local name_col = pad(name, name_w) .. "  "
+    lines[#lines + 1] = name_col .. pad(ty, type_w) .. "  " .. value
     local row = i + 1
-    local name_len = #(tostring(v.name or ""))
-    if name_len > 0 then
-      spans[#spans + 1] = { row, 0, math.min(name_len, #name), "JoveSidebarVarName" }
+    if #name > 0 then
+      spans[#spans + 1] = { row, 0, #name, "JoveSidebarVarName" }
     end
-    local type_len = #(tostring(v.type or ""))
-    if type_len > 0 then
-      spans[#spans + 1] =
-        { row, type_col, type_col + math.min(type_len, #ty), "JoveSidebarVarType" }
+    if #ty > 0 then
+      spans[#spans + 1] = { row, #name_col, #name_col + #ty, "JoveSidebarVarType" }
     end
   end
   return lines, spans, 1
 end
 
 ---@param buf integer
----@param cb fun(result: table?)
+---@param cb fun(result: table?, err: string?)
 function M.fetch(buf, cb)
   M._variables(buf, cb)
 end
@@ -165,17 +165,25 @@ end
 ---@param buf integer
 ---@param name string
 ---@param cached table?  vars entry ({name, type, value, ...}) used as fallback text
-function M.inspect_var(buf, name, cached)
+---@param is_current (fun(): boolean)?  Ignore replies after the requesting view closes.
+function M.inspect_var(buf, name, cached, is_current)
   if name == "" then
     return
   end
-  local entry = state.peek(buf)
-  local k = entry and entry.kernel
-  if k and k.name and k.bridge and k.bridge:is_alive() then
+  local k = kernel.running(buf)
+  if k then
+    local generation = k.generation
     k.bridge:request(
       "inspect",
-      { code = name, cursor_pos = #name, detail_level = 1 },
+      { code = name, cursor_pos = vim.fn.strchars(name), detail_level = 1 },
       function(result, err)
+        if
+          (is_current and not is_current())
+          or kernel.running(buf) ~= k
+          or k.generation ~= generation
+        then
+          return
+        end
         local text
         if not err and type(result) == "table" and type(result.mime) == "table" then
           text = result.mime["text/plain"]
@@ -197,7 +205,7 @@ function M.inspect_var(buf, name, cached)
 end
 
 M._variables = function(buf, cb)
-  require("jove.kernel").variables(buf, cb)
+  kernel.variables(buf, cb)
 end
 
 return M

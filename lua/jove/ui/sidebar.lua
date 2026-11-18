@@ -1,6 +1,7 @@
 -- Combined sidebar pane
 
 local state = require("jove.state")
+local kernel = require("jove.kernel")
 
 local M = {}
 
@@ -34,7 +35,8 @@ local HEADER_LINES = 2
 ---@field fbuf integer
 ---@field tab string
 ---@field vars table[]
----@field vars_unsupported string?
+---@field vars_message string?
+---@field vars_request integer
 ---@field kernel_specs jove.ui.Kernelspec[]?
 ---@field kernel_err string?
 ---@field kernel_requested boolean
@@ -122,8 +124,8 @@ end
 ---@return string[] lines, table[] spans, integer items_offset
 local function content_lines(buf, s, width)
   if s.tab == "vars" then
-    if s.vars_unsupported then
-      local msg = ("Variable inspection is unavailable for %s kernels"):format(s.vars_unsupported)
+    if s.vars_message then
+      local msg = s.vars_message
       return { msg }, { { 1, 0, #msg, "JoveSidebarMuted" } }, 1
     end
     return require("jove.ui.vars").format(s.vars, width)
@@ -184,17 +186,32 @@ local function refresh_vars(buf)
   if not s then
     return
   end
-  require("jove.ui.vars").fetch(buf, function(result)
-    local sess = sessions[buf]
-    if not sess then
+  s.vars_request = s.vars_request + 1
+  local request = s.vars_request
+  local k = kernel.running(buf)
+  local generation = k and k.generation
+  require("jove.ui.vars").fetch(buf, function(result, err)
+    if get(buf) ~= s or s.vars_request ~= request then
       return
     end
-    if type(result) ~= "table" then
-      result = {}
+    if kernel.running(buf) ~= k or (k and k.generation ~= generation) then
+      -- The reply describes the previous kernel's workspace.
+      refresh_vars(buf)
+      return
     end
-    sess.vars_unsupported = result.unsupported
-    sess.vars = type(result.variables) == "table" and result.variables or {}
-    if sess.tab == "vars" then
+    s.vars = result and result.variables or {}
+    if err then
+      s.vars_message = "Variable inspection failed (r to retry): " .. err:gsub("%s+", " ")
+    elseif result.no_kernel then
+      s.vars_message = "No kernel running"
+    elseif result.unsupported then
+      s.vars_message = ("Variable inspection is unavailable for %s kernels"):format(
+        result.unsupported:gsub("%s+", " ")
+      )
+    else
+      s.vars_message = nil
+    end
+    if s.tab == "vars" then
       render(buf)
     end
   end)
@@ -327,7 +344,9 @@ function M.activate(buf)
   if s.tab == "vars" then
     local v = s.vars[idx]
     if v then
-      require("jove.ui.vars").inspect_var(buf, tostring(v.name or ""), v)
+      require("jove.ui.vars").inspect_var(buf, tostring(v.name or ""), v, function()
+        return get(buf) == s and s.tab == "vars"
+      end)
     end
   elseif s.tab == "toc" then
     local h = s.toc[idx]
@@ -412,7 +431,8 @@ function M.open(buf, tab)
     fbuf = fbuf,
     tab = tab,
     vars = {},
-    vars_unsupported = nil,
+    vars_message = "Loading variables…",
+    vars_request = 0,
     kernel_specs = nil,
     kernel_err = nil,
     kernel_requested = false,
