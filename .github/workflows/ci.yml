@@ -166,12 +166,16 @@ jobs:
 
   test-bridge:
     name: bridge tests (py${{ matrix.python }} on ${{ matrix.os }})
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.10", "3.13"]
+        include:
+          - os: ubuntu-latest
+            python: "3.13"
+            extra_kernels: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -197,6 +201,23 @@ jobs:
       - name: Run bridge unit tests
         working-directory: python
         run: uv run --locked --extra dev python -m pytest -q -m unit
+
+      - uses: julia-actions/setup-julia@v2
+        if: matrix.extra_kernels
+        with:
+          version: '1.10'
+      - name: Register R and Julia integration kernels
+        if: matrix.extra_kernels
+        env:
+          IJULIA_NODEFAULTKERNEL: '1'
+        run: |
+          export PATH="$PWD/python/.venv/bin:$PATH" JUPYTER="$PWD/python/.venv/bin/jupyter"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends r-cran-irkernel
+          Rscript -e 'IRkernel::installspec(name="jove-r", user=TRUE)'
+          julia -e 'using Pkg; Pkg.add("IJulia"); using IJulia; IJulia.installkernel("Jove Julia"; specname="jove-julia")'
+          echo 'JOVE_TEST_R_KERNEL=jove-r' >> "$GITHUB_ENV"
+          echo 'JOVE_TEST_JULIA_KERNEL=jove-julia' >> "$GITHUB_ENV"
 
       - name: Run bridge integration tests
         working-directory: python
