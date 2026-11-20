@@ -202,7 +202,7 @@ jobs:
         working-directory: python
         run: uv run --locked --extra dev python -m pytest -q -m unit
 
-      - uses: julia-actions/setup-julia@v2
+      - uses: julia-actions/setup-julia@v3
         if: matrix.extra_kernels
         with:
           version: '1.10'
